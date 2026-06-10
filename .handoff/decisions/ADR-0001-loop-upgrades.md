@@ -60,9 +60,9 @@ stateDiagram-v2
     ChangesRequested --> Cyc: reopen task(s) for a fix cycle
     Approved --> AwaitPermission: check permission gate
     AwaitPermission --> AwaitPermission: pending — wait (retryable)\n(emit permission_verdict:pending)
-    AwaitPermission --> PROpen: denied / timeout — wait/retry
+    AwaitPermission --> ChangesRequested: denied / timeout\n(emit permission_verdict:denied)
     AwaitPermission --> Merged: approved + granted\nhf merge --squash, ff develop (emit pr_merged)
-    Merged --> Synced: hf sync\n(emit meta_registered, kb mirror)
+    Merged --> Synced: hf sync\n(emit meta_registered, kb_synced)
     Synced --> SessionEnd: hf session end
     SessionEnd --> Preflight: --recycle (emit session_end)
     SessionEnd --> [*]: stop (emit session_end)
@@ -294,7 +294,10 @@ commit for the whole cycle** and ships a single PR.
 - `hf status` surfaces `cycles: n/flush`; when `n >= cycle_flush` (default 4),
   `next_command` becomes `hf ship`.
 - **`hf claim --batch N`** (up to `cycle_flush` tasks) reserves a lease per task
-  and opens the cycle.
+  and opens the cycle. This is gated by `loop.batch_checkout`: when `true`
+  (default) a session claims N tasks at once; when `false` it claims one task at
+  a time under a supervisor/orchestrator (the older single-task model) — either
+  way the cycle still ships at `cycle_flush`.
 - **`hf ship`**
   1. `git add -A && git commit` — **one commit** whose message lists every
      `HFTASK-id` completed in the cycle;
@@ -331,11 +334,16 @@ once Phase 2 is proven.
   is carried in the **permission answer body** and recorded as a `review_verdict`
   event in **hf's own ledger** (authoritative) — **not** in `weave review`, which
   has no verdict field (Research §R6). hf enforces the gate; weave only records.
-- **`hf merge <pr#>`** reads the review verdict + permission verdict:
-  - `approved` AND permission granted AND `auto_merge = on_approve`
+- **`hf merge <pr#>`** reads the review verdict + permission verdict, branching on
+  `merge.auto_merge`:
+  - `auto_merge = on_approve` (default): `approved` AND permission granted
     → `gh pr merge --squash`; emit `pr_merged`; fast-forward develop;
-  - `denied` → emit `pr_changes_requested`; re-open the task(s) for a fix cycle;
-  - permission pending → **wait (retryable)**; never auto-merge without it.
+  - `auto_merge = manual`: same checks, but stop at "ready to merge" and require an
+    explicit `hf merge --confirm` (the loop prepares, a human/gatekeeper triggers);
+  - `auto_merge = never`: `hf` never merges — it only opens/maintains the PR
+    (external CI/admin merges);
+  - `denied`/timeout → emit `pr_changes_requested`; re-open the task(s) for a fix
+    cycle; permission pending → **wait (retryable)**; never auto-merge without it.
 - Merge is the **one gate that blocks** — Phase 1 a human/permission verdict
   (consistent with the `gh repo create` wall in HFTASK-0001 NEEDS-HUMAN),
   Phase 2 the swarm verdict.
@@ -402,9 +410,10 @@ loop" is the target; the gatekeeper is how the loop closes safely.
   - **meta:** ensure this repo is registered in the parent `../.meta.yaml`
     projects and listed in `../.gitignore` (the meta-repo rule for new crates).
     Idempotent; emits `meta_registered`.
-  - **.kb:** push a context document (brief / active / progress) into FlexNetOS
-    `.kb` via `git kb`, so the knowledge base mirrors the ledger's active
-    state. **One-way (ledger → kb)** to keep Git authoritative.
+  - **.kb:** push the two generated context docs (`active`, `progress` — the
+    `sync.kb_slugs` allow-list) into FlexNetOS `.kb` via `git kb`, so the
+    knowledge base mirrors the ledger's active state. **One-way (ledger → kb)**
+    to keep Git authoritative. Emits `kb_synced`.
   - Runs at `session end` / after `pr_merged`.
 
 ### 7. New witnessed ledger event schema
@@ -420,7 +429,7 @@ loop events the `work_order_id` column carries the relevant correlation id
 | `event_type` | `work_order_id` | payload fields |
 |---|---|---|
 | `session_start` | session id | `worktree_set, branch, base_sha, base_branch, trunk_branch` |
-| `session_end` | session id | `worktree_set, reason ∈ {merged,aborted}, recycled: bool` |
+| `session_end` | session id | `worktree_set, reason ∈ {merged,aborted}, recycled: bool` (recycle vs stop = `recycled` true/false; `reason` = why it ended) |
 | `preflight` | session id | `verdict ∈ {pass,refuse}, checks{clean,synced_base,develop_eq_trunk,single_origin,weave_ok}, ahead_behind` |
 | `cycle_open` | session id | `task_ids[], cycle_flush` |
 | `pr_opened` | `pr:<owner>/<repo>#<n>` | `branch, trunk, task_ids[], draft: bool` |
@@ -429,8 +438,10 @@ loop events the `work_order_id` column carries the relevant correlation id
 | `pr_merged` | `pr:…#n` | `merge_sha, squashed: true, develop_ffd: bool` |
 | `pr_changes_requested` | `pr:…#n` | `reason, reopened_task_ids[]` |
 | `meta_registered` | repo name | `meta_yaml: bool, gitignore: bool` |
+| `kb_synced` | repo name | `slugs[], one_way: true` (the `.kb` mirror side of `hf sync`) |
 
-`hf status`/`hf handoff` derive loop state by replaying these (e.g. cycle count
+(`checkpoint` is a pre-existing event, not re-listed here.) `hf status`/`hf handoff`
+derive loop state by replaying these (e.g. cycle count
 = `checkpoint`s since the last `session_start`; an open PR = `pr_opened` with no
 later `pr_merged`/`pr_changes_requested`). Because the chain is witnessed, the
 loop's whole shipping history is tamper-evident and replayable.
@@ -481,7 +492,13 @@ protection — so adopt the mesh *and* §9.3 together, never the mesh alone.
 `handoff`'s trunk gets **real** branch protection (today only `weave` has any):
 
 - **Required status checks:** `test`, `clippy`, `format`, `build` — all must be
-  green to merge.
+  green to merge. These four are **handoff's own** set and are exactly what `ci.yml`
+  defines (no documents-N-enforces-M gap — the R8 drift to avoid). handoff is a
+  single-backend crate, so it deliberately omits weave's extra `build (libsql
+  backend)` / `sign` / `libsql + sign` contexts; `format` here is `cargo fmt
+  --check` (weave names the same job `rustfmt`). If features are later added, the
+  required set is updated *in lockstep* with the job names — protection contexts
+  must always equal the `ci.yml` job set.
 - **Strict / up-to-date:** `strict = true` (branch must be current with trunk
   before merge — pairs with the §3 `develop==trunk` ff rule).
 - **`enforce_admins`:** a *deliberate* choice — `weave` leaves admins able to
@@ -851,6 +868,12 @@ broker + relay** library (`envctl_secrets`), driven by `secretd` (gRPC) +
   `Lock`, `Audit`), CLI `secretctl` (`relay create/mint/revoke`, `run`).
 
 ## Task breakdown
+
+> **HFTASK-0001–0006 are pre-existing** (the original kernel backlog from the
+> spike / `SESSION-HANDOFF.md`, R1): 0001 naming, 0002 weave-lease claim (done),
+> 0003 prompt_hub dispatch, 0004 ruvector-verified AgentContract, 0005 `hf drift`
+> gate, 0006 RVF vector ledger. This ADR adds 0007+ (loop v2). References to
+> 0001/0002/0005 above point at those pre-existing cards.
 
 | Task | Pillar | Quick-note items |
 |------|--------|------------------|
