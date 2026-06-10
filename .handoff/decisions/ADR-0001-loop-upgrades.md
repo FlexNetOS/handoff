@@ -156,9 +156,12 @@ is filled is **phased**, set by `merge.reviewer`:
 verdict is being trusted, designed to be lifted (`permission_gate = false`)
 once Phase 2 is proven.
 
-- **`hf review request <pr#>`** → enqueue into weave's review queue (WL-020),
-  open a **permission ask** (WL-021), and dispatch the reviewer per
-  `merge.reviewer`. The reviewer records `approve` / `deny(reason)` through weave.
+- **`hf review request <pr#>`** → enqueue into weave's review queue (WL-020, the
+  human-facing PR list), open a **permission ask** (WL-021), and dispatch the
+  reviewer per `merge.reviewer`. The reviewer's `approve`/`deny(reason)` verdict
+  is carried in the **permission answer body** and recorded as a `review_verdict`
+  event in **hf's own ledger** (authoritative) — **not** in `weave review`, which
+  has no verdict field (Research §R6). hf enforces the gate; weave only records.
 - **`hf merge <pr#>`** reads the review verdict + permission verdict:
   - `approved` AND permission granted AND `auto_merge = on_approve`
     → `gh pr merge --squash`; emit `pr_merged`; fast-forward develop;
@@ -338,6 +341,79 @@ split and supplies the §5a guardrails. Load-bearing findings:
 - Sources: github.com/github/gh-aw · githubnext.github.io/gh-aw (overview,
   architecture, safe-outputs, safe-outputs-pull-requests, triggers, tokens) ·
   gh-aw issue #25439.
+
+### R5 — Phase-2 swarm reviewer feasibility (codebase: RuVector/rvAgent, ruflo)
+
+The `swarm_local` reviewer (§5 Phase 2) is **feasible but partly greenfield**:
+
+- **Working & reusable:** A2A transport (signed `AgentCard`, `PeerRegistry`,
+  HTTP JSON-RPC, per-node budget + `recursion_guard`) — `examples/a2a-swarm` is
+  a passing acceptance test that spawns/discovers/dispatches/tears-down real
+  `rvagent a2a serve` processes. Reusable verdict TYPES:
+  `rvagent-middleware/hitl.rs::ApprovalDecision{Approve,Deny,ApproveWithModification}`;
+  `verified-applications/agent_contracts.rs::GateResult{allowed,reason,receipt}`
+  (**provable** via `ruvector-verified` Lean contracts);
+  `cognitum-gate-tilezero/replay.rs::GateDecision{Permit,Deny,Defer}` (+ witness
+  replay). Reviewer-output hardening: `SubAgentResultValidator` (injection/length
+  guards). Role "lenses" exist as persona cards in `.ruv/agents/rvagent-{security,
+  tester,coder,queen}.md`.
+- **Missing (build it):** the **N-reviewers → one approve/deny reducer** (quorum
+  / any-blocker-vetoes / weighted-by-lens) — no such function exists; ~50–100
+  LOC over the existing types. Also: `SubAgentOrchestrator::spawn_sync` is a
+  STUB (use the process-level `rvagent a2a serve` path instead), lens→model
+  wiring, and a diff→reviewer-input adapter.
+- Seam options: depend on the Rust crates, or the `rvagent-mcp` MCP server, or
+  the `rvagent` CLI (process-per-lens). For provable+witnessed verdicts, pair
+  `enforce_contract` with the `.handoff` `rvf-crypto` WitnessChain.
+
+### R6 — Out-of-band verdict mechanism (codebase: weave review/permission) — GAP
+
+§5/§5a assume weave can hold the review verdict + the merge-permission verdict
+out-of-band. Verification (weave-mcp-daemon-tools):
+
+- **`weave permission` (WL-021): ✓ sufficient.** `weave_ask_permission` +
+  `weave_permission_status` record an out-of-band verdict
+  `Pending|Approved|Denied|Timeout` (Approved iff the answer body == "approve",
+  case-insensitive; unanswered past `timeout_secs` → Timeout = denied). Stored in
+  the `asks`+`messages` tables, **not** a GitHub approval — exactly the
+  bypass-avoiding channel §5a wants.
+- **`weave review` (WL-020): ✗ no verdict field.** `ReviewItem` tracks only
+  `state{Open,Merged,Closed}` + `reviewed_at` + `reviewed_by` — i.e. *reviewed
+  vs not*, with **no Approve/RequestChanges/Deny**. It also does not *enforce*
+  anything (records, doesn't gate), and permission asks carry no PR/branch ref.
+- **Resolution (decided):** do NOT depend on `weave review` for the verdict.
+  Carry the reviewer's approve/deny **in the `weave permission` answer body**
+  (e.g. `approve` / `deny: <reason>`) and/or record it as a `review_verdict`
+  **event in hf's own ledger** (the authoritative store). Use `weave review` only
+  as the human-facing PR queue. Optionally file a separate weave task to add a
+  `verdict` column to `ReviewItem` later. The merge gate is enforced by **hf**
+  reading the permission status + its own `review_verdict` event — weave does not
+  gate.
+
+### R7 — `.kb` + meta sync mechanics (codebase: .meta.yaml, .gitignore, git kb)
+
+§6/HFTASK-0011 verified against the live workspace:
+
+- **Part A already done:** `handoff` is **already** registered in
+  `~/Desktop/meta/.meta.yaml` (`projects.handoff.repo = git@github.com:FlexNetOS/handoff.git`)
+  and ignored in `~/Desktop/meta/.gitignore` (with a **duplicate** `handoff/`
+  line to clean). There is **no `meta project add`** (the `project` plugin is
+  read-only: list/check/dependents) → registration is a guarded file edit. So
+  `hf sync` Part A = **idempotent ensure/repair**, grep-guarded, never blind
+  append.
+- **Part B — no upsert:** `git kb create` errors on an existing slug. The
+  idempotent push is **show-or-create → checkout → full-overwrite body →
+  commit**, scoped to the two generated slugs `context/overridable/active` and
+  `context/overridable/progress` (both already exist, type `context`). Preserve
+  frontmatter `id` (checkout first; never `rm`+recreate — it breaks UUID/version
+  lineage). The DB (`.kb/store/`) is the source of truth; `.kb/workspaces/` is
+  scratch (already git-ignored).
+- **One-way discipline (structural, hf-enforced):** hf only ever *writes* those
+  generated slugs, **full-overwrites** from a ledger-derived body, **never reads
+  `.kb` back as truth**, tags them `generated`, and never touches
+  `context/immutable/*`, `context/extensible/*`, or `tasks/*`. `git kb status`
+  before checkout on shared slugs; never `--force` on shared docs. MCP `kb_*`
+  tools are an optional nicety — the `git kb` CLI is the portable contract.
 
 ## Task breakdown
 
