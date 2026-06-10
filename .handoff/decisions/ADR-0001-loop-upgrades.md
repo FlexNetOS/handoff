@@ -1,6 +1,6 @@
 # ADR-0001 — Handoff Loop v2: worktree-isolated, cycle-batched, review-gated shipping
 
-- **Status:** Proposed
+- **Status:** Accepted (refined after review 2026-06-09)
 - **Date:** 2026-06-09
 - **Deciders:** drdave (+ Claude)
 - **Scope:** `hf` CLI, `.handoff/` contract, weave integration
@@ -48,32 +48,42 @@ trunk_branch = "master"           # PR target / protected
 develop_mirrors_trunk = true      # ff develop -> trunk after each merge
 
 [loop]
-cycle_flush     = 4               # ship after N completed tasks (range 3..5)
-worktree_root   = "../"
-worktree_prefix = "handoff-"
+cycle_flush     = 4               # tasks checked out + completed per cycle (3..5)
+batch_checkout  = true            # claim 3-5 tasks at once so the loop never stalls
+worktree_prefix = "handoff-"      # meta worktree set name prefix
 
 [merge]
-require_review  = true            # a separate agent must approve before merge
+require_review  = true            # a review verdict is required before merge
+reviewer        = "cloud_ultra"   # Phase 1: "cloud_ultra" (/code-review ultra)
+                                  # Phase 2: "swarm_local" (ruvector/ruflo swarm)
 auto_merge      = "on_approve"    # "on_approve" | "never" | "manual"
-permission_gate = true            # outward merge needs an approved permission ask
+permission_gate = true            # TRANSITIONAL human gate; lifted once swarm is trusted
 ```
 
 ### 2. Session lifecycle (quick-note items 2, 3, 7)
 
+**Worktrees are managed through `meta git worktree`**, not raw `git worktree`,
+so handoff's isolation is tracked by the meta workspace (one authoritative
+worktree *set*, never ad-hoc trees — see the Lessons section for why this
+matters). The installed integration surface is
+`meta git worktree create|add|remove|list|status|prune`.
+
 - **`hf session start [--task-slug X]`**
-  1. `git fetch origin`
-  2. `git worktree add <root><prefix><slug> -b <branch> origin/<base_branch>`
+  1. `git fetch origin` (the meta worktree create branches off the fresh remote base)
+  2. `meta git worktree create <prefix><slug> --repo handoff` off
+     `origin/<base_branch>`
   3. reserve a weave lease on the worktree **path scope** (extends the
      per-task claim lease to the whole tree → two sessions never share a tree)
-  4. emit `session_start` event (worktree path, branch, base SHA); reset the
+  4. emit `session_start` event (worktree set, branch, base SHA); reset the
      cycle counter.
 - **`hf session end [--recycle]`**
   1. require clean/merged; release the path lease
-  2. `git worktree remove <path>`; emit `session_end`
-  3. with `--recycle`, immediately `session start` a fresh worktree
+  2. `meta git worktree remove <set>` (+ `meta git worktree prune` for orphans);
+     emit `session_end`
+  3. with `--recycle`, immediately `session start` a fresh set
      (item 7: "delete after PR merge and new worktree created").
-- **Recovery:** `session start` is idempotent — if the worktree exists and the
-  lease is ours, adopt it instead of failing.
+- **Recovery:** `session start` is idempotent — if the set exists and the lease
+  is ours, adopt it instead of failing.
 
 ### 3. Branch & remote policy (item 6)
 
@@ -87,35 +97,60 @@ A `policy` module resolves clone-vs-fork, base (`develop`), and trunk
 - **fork model:** `origin` = the fork; PRs are cross-repo into upstream.
   Deferred behind `remote.model = "fork"` (clone is the default path).
 
-### 4. Cycle-batched shipping (item 4)
+### 4. Cycle-batched shipping (item 4) — batch checkout, squash-the-cycle commit
+
+**Cycle model (decided):** a session **checks out 3–5 tasks at once** (a batch
+claim — each task still gets its own weave lease) so the loop never stalls
+between single tasks, works them all to checkpoint, then produces **one squashed
+commit for the whole cycle** and ships a single PR.
 
 - The per-session **cycle counter** is ledger-derived: count `checkpoint`
   events since the last `session_start`.
-- `hf status` surfaces `cycles: n/flush`; when `n >= cycle_flush`,
+- `hf status` surfaces `cycles: n/flush`; when `n >= cycle_flush` (default 4),
   `next_command` becomes `hf ship`.
+- **`hf claim --batch N`** (up to `cycle_flush` tasks) reserves a lease per task
+  and opens the cycle.
 - **`hf ship`**
-  1. `git add -A && git commit` referencing every task id since the last ship
-     (squash vs per-task is configurable);
+  1. `git add -A && git commit` — **one commit** whose message lists every
+     `HFTASK-id` completed in the cycle;
   2. `git push origin <branch>`;
   3. `gh pr create --base <trunk>` → emit `pr_opened` with the PR number.
   - This is an **outward action**; it is gated by the permission system (§5).
     On a "not yet" permission verdict it records the PR intent and **waits
     (retryable)** — it must not hard-wall the loop.
+  - Merge squashes again, so per-task commits would be lost anyway — one commit
+    per cycle keeps trunk history clean and matches the cycle boundary.
 
-### 5. Review + merge automation with a *separate* agent (item 5)
+### 5. Review + merge automation with a *separate* agent (item 5) — phased
 
-- **`hf review request <pr#>`** → enqueue into weave's review queue (WL-020)
-  and open a **permission ask** (WL-021) addressed to a `reviewer` session.
-- A **separate review agent** (distinct session/role, not the implementer)
-  runs `/code-review` (or `/code-review ultra`) on the PR and records a verdict
-  through weave: `approve` or `deny(reason)`.
+The reviewer is **always a separate role** from the implementer. How that role
+is filled is **phased**, set by `merge.reviewer`:
+
+- **Phase 1 — `cloud_ultra` (now):** `hf review request <pr#>` kicks off
+  `/code-review ultra` (the multi-agent cloud review) on the PR branch; its
+  verdict drives merge. Chosen because it works as-is with no new build.
+- **Phase 2 — `swarm_local` (after ruvector/ruflo integration):** replace the
+  cloud reviewer with a **local agent-swarm reviewer** built on ruvector/ruflo's
+  swarm design (which already models exactly this approve/deny panel). No cloud
+  dependency, fully in-mesh.
+
+**Vision:** the permission gate is **transitional**. The end state is a
+*fully-automated loop with no human in the loop* — the agent swarm's verdict
+*is* the gate. Phase 1's human permission ask is the safety net while the swarm
+verdict is being trusted, designed to be lifted (`permission_gate = false`)
+once Phase 2 is proven.
+
+- **`hf review request <pr#>`** → enqueue into weave's review queue (WL-020),
+  open a **permission ask** (WL-021), and dispatch the reviewer per
+  `merge.reviewer`. The reviewer records `approve` / `deny(reason)` through weave.
 - **`hf merge <pr#>`** reads the review verdict + permission verdict:
   - `approved` AND permission granted AND `auto_merge = on_approve`
     → `gh pr merge --squash`; emit `pr_merged`; fast-forward develop;
   - `denied` → emit `pr_changes_requested`; re-open the task(s) for a fix cycle;
   - permission pending → **wait (retryable)**; never auto-merge without it.
-- Merge is the **one mandatory human/permission gate** — consistent with the
-  wall already encountered on `gh repo create` (HFTASK-0001 NEEDS-HUMAN).
+- Merge is the **one gate that blocks** — Phase 1 a human/permission verdict
+  (consistent with the `gh repo create` wall in HFTASK-0001 NEEDS-HUMAN),
+  Phase 2 the swarm verdict.
 
 ### 6. `.kb` + meta sync (item 1)
 
@@ -142,6 +177,28 @@ A `policy` module resolves clone-vs-fork, base (`develop`), and trunk
 - **Broadcasts:** on `session_start` / `pr_opened` / `pr_merged`, so sibling
   loops observe activity (the relay traffic already on the mesh).
 
+## Lessons baked in (from the prior weave loop failure)
+
+The earlier weave-driven loop **did not work reliably**, with evidence pointing
+to two root causes. This design is shaped to avoid both:
+
+1. **Multiple trees / branches / remotes drifted out of sync.** A loop spread
+   across ad-hoc worktrees, branches, and remotes lost a single source of
+   truth. → Mitigations: one authoritative base (`origin/<develop>` *after a
+   fetch*, never a local ref); `develop` kept `==` trunk; **all** worktrees are
+   tracked *sets* via `meta git worktree` (§2), never hand-rolled `git worktree`;
+   a `hf session start` **preflight** that verifies tree/branch/remote sync
+   before any work and refuses to start on drift (ties into the HFTASK-0005
+   drift gate).
+2. **It used the old `repowire` + `mcp-broker` hooks.** Those are deprecated and
+   were implicated in the breakage. → This design depends **only on the current
+   lease-capable `weave`** (the build that exposes `weave lease` and the
+   review/permission queues). `hf` must detect and refuse the legacy
+   repowire/mcp-broker path rather than silently coordinate through it.
+
+These are correctness requirements, not nice-to-haves: HFTASK-0007/0008 must
+land the sync preflight, and HFTASK-0010 must target current-weave queues only.
+
 ## Consequences
 
 **Positive**
@@ -161,10 +218,10 @@ A `policy` module resolves clone-vs-fork, base (`develop`), and trunk
 
 | Task | Pillar | Quick-note items |
 |------|--------|------------------|
-| **HFTASK-0007** | `hf session` worktree lifecycle + `policy.toml` | 2, 3, 7 |
+| **HFTASK-0007** | `hf session` via `meta git worktree` + `policy.toml` + sync **preflight** | 2, 3, 7 |
 | **HFTASK-0008** | branch/remote policy engine (develop↔master, clone/fork) | 6 |
-| **HFTASK-0009** | cycle-budget batching → `hf ship` (commit/push/PR) | 4 |
-| **HFTASK-0010** | PR review/merge automation w/ separate agent + permission gate | 5 |
+| **HFTASK-0009** | batch checkout (3–5 tasks) + cycle counter → `hf ship` (one squash commit/PR) | 4 |
+| **HFTASK-0010** | PR review/merge automation — phased cloud_ultra→swarm_local + permission gate | 5 |
 | **HFTASK-0011** | `hf sync` — `.meta.yaml` + `.gitignore` + `.kb` mirror | 1 |
 
 Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009; 0011 → 0007.

@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0010",
-  "title": "PR review/merge automation w/ separate agent + permission gate",
+  "title": "PR review/merge automation - phased cloud_ultra->swarm_local + permission gate",
   "status": "backlog",
   "priority": "P1",
-  "objective": "ADR-0001 §5: `hf review request <pr#>` enqueues weave review (WL-020) + permission ask (WL-021) to a separate reviewer session; reviewer runs /code-review and records approve/deny. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny re-opens task for a fix cycle; pending waits (retryable).",
+  "objective": "ADR-0001 §5: reviewer is always a separate role, filled by merge.reviewer. Phase 1 cloud_ultra: `hf review request <pr#>` runs /code-review ultra on the PR, records approve/deny via weave review (WL-020) + permission ask (WL-021). Phase 2 swarm_local: replace with ruvector/ruflo agent-swarm reviewer. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny re-opens task; pending waits (retryable). permission_gate is transitional (lift once swarm trusted). Target current-weave queues only.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "PR review/merge automation w/ separate agent + permission gate: implemented + cargo test green + checkpointed"
+    "PR review/merge automation - phased cloud_ultra->swarm_local + permission gate: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +24,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:3cf8c60b8e6e9740eee54f275bf7e1f006c7091accb1c7e393e2f006ae37c680",
+    "objective_hash": "blake3:123d3316972101cc27f86419effcaff004888e793918dd57187cb717e192b5a2",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:794f4e93fafe2dce5c493662e3ea28950f7cfb4e0e5bff1f459e353e34261f04"
+    "acceptance_hash": "blake3:d0cbeb7871e0b5d2d545c31415e692f04f07a489c0d8363057ba4059ad179ca7"
   }
 }

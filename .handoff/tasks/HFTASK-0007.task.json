@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0007",
-  "title": "hf session worktree lifecycle + policy.toml",
+  "title": "hf session via meta git worktree + policy.toml + sync preflight",
   "status": "backlog",
   "priority": "P0",
-  "objective": "ADR-0001 §2: add `hf session start|end [--recycle]` — fetch origin, `git worktree add` off origin/<base_branch>, reserve a weave path-scope lease, emit session_start/session_end events; remove worktree on end and optionally recycle a fresh one. Add `.handoff/policy.toml` config (remote/loop/merge).",
+  "objective": "ADR-0001 §2: add `hf session start|end [--recycle]` using `meta git worktree create|remove|prune` (NOT raw git worktree) off origin/<base_branch>, reserve a weave path-scope lease, emit session_start/session_end; recycle a fresh set on end. Add `.handoff/policy.toml` (remote/loop/merge). MUST include a start-time preflight that verifies tree/branch/remote are in sync and refuses on drift (lesson from the prior weave loop failure). Depend only on the current lease-capable weave; refuse legacy repowire/mcp-broker.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "hf session worktree lifecycle + policy.toml: implemented + cargo test green + checkpointed"
+    "hf session via meta git worktree + policy.toml + sync preflight: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +24,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:2b85e087ab4673caa178b53f279e5067136e38d2bf46799b44d5adecb1318fb4",
+    "objective_hash": "blake3:e8dd3c0d45a8ea248bddc9c826af6fdfcf9ce26909bddac0465db9183cb2e388",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:2d5cad136f9b3c07574f08ac0bb4d33137b3a3b58ec18e6fd54476a54bbbd515"
+    "acceptance_hash": "blake3:a7249be4c1ddb677c6c11b394bc1df3d767a926b0da9a4ba2147a602ece3699c"
   }
 }

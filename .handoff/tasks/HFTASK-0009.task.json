@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0009",
-  "title": "Cycle-budget batching -> hf ship (commit/push/PR)",
+  "title": "Batch checkout (3-5) + cycle counter -> hf ship (one squash commit/PR)",
   "status": "backlog",
   "priority": "P1",
-  "objective": "ADR-0001 §4: ledger-derived per-session cycle counter (checkpoints since session_start); surface cycles:n/flush in status; at threshold next_command=hf ship. `hf ship` = add+commit (ref task ids) -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.",
+  "objective": "ADR-0001 §4: `hf claim --batch N` (up to cycle_flush=4) reserves a lease per task so the loop never stalls; ledger-derived cycle counter (checkpoints since session_start) surfaced as cycles:n/flush; at threshold next_command=hf ship. `hf ship` = add + ONE squash commit listing all HFTASK ids -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "Cycle-budget batching -> hf ship (commit/push/PR): implemented + cargo test green + checkpointed"
+    "Batch checkout (3-5) + cycle counter -> hf ship (one squash commit/PR): implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -25,8 +25,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:af043d62436ca4cc0dd9ec1b089d37a7ba351948ef94f7c940def3d284caa79e",
+    "objective_hash": "blake3:4996c42c4e4e2cacf7dc61e8f528a809c7c19e65c138482a6b8fec0d7029b742",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:39c51f0337d24cff5601e6c0d0ad9d1b17400fbeb78eb743374d23d069874227"
+    "acceptance_hash": "blake3:ec71d83d0687403479b836d1fa195f9eedefd971c55ec01a3f80eb158c31f43d"
   }
 }
