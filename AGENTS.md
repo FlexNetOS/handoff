@@ -10,7 +10,7 @@ hf resume
 
 ## Mission
 
-Maintain this repository through the Ark Handoff Ledger protocol. The repo is the source of truth. Chat history is not authoritative.
+Maintain this repository through the Continuity Ledger Kernel (`.handoff`) protocol. The repo is the source of truth. Chat history is not authoritative.
 
 ## Hard rules
 
@@ -25,15 +25,16 @@ Maintain this repository through the Ark Handoff Ledger protocol. The repo is th
 ## Required before stopping
 
 ```bash
-hf checkpoint
-hf drift
+hf checkpoint <ID> [note]
 hf handoff
 ```
+
+(`hf drift` is a planned gate — HFTASK-0005 — not yet implemented.)
 
 ## Navigation order
 
 1. `.handoff/active.md`
 2. `.handoff/context/capsule.json`
-3. `docs/AGENT_NAVIGATION.md`
-4. `.handoff/packets/latest.md`
-5. `.handoff/tasks/active/`
+3. `.handoff/packets/latest.md`
+4. `.handoff/tasks/` (task cards) · `.handoff/decisions/` (ADRs)
+5. `docs/Continuity_Ledger_Kernel_PRD.md`

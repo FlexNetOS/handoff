@@ -552,9 +552,15 @@ land the sync preflight, and HFTASK-0010 must target current-weave queues only.
 >   field; `PermissionStatus = Pending|Approved|Denied|Timeout` confirmed.
 > - **R8** ✅ live `gh api` — weave's 6 required checks verbatim; `meta_cli`
 >   unprotected; weave & meta_cli `environments.total_count = 0`.
-> - **R5** ⚠️ NOT yet hand-verified beyond the agent walk — RuVector is
->   production-grade but complex (walked crate-by-crate for that reason), so the
->   rvAgent swarm primitives MUST be directly verified before the Phase-2 build.
+> - **R5** ✅ hand-verified against source (RuVector is production-grade but
+>   complex, walked crate-by-crate): `spawn_sync` IS a stub
+>   (`rvagent-subagents/src/orchestrator.rs:58-60`), `spawn_parallel` is
+>   sequential (no JoinSet, lines 103-110), the A2A process-spawn path works
+>   (`examples/a2a-swarm`, ADR-159 acceptance test), the verdict TYPES exist
+>   (`ApprovalDecision` hitl.rs, `GateResult` agent_contracts.rs, `GateDecision`
+>   replay.rs), and a grep for quorum/consensus/aggregate/vote/tally confirms **no
+>   N-verdicts→one-verdict reducer exists** — it is genuinely greenfield. The §5
+>   Phase-2 statement is accurate.
 
 ### R1 — Prior-session design lineage (codebase)
 
