@@ -260,6 +260,28 @@ truth and you push to it; in the fork model `origin` is your private copy and
 - after a merge, **fast-forward `develop` to the trunk** so it stays `== trunk`;
 - `model = "fork"` switches pushes to the fork `origin` and PRs to `upstream`.
 
+#### 3.5 Branch vs remote vs worktree — three distinct things (no confusion)
+
+These three are **orthogonal** and were exactly what got conflated in the prior
+weave drift ("work scattered everywhere"). A session is *a worktree (directory),
+on a branch (history pointer), based on a remote (the source of truth)* — three
+independent axes, not one.
+
+| Concept | What it physically is | Cardinality | In this design |
+|---|---|---|---|
+| **remote** | A named URL to another copy of the repo (`origin`, `upstream`). Its branches appear locally read-only as `origin/<branch>`, refreshed by `git fetch`. | 1 (clone) or 2 (fork) per repo | The source of truth you fetch the base from and push/PR to (§3.3). |
+| **branch** | A movable named pointer to a commit — a line of history. A *local* branch you commit to; a *remote-tracking* branch (`origin/master`) mirrors the remote. | Many per repo; **one checked out per worktree** | Trunk (`master`) + base (`develop`) + per-session feature branch (§3.2). |
+| **worktree** | A checked-out working **directory** linked to one clone's `.git`. Each worktree has exactly **one** branch checked out; multiple worktrees let several branches be checked out at once from a single clone. | Many per clone, each on a different branch | The per-session isolated directory (§2), a tracked `meta git worktree` set. |
+
+How they compose, concretely, at `hf session start`:
+`git fetch` **remote** `origin` → create a **worktree** (new directory) whose
+**branch** is a fresh feature branch started from `origin/develop`. Merging moves
+the *trunk branch* pointer (via PR), then the worktree is removed — the **remote**
+and **branch** persist; only the **worktree directory** is disposable. Confusing
+any two of these is what produces "scattered work": e.g. branching off a *local*
+branch instead of the *remote* base, or reusing one *worktree* across multiple
+*branches* without syncing — both of which §2a's preflight refuses.
+
 ### 4. Cycle-batched shipping (item 4) — batch checkout, squash-the-cycle commit
 
 **Cycle model (decided):** a session **checks out 3–5 tasks at once** (a batch
@@ -518,6 +540,21 @@ land the sync preflight, and HFTASK-0010 must target current-weave queues only.
 
 > Per process rule: every ADR must be backed by deep web + codebase research,
 > cross-referenced. This section records the evidence behind the decisions above.
+>
+> **Verification status (process rule: manually verify agent findings before
+> major decisions).** The load-bearing claims were re-checked by hand, not
+> trusted from the research agents alone:
+> - **R2** ✅ direct scan — `.handoff` exists only in `handoff/`; `.hf` in no repo.
+> - **R3** ✅ grepped `meta_git_lib/src` — `git_worktree_add/remove`,
+>   `git_ahead_behind`, `resolve_branch`, `resolve_from_pr`,
+>   `ensure_worktrees_in_gitignore`, `fire_post_create` all present.
+> - **R6** ✅ read `weave-core/src/model.rs` — `ReviewItem` has **no** verdict
+>   field; `PermissionStatus = Pending|Approved|Denied|Timeout` confirmed.
+> - **R8** ✅ live `gh api` — weave's 6 required checks verbatim; `meta_cli`
+>   unprotected; weave & meta_cli `environments.total_count = 0`.
+> - **R5** ⚠️ NOT yet hand-verified beyond the agent walk — RuVector is
+>   production-grade but complex (walked crate-by-crate for that reason), so the
+>   rvAgent swarm primitives MUST be directly verified before the Phase-2 build.
 
 ### R1 — Prior-session design lineage (codebase)
 
