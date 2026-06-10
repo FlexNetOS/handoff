@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0004",
+  "title": "ruvector-verified AgentContract proof at hf handoff",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "On hf handoff, prove the intent_lock/acceptance via ruvector-verified (Lean) AgentContract; block handoff on unproven completion.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ruvector-verified AgentContract proof at hf handoff: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0001"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:1f11672ba331840b68c974886b4a5d1b34f8a971facaee2fb56c3a883b8bee0c",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:5a34c5b7f0050a7a1d2d77f41f62b605a40112894d23152d2bcc0bee7099b161"
+  }
+}

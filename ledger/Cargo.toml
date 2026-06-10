@@ -1,0 +1,15 @@
+[package]
+name = "ledger"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "rusqlite event ledger + rvf-crypto witness chain (S1 spike)"
+
+[dependencies]
+work-order = { path = "../work-order" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+# adopt the production witness chain (standalone crate, no rvf-runtime/napi needed)
+rvf-crypto = { path = "../../RuVector/crates/rvf/rvf-crypto", features = ["std"] }
+sha3 = "0.10"

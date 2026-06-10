@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0006",
+  "title": "RVF vector-native ledger v2",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Schedule + implement the RVF (rvf-runtime) vector-native event ledger for semantic recall over session history; keep rusqlite+witness as v1 fallback.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "RVF vector-native ledger v2: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0002",
+    "HFTASK-0003"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:c2cc82f581a01f8e22a2a63ee6a9d7320ed9d3182b159039e81c95cb7b10fb2f",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:10292d7bccfe78428bab22f04088c3c4a9d4c2bbdf6da39397b4691a1edfe398"
+  }
+}

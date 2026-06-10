@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0003",
+  "title": "Real prompt_hub SwarmBundle -> handoff.task.v1 dispatch",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "Depend on prompt_hub's real SwarmBundle (not the spike mirror); implement the front-door dispatch SwarmBundle->WorkOrder over the MCP seam.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Real prompt_hub SwarmBundle -> handoff.task.v1 dispatch: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0001"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:8a1a00926b8b62b283213a0ae97ca0cac658a4cd8491e87b36db0d2d214f4f8f",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:f81e824655f3c5663d3a9213bd7f22d057b8f6db6fba48afde96e9150c41d50f"
+  }
+}

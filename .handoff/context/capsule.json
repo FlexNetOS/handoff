@@ -1,0 +1,6 @@
+{
+  "next_command": "hf resume",
+  "northstar": "Adopt RuVector as the foundation; wire the .handoff contract onto existing crates.",
+  "project_name": "handoff (Continuity Ledger Kernel)",
+  "schema": "handoff.context_capsule.v1"
+}

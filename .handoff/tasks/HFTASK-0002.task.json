@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0002",
+  "title": "Wire weave leases into hf claim",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "Replace the ledger-only claim with a weave lease (reserve/heartbeat/release) so claims are mesh-coordinated; hf claim -> weave_lease_reserve.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Wire weave leases into hf claim: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0001"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:fa62b821be28c802afbccc7b56ffb22f70f4c3897c0f9197450af767ff1844ae",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:2dbc2f71928c9ff26170ad0f8dfbf8a5b489ed13610a776e23487a6c9d0df559"
+  }
+}

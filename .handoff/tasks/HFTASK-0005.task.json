@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0005",
+  "title": "hf drift audit gate",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Implement hf drift: recompute intent_lock, detect out-of-scope edits (git), hard-fail handoff on drift.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf drift audit gate: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0004"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:781a8cd9cca5d1d0423ccee38da0448ad7fbaeb37fd43922048f6f0c81a2d45f",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:44eac711e955a6008e9d6fa53d1a69a9d4f04489c2e555562eb6ad939cb8ab97"
+  }
+}
