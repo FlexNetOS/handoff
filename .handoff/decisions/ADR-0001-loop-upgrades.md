@@ -103,15 +103,67 @@ tracked meta set under `.worktrees/` at the meta root.
 
 ### 3. Branch & remote policy (item 6)
 
-A `policy` module resolves clone-vs-fork, base (`develop`), and trunk
-(`master`). Enforced invariants:
+A `policy` module makes the branch/remote model explicit and enforceable. Defined
+against the **observed org reality** (Research §R8): the org is *not* uniform —
+`weave` is the only repo with `master`+`develop` and live branch protection;
+every other repo is trunk-on-`main` with no protection; all repos use a single
+`origin` remote (clones, no forks).
 
-- never branch off a local ref — always `origin/<base>` after a fetch;
-- never push to trunk directly; PRs target trunk;
-- after merge, fast-forward `develop` to trunk (`git push origin master:develop`)
-  so `develop` is always == trunk (never ahead).
-- **fork model:** `origin` = the fork; PRs are cross-repo into upstream.
-  Deferred behind `remote.model = "fork"` (clone is the default path).
+#### 3.1 Default branch & trunk
+
+The **default branch** is the ref GitHub checks out on clone and uses as the base
+for new PRs. For `handoff` (a loop kernel, the repo type that most needs the
+gate), the trunk is **`master`** — matching the proven `weave` protected-trunk
+model this whole design borrows from. Both names are config, not hard-coded:
+`policy.toml [remote] trunk_branch` / `base_branch`. (The org *majority* default
+is `main`; if `handoff` is later aligned to `main`, set `trunk_branch = "main"`
+— nothing else changes.)
+
+#### 3.2 `main` vs `master` vs `develop` — what each is for
+
+- **`master` (or `main`) = the trunk.** The single protected, releasable line of
+  history and the **PR target**. Never pushed to directly; only branch-protected,
+  CI-gated PR merges land here. "`main`" and "`master`" are just two names for
+  this same role — GitHub's newer default is `main`; `weave` (and thus
+  `handoff`) keep `master`. The repo has exactly **one** trunk; it is not both.
+- **`develop` = the always-current integration base.** A long-lived branch kept
+  **fast-forwarded to the trunk** (`develop == master`, never ahead). Its sole
+  job: be the ref that session worktrees branch from (§2), so a stale *local*
+  checkout can never seed a session with old code. It is **not** a second trunk
+  and accumulates no independent history — every merge to `master` is immediately
+  mirrored to `develop` (`git push origin master:develop`).
+- Why both: the trunk is what you *protect and release*; `develop` is what you
+  *branch from*. Keeping them identical but separate means "latest base to start
+  work" and "protected target to merge into" are distinct refs you can fetch and
+  reason about independently, without ever branching off an unfetched local ref.
+
+#### 3.3 Remotes — what they are and how they differ
+
+A **remote** is a named URL pointing at a GitHub repository; branches under it
+(`origin/master`, `upstream/master`) are read-only local mirrors refreshed by
+`git fetch`. Two models:
+
+- **clone model (default, what the org uses):** a single remote **`origin`** =
+  `git@github.com:FlexNetOS/<repo>.git` (SSH). You have write access; you push
+  feature branches to `origin` and open PRs **within** the same repo into its
+  trunk. `policy.toml [remote] model = "clone"`.
+- **fork model (deferred, `model = "fork"`):** **two** remotes — **`origin`** =
+  *your fork* (`git@github.com:<you>/<repo>.git`, where you push), and
+  **`upstream`** = the canonical repo (read-only to you). PRs are **cross-repo**
+  from `origin/<branch>` into `upstream/<trunk>`. Used when you lack write access
+  to the canonical repo. Adds cross-repo PR edge cases, hence deferred.
+
+The difference that matters: in the clone model `origin` *is* the source of
+truth and you push to it; in the fork model `origin` is your private copy and
+`upstream` is the truth you can only reach via PR.
+
+#### 3.4 Enforced invariants
+
+- always fetch, then branch off `origin/<base_branch>` — **never** a local ref;
+- never push to the trunk directly; PRs target the trunk and must pass its
+  required checks (§9);
+- after a merge, **fast-forward `develop` to the trunk** so it stays `== trunk`;
+- `model = "fork"` switches pushes to the fork `origin` and PRs to `upstream`.
 
 ### 4. Cycle-batched shipping (item 4) — batch checkout, squash-the-cycle commit
 
@@ -224,6 +276,85 @@ exact worker/reviewer/merge split and hardened it. We adopt its model:
 - **Review/permission:** `weave review` + `weave permission` drive §5.
 - **Broadcasts:** on `session_start` / `pr_opened` / `pr_merged`, so sibling
   loops observe activity (the relay traffic already on the mesh).
+
+### 9. CI/CD — GitHub Actions, automations, rules, env vars & secrets
+
+The merge gate (§5) is only as real as the branch protection behind it. This
+section defines the CI/CD surface `handoff` adopts, grounded in the org's actual
+setup (Research §R8). **Today `handoff` has none of this** (not yet pushed, no
+`.github/`) — this is the target state.
+
+#### 9.1 Actions (the workflows)
+
+`handoff` ships the canonical FlexNetOS Rust-crate workflow set under
+`.github/workflows/`:
+
+- **`ci.yml`** — `on: { push: [trunk], pull_request: [trunk], repository_dispatch:
+  [dependency-updated] }`. Jobs that become the **required checks**: `test`
+  (matrix), `clippy` (`-D warnings`), `format` (`cargo fmt --check`), `build`.
+  `env: CARGO_TERM_COLOR: always`, `RUSTFLAGS: "-D warnings"`.
+- **`auto-format.yml`** — runs `cargo fmt --all`, commits any fix back as
+  `github-actions[bot]`, with a loop-guard (`github.actor != 'github-actions[bot]'`).
+  `permissions: contents: write`.
+- **`notify-parent.yml` / `notify-downstream.yml`** — cross-repo signaling (§9.2).
+
+#### 9.2 Automations (cross-repo signaling mesh)
+
+The org coordinates repos with a bidirectional `repository_dispatch` mesh
+(`peter-evans/repository-dispatch`, SHA-pinned), each gated by
+`lewagon/wait-on-check-action` so a repo **only signals after its own CI is
+green**. Event vocabulary: `child-repo-updated` (child→parent, opens an
+auto-merge squash sync PR), `dependency-updated` (parent→downstream, re-runs
+dependents' CI), `release-tagged` (release fan-out). `handoff` joins as a leaf:
+emit `child-repo-updated` to `FlexNetOS/meta` after CI green. **Caveat from R8:**
+the receiving auto-merge only means anything if the receiver has branch
+protection — so adopt the mesh *and* §9.3 together, never the mesh alone.
+
+#### 9.3 Rules (branch protection / required checks)
+
+`handoff`'s trunk gets **real** branch protection (today only `weave` has any):
+
+- **Required status checks:** `test`, `clippy`, `format`, `build` — all must be
+  green to merge.
+- **Strict / up-to-date:** `strict = true` (branch must be current with trunk
+  before merge — pairs with the §3 `develop==trunk` ff rule).
+- **`enforce_admins`:** a *deliberate* choice — `weave` leaves admins able to
+  bypass for emergencies; `handoff` does the same, documented, not accidental.
+- **Required reviews:** the §5 reviewer is the review gate; whether to *also* set
+  GitHub's native required-reviews is intentionally **off** to avoid the bot-
+  APPROVE bypass (§5a / R4 #25439) — the verdict stays out-of-band.
+
+#### 9.4 Environment variables & token permissions
+
+- **Workflow `env:`** stays minimal: `CARGO_TERM_COLOR`, `RUSTFLAGS: -D warnings`.
+- **`GITHUB_TOKEN` least-privilege:** top-level `permissions: contents: read` by
+  default; escalate **per-job** only where needed (`contents: write` for
+  auto-format, `pull-requests: write` for sync-PR jobs, `permissions: {}` for
+  pure-dispatch jobs). No `write-all`. This mirrors the §5a/gh-aw separation:
+  the agent/worker stages never get a write token.
+- **Actions `vars`** (non-secret config): none today; if needed, prefer repo/org
+  `vars` over hard-coding.
+
+#### 9.5 Secrets
+
+- **Scope:** the org keeps cross-cutting credentials as **org-level Actions
+  secrets** (every repo shows 0 repo-level secrets). `handoff` inherits the org
+  secrets it needs rather than duplicating them.
+- **Secrets in play (R8):** `PARENT_REPO_PAT` (cross-repo dispatch + bot push),
+  `CARGO_REGISTRY_TOKEN` / `NPM_TOKEN` (publish), `REPO_WRITE_PACKAGES_PAT`,
+  `HOMEBREW_TAP_TOKEN`, `DISCORD_RELEASES_WEBHOOK_URL`, and the built-in
+  `GITHUB_TOKEN`.
+- **Hardening this design adds (the biggest gaps R8 found):**
+  1. **GitHub Environments** — the org currently has **zero**. `handoff` defines
+     a `merge-gate` (and later `release`) **Environment** with required
+     reviewers + environment-scoped secrets. This is the infra that makes the §5
+     "permission-gated merge" real and makes the human→swarm transition a change
+     of *who approves the Environment*, not a code change (R4).
+  2. **Split the overloaded `PARENT_REPO_PAT`** into purpose-scoped fine-grained
+     PATs (dispatch vs publish) to shrink leak blast radius; prefer **GitHub App
+     / OIDC** tokens over long-lived PATs. (`flexnetos_github_app`, currently
+     empty, is the natural home for an App-token issuer — R3.)
+  3. **SHA-pin all third-party actions** (the release path already does).
 
 ## Lessons baked in (from the prior weave loop failure)
 
@@ -415,6 +546,40 @@ out-of-band. Verification (weave-mcp-daemon-tools):
   before checkout on shared slugs; never `--force` on shared docs. MCP `kb_*`
   tools are an optional nicety — the `git kb` CLI is the portable contract.
 
+### R8 — CI/CD reality across FlexNetOS repos (codebase + `gh api`)
+
+Evidence behind §3 and §9 (verified live; `gh` had `repo,workflow,read:org`,
+so repo-level protection/secrets/envs were readable, org-level secrets were not):
+
+- **Default branch / develop:** `weave` = `master` **with** a `develop` branch
+  and live branch protection; **every other repo** (`meta`, `meta_cli`,
+  `meta_git_lib/cli`, `ECC`, `RuVector`, `ruflo`) = `main`, **no `develop`**, **no
+  protection**. `handoff` is `master` locally and **not yet on GitHub** (404, no
+  `.github/`). So the develop↔master model is a *weave contract*, not org-wide.
+- **Remotes:** every repo uses a single `origin` = `git@github.com:FlexNetOS/<repo>.git`
+  (SSH). **No fork model in use** — all clones.
+- **Protection (live `gh api`):** only `weave` is protected — required contexts
+  `rustfmt, clippy, test, build (libsql backend), sign, libsql + sign`,
+  `strict: true`, `enforce_admins: false`, **no required reviews**, no forced
+  linear history. Its `CLAUDE.md` documents 4 checks but **6** are enforced. The
+  `main` repos' `on-child-update.yml` runs `gh pr merge --auto --squash` into a
+  repo with **no protection** → the auto-merge mesh is currently *advisory*.
+- **Workflows:** canonical set per crate = `ci.yml` (test matrix / clippy /
+  fmt), `auto-format.yml` (fmt + bot commit-back, loop-guarded), `notify-*.yml`.
+  Parent `meta` adds `release.yml` (release-please → 5-target build → 9-crate
+  crates.io publish → Homebrew → Discord).
+- **Automations:** `repository_dispatch` mesh via `peter-evans/repository-dispatch`
+  (SHA-pinned), gated by `lewagon/wait-on-check-action`; events
+  `child-repo-updated` / `dependency-updated` / `release-tagged`.
+- **Env/permissions:** `CARGO_TERM_COLOR`, `RUSTFLAGS: -D warnings`; disciplined
+  least-privilege `permissions:` (`{}`, `contents: read`, scoped `write`). No
+  repo/org `vars` at repo level.
+- **Secrets:** all **org-level** (0 repo-level, **0 Environments anywhere**).
+  In play: `PARENT_REPO_PAT` (15 refs), `CARGO_REGISTRY_TOKEN`, `GITHUB_TOKEN`,
+  `NPM_TOKEN`, `REPO_WRITE_PACKAGES_PAT`, `HOMEBREW_TAP_TOKEN`, Discord webhook.
+  **Biggest gap:** no GitHub Environments → the merge/publish gate the design
+  needs does not exist as infra yet.
+
 ## Task breakdown
 
 | Task | Pillar | Quick-note items |
@@ -424,5 +589,7 @@ out-of-band. Verification (weave-mcp-daemon-tools):
 | **HFTASK-0009** | batch checkout (3–5 tasks) + cycle counter → `hf ship` (one squash commit/PR) | 4 |
 | **HFTASK-0010** | PR review/merge automation — phased cloud_ultra→swarm_local + permission gate | 5 |
 | **HFTASK-0011** | `hf sync` — `.meta.yaml` + `.gitignore` + `.kb` mirror | 1 |
+| **HFTASK-0012** | CI/CD bring-up — workflows + branch protection + merge-gate Environment | 5, 6 |
 
-Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009; 0011 → 0007.
+Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009/0012; 0011 → 0007;
+0012 → 0001 (repo must be pushed first).
