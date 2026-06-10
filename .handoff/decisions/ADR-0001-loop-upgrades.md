@@ -61,7 +61,7 @@ stateDiagram-v2
     Approved --> AwaitPermission: check permission gate
     AwaitPermission --> AwaitPermission: pending — wait (retryable)\n(emit permission_verdict:pending)
     AwaitPermission --> ChangesRequested: denied / timeout\n(emit permission_verdict:denied)
-    AwaitPermission --> Merged: approved + granted\nhf merge --squash, ff develop (emit pr_merged)
+    AwaitPermission --> Merged: all required checks green\nGitHub-native auto-merge --squash, ff develop (emit pr_merged)
     Merged --> Synced: hf sync\n(emit meta_registered, kb_synced)
     Synced --> SessionEnd: hf session end
     SessionEnd --> Preflight: --recycle (emit session_end)
@@ -94,7 +94,7 @@ require_review  = true            # a review verdict is required before merge
 reviewer        = "cloud_ultra"   # Phase 1: "cloud_ultra" (/code-review ultra)
                                   # Phase 2: "swarm_local" (ruvector/ruflo swarm)
 auto_merge      = "on_approve"    # "on_approve" | "never" | "manual"
-permission_gate = true            # TRANSITIONAL human gate; lifted once swarm is trusted
+permission_gate = true            # TRANSITIONAL human gate; lifted once §5b AI gatekeeper + broker trusted
 
 [preflight]
 require_clean_tree     = true     # refuse session start on uncommitted changes
@@ -122,7 +122,7 @@ meta_register = true              # idempotently ensure repo in ../.meta.yaml + 
 | `merge.require_review` | bool | `true` | a review verdict is required before merge |
 | `merge.reviewer` | enum | `cloud_ultra` | `cloud_ultra` (Phase 1) or `swarm_local` (Phase 2) — §5 |
 | `merge.auto_merge` | enum | `on_approve` | `on_approve` \| `never` \| `manual` |
-| `merge.permission_gate` | bool | `true` | transitional human/permission gate (§5a); lift for full swarm |
+| `merge.permission_gate` | bool | `true` | transitional human/permission gate (§5a); lift once §5b AI gatekeeper + broker trusted |
 | `preflight.require_clean_tree` | bool | `true` | refuse `session start` on a dirty tree |
 | `preflight.require_synced_base` | bool | `true` | refuse if base/trunk/origin out of sync — §2a |
 | `preflight.refuse_legacy_weave` | bool | `true` | require the lease-capable weave; refuse repowire/mcp-broker |
@@ -319,14 +319,16 @@ is filled is **phased**, set by `merge.reviewer`:
   verdict drives merge. Chosen because it works as-is with no new build.
 - **Phase 2 — `swarm_local` (after ruvector/ruflo integration):** replace the
   cloud reviewer with a **local agent-swarm reviewer** built on ruvector/ruflo's
-  swarm design (which already models exactly this approve/deny panel). No cloud
-  dependency, fully in-mesh.
+  rvAgent A2A transport. Note (Research §R5): the per-reviewer verdict *types*
+  exist but the **N-reviewers→one-verdict reducer must be built** (~50–100 LOC) —
+  this is not a drop-in. Phase 2 is the §5b **AI gatekeeper** (this swarm reviewer
+  *upgraded with mandatory full-codebase grounding*).
 
 **Vision:** the permission gate is **transitional**. The end state is a
-*fully-automated loop with no human in the loop* — the agent swarm's verdict
-*is* the gate. Phase 1's human permission ask is the safety net while the swarm
-verdict is being trusted, designed to be lifted (`permission_gate = false`)
-once Phase 2 is proven.
+*fully-automated loop with no human in the loop* — the **§5b AI gatekeeper's
+verdict** (as a required status check) *is* the gate. Phase 1's human permission
+ask is the safety net while that verdict is being trusted, designed to be lifted
+(`permission_gate = false`) once §5b + the envctl broker (R10) are proven.
 
 - **`hf review request <pr#>`** → enqueue into weave's review queue (WL-020, the
   human-facing PR list), open a **permission ask** (WL-021), and dispatch the
@@ -334,19 +336,22 @@ once Phase 2 is proven.
   is carried in the **permission answer body** and recorded as a `review_verdict`
   event in **hf's own ledger** (authoritative) — **not** in `weave review`, which
   has no verdict field (Research §R6). hf enforces the gate; weave only records.
-- **`hf merge <pr#>`** reads the review verdict + permission verdict, branching on
-  `merge.auto_merge`:
-  - `auto_merge = on_approve` (default): `approved` AND permission granted
-    → `gh pr merge --squash`; emit `pr_merged`; fast-forward develop;
-  - `auto_merge = manual`: same checks, but stop at "ready to merge" and require an
-    explicit `hf merge --confirm` (the loop prepares, a human/gatekeeper triggers);
-  - `auto_merge = never`: `hf` never merges — it only opens/maintains the PR
-    (external CI/admin merges);
-  - `denied`/timeout → emit `pr_changes_requested`; re-open the task(s) for a fix
-    cycle; permission pending → **wait (retryable)**; never auto-merge without it.
+- **Merge mechanism = GitHub-native auto-merge (Research §R11, rusty-idd-proven).**
+  `hf ship` enables `gh pr merge --auto --squash` on the PR; **GitHub** performs the
+  merge when *all required status checks* are green, async, even after the agent
+  process exits. `hf` does **not** poll-and-merge or override a red check. The
+  review/permission verdict (above) is surfaced to GitHub as a **required status
+  check** (a CI check-run), so it composes with branch protection rather than the
+  agent calling merge out-of-band. `merge.auto_merge` selects the policy:
+  - `on_approve` (default): enable auto-merge as soon as the verdict check is set;
+  - `manual`: prepare the PR but require an explicit `hf merge --confirm` to enable
+    auto-merge (the loop readies it; a human/gatekeeper triggers);
+  - `never`: `hf` only opens/maintains the PR; an external admin merges.
+  On `denied`/timeout → emit `pr_changes_requested`, re-open the task(s) for a fix
+  cycle; on a red required check → leave the PR open (a wall), never force-merge.
 - Merge is the **one gate that blocks** — Phase 1 a human/permission verdict
   (consistent with the `gh repo create` wall in HFTASK-0001 NEEDS-HUMAN),
-  Phase 2 the swarm verdict.
+  Phase 2 the **§5b AI-gatekeeper** verdict (as a required check).
 
 #### 5a. Guardrails adopted from gh-aw (Research §R4)
 
