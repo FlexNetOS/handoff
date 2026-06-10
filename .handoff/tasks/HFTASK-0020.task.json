@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0020",
+  "title": "Mission Control - loop observability (hf status --json / hf watch + render)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001 §12/R14: NO existing UI surfaces the handoff loop's live state ('mission control' currently = envctl's zellij layout generator - naming collision). The witnessed ledger event stream (§7) IS the read-model. Build `hf status --json` + `hf watch` (tail ledger + weave broadcasts; optional SSE) as the machine feed; surface the existing control verbs (resume, review request, weave permission answer, hf merge --confirm, abort). Render layer greenfield: reuse envctl-gui egui pattern or a TUI (prompt_hub has ratatui) first cut. Disambiguate workspace-mission-control vs loop-mission-control.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Mission Control - loop observability (hf status --json / hf watch + render): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0007"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:bec78356ba08299024a2bd4cbf10bd195e9cb077e44aac85fedfddabf4866ff6",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:33be4b3a0a40d12ec6e4c44d17ca5e3748f6066487f33822601cc43ca76bc5a4"
+  }
+}

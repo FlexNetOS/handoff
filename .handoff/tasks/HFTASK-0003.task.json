@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0003",
-  "title": "Real prompt_hub SwarmBundle -> handoff.task.v1 dispatch",
+  "title": "Front door: prompt_hub SwarmBundle -> verifiable handoff.task.v1 intake",
   "status": "backlog",
   "priority": "P0",
-  "objective": "Depend on prompt_hub's real SwarmBundle (not the spike mirror); implement the front-door dispatch SwarmBundle->WorkOrder over the MCP seam.",
+  "objective": "ADR-0001 §11/R14 (verified): promote the spike - work_orders_from_bundle is test-only + uses a MIRRORED SwarmBundle; depend on prompt_hub's REAL SwarmBundle (models.rs:528) and wire it into a real `hf intake`/`hf dispatch` verb. TRANSPORT: there is NO MCP server on either side (prompt_hub or hf), so do NOT assume 'the MCP seam' - either call prompt_hub HTTP /vibe+/generate_bundle, depend on the prompt-hub crate, or build the seam (HFTASK-0019). CRUX: SwarmBundle role_prompts are prompt STRINGS (and empty-in-prod), not work specs - the intake must SYNTHESIZE a vibe Intent into REAL path_scope/acceptance_criteria/test_commands or every dispatched WorkOrder is unverifiable by the §5 review gate + §5b gatekeeper.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "Real prompt_hub SwarmBundle -> handoff.task.v1 dispatch: implemented + cargo test green + checkpointed"
+    "Front door: prompt_hub SwarmBundle -> verifiable handoff.task.v1 intake: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +24,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:8a1a00926b8b62b283213a0ae97ca0cac658a4cd8491e87b36db0d2d214f4f8f",
+    "objective_hash": "blake3:77ae6c1a4b8f2815f2bbbedbe7e230b2170df10aea44a5da820903cad915b0ee",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:f81e824655f3c5663d3a9213bd7f22d057b8f6db6fba48afde96e9150c41d50f"
+    "acceptance_hash": "blake3:8eb5c76850d752c141735b71e8ac1e6444d03d946df152f9363182fa1b485257"
   }
 }

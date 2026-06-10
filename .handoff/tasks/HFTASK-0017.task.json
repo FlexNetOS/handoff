@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0017",
+  "title": "cognitum-gate as the witnessed hf policy decision engine",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0001 R13: HFTASK-0015 uses a flat rules.toml denylist; the runbook (S1 §2) mapped the policy gate to RuVector's cognitum-gate-tilezero (decision.rs GateDecision{Permit,Defer,Deny} + WitnessReceipt). Adopt cognitum-gate as the in-loop ACTION governor (what an agent may DO) behind `hf policy`, emitting witnessed permit/deny/defer. Distinct from the envctl broker (R10 = secret/credential+merge egress gate); they compose (action gate + credential gate). Verified crate exists at ~/Desktop/meta/RuVector/crates/cognitum-gate-tilezero.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "cognitum-gate as the witnessed hf policy decision engine: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0015"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:8f21434f3eb4976a7afb1fc9079f072505f793ae646e3da0c7d21f2366495734",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:b8f7a50301c9ca28fbb4edeee7c774ea9a41b165c1eeed85d9bd9a08f98161ee"
+  }
+}

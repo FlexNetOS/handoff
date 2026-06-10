@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0018",
+  "title": "ruvector-domain-expansion next-task routing (highest-value safe task)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0001 R13: the loop currently picks the next task by dependency order only (next_safe). Adopt RuVector's ruvector-domain-expansion (contextual routing / Thompson-style selection, S1:37) so hf claim --batch selects the highest-value safe tasks per context, not just topological order - core to an autonomous loop. Verified crate exists; capability claim (bandit/Thompson) from the runbook walk, re-verify symbols before building.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ruvector-domain-expansion next-task routing (highest-value safe task): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0009"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:cb4ba267173acd057b398507bd1af6edcb71bb4f43adae83574d30b40a3c85f0",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:8c4f2cf99fb9488df77a8298a862bf4cb6995d5d39c0ef3d2845f29e7c5743c4"
+  }
+}

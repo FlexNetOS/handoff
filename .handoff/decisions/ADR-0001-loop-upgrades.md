@@ -607,6 +607,68 @@ actually drives the loop with no human in it":
 - **`hf policy`** is the implied verb surface (`check-claim`/`check-edit`/
   `check-handoff`) that reads these rules — tracked as HFTASK-0015.
 
+### 11. Front Door / Intake (prompt_hub → handoff.task.v1)
+
+The loop's *input endpoint*. Today this is one backlog row (HFTASK-0003) and a
+passing "vision" note — underspecified (Research §R14). Detailed here:
+
+- **prompt_hub is the front door** (mature: `vibe <request>`, `get <role>
+  <intent>`, `generate_swarm_bundle()`, an axum `/vibe` + `/generate_bundle`
+  HTTP API, and a `prompthub` CLI).
+- **Transport decision (R14):** there is **no MCP server on either side** —
+  prompt_hub has none and `hf` has none. So HFTASK-0003's "over the MCP seam" is
+  *unbuilt*. Choose one, explicitly: (i) call prompt_hub's existing HTTP
+  `/vibe`+`/generate_bundle`; (ii) depend on the `prompt-hub` crate directly;
+  or (iii) build the MCP seam (HFTASK-0019) and dispatch over it. The
+  spike's mirrored-type shortcut is disowned by HFTASK-0003.
+- **The crux — type-impedance synthesis.** A `SwarmBundle` is a bundle of *role
+  prompt strings* (and `role_prompts` is an empty-in-production stub, R14), **not**
+  work specs. The intake must synthesize a vibe `Intent` into **real
+  `handoff.task.v1` fields** — `path_scope`, `acceptance_criteria`,
+  `test_commands` — or every dispatched WorkOrder is **unverifiable** by the §5
+  review gate and §5b gatekeeper. This synthesis is the real work, not the
+  envelope conversion.
+- **Promote the spike:** `work_order::work_orders_from_bundle` exists but uses a
+  *mirrored* SwarmBundle and is **test-only** (never called by the `hf` binary,
+  R14). Replace the mirror with a dependency on prompt_hub's real `SwarmBundle`
+  and wire it into a real verb (`hf intake`/`hf dispatch`). → HFTASK-0003 (now
+  spec'd, not a one-liner).
+
+### 12. Mission Control (loop observability + control)
+
+The *observe/control surface* — absent from the ADR until now (the gap the user
+flagged). **Naming collision (R14):** "mission control" already labels envctl's
+**zellij-layout generator** (`envctl dashboard`, mirrored by `meta_dashboard_cli`,
+with a native `envctl-gui` egui app) — but those render *workspace* build/drift
+ops, **not** the handoff loop's state. Disambiguate: **workspace mission control
+(zellij/envctl)** vs **loop mission control (ledger observability)** — this is the
+latter.
+
+- **Data source already exists:** the witnessed ledger event stream (§7) is the
+  perfect backing read-model — `session_start/cycle_open/pr_opened/review_verdict/
+  permission_verdict/pr_merged/pr_changes_requested`. Loop state is already
+  replay-derived (§7). Expose it as a machine feed: **`hf status --json`** + an
+  **`hf watch`** (tail the ledger + weave broadcasts; optional SSE endpoint).
+- **Control verbs already exist** — mission control just surfaces them: `hf
+  resume`, `hf review request`, the `weave permission` answer, `hf merge
+  --confirm` (the `auto_merge=manual` path, §5), and abort.
+- **Render layer is greenfield** but reuses: the **`envctl-gui` egui pattern** as
+  precedent, or a **TUI** (prompt_hub already carries a ratatui surface), and/or
+  **RuVocal** (the HF Chat-UI fork) as the chat front-door. First cut = `hf
+  status --json` + a thin ledger/broadcast-tailing TUI; RuVocal is the
+  longer-horizon human surface. → HFTASK-0020 (+ RuVocal UI = HFTASK-0022).
+
+### 13. Delivery / Output endpoint
+
+The pipeline is **prompt_hub (input) → process → delivery (output)** (R12/R14);
+the ADR covers input (§11) and process (§2–§10) but had **no output endpoint**.
+A completed, merged cycle must report its result back to the originating front
+door. The hook already exists: the **`correlation_id` (= prompt_hub
+`workflow_id`)** is carried on every WorkOrder, so a merged PR's outcome can be
+round-tripped to the originating vibe request — surfaced in RuVocal chat or via
+`prompt_hub summarize <run-id>` / its `feedback` verb. Emits on `pr_merged`.
+→ HFTASK-0021.
+
 ## Lessons baked in (from the prior weave loop failure)
 
 The earlier weave-driven loop **did not work reliably**, with evidence pointing
@@ -983,6 +1045,77 @@ bearing convention claims directly in `~/Desktop/meta` (all confirmed present):
 
 → Net: §9.6 adopts the full convention set; HFTASK-0016 implements it.
 
+### R13 — RuVector runbook coverage audit (mapped-but-unplanned crates)
+
+The north star is "adopt RuVector as the foundation," but the runbook
+(`RUVECTOR-RUNBOOK.md`, 314 crates) / `RUVECTOR-META-MAPPING-S1.md` mapped ~13
+RuVector subsystems to handoff needs and **the backlog only planned about half**.
+Audited the mapping against the 16 task cards; **verified each named crate exists
+on disk** (not just in the docs):
+
+- **Planned (6):** `rvf-crypto` WitnessChain (ledger, built), RVF vector ledger
+  (HFTASK-0006), `ruvector-verified`+AgentContract (0004), weave leases (0002),
+  `rvAgent` swarm (0010/0014), prompt_hub (0003).
+- **Planned-as-capability-but-built-without-the-RuVector-engine (2):** drift
+  (HFTASK-0005 uses git+blake3, **not** `ruvector-perception`/`coherence`);
+  policy (HFTASK-0015 uses a flat `rules.toml` denylist, **not**
+  `cognitum-gate-tilezero`). Legitimate v1s; schedule the RuVector-backed upgrade.
+- **Genuine UNPLANNED gaps (verified crates):**
+  1. **`cognitum-gate-tilezero`** — `decision.rs::GateDecision{Permit,Defer,Deny}`
+     + WitnessReceipt: a witnessed permit/deny/**defer** action-policy engine.
+     Distinct from the envctl broker (R10 = secret/credential+merge egress gate);
+     cognitum-gate is the **in-loop action governor** (what an agent may *do*),
+     the witnessed upgrade path for `hf policy` (HFTASK-0015). → **HFTASK-0017**.
+  2. **`ruvector-domain-expansion`** — contextual routing / "highest-value safe
+     task per context." The loop currently picks the next task by dependency order
+     only; intelligent next-task selection is core to an autonomous loop.
+     → **HFTASK-0018**.
+  3. **MCP seam (`mcp-brain`/`mcp-gate`/`rvagent-mcp`)** — the runbook's "T11
+     universal control seam." HFTASK-0003 only *consumes* it for one dispatch
+     path; nothing exposes **`hf` itself as an MCP server** (the way every
+     RuVector subsystem is agent-accessible). → **HFTASK-0019**.
+  4. **RuVocal chat UI + `mcp-bridge` + `ruvector-postgres`** — the human-facing
+     front-door UI. Covered under the front door / Mission Control work (R14).
+- **Deliberately out-of-scope (not gaps):** `ruvector-temporal-tensor` (rusqlite+
+  rvf-crypto chosen, §5c/R1); full `rvf-runtime` for v1 (deferred to 0006).
+- **Honesty:** crate *existence* + the cognitum-gate `GateDecision` enum verified
+  by hand; the deeper capability claims (Thompson router, perception drift) are
+  from the runbook's prior code-walk, re-confirmed only at crate/dir level here.
+
+### R14 — Front door + Mission Control + Delivery (hand-verified)
+
+The user flagged that the front door / "Mission Control" (RuVector UI +
+prompt_hub) isn't planned in detail. Confirmed; load-bearing claims **verified
+in source** (not just the runbook):
+
+- **prompt_hub front door:** mature Rust workspace (`prompt-hub` lib, `prompthub`
+  CLI, `prompthub-server` axum). `SwarmBundle` is real (`models.rs:528`) but its
+  `role_prompts` is **empty-in-production** (`swarm.rs:164` "Populated from storage
+  in production") — it's role *prompts*, not work orders. **No MCP server exists
+  in prompt_hub** (grep `mcp|jsonrpc` over its `*.rs` → 0) — so HFTASK-0003's "over
+  the MCP seam" is unbuilt on *both* sides; the real interfaces are HTTP
+  `/vibe`+`/generate_bundle` or the `prompt-hub` crate.
+- **The intake connector is a spike:** `work_order::work_orders_from_bundle` uses
+  a *mirrored* simplified SwarmBundle and is **test-only** — verified: every call
+  site is under `#[cfg(test)]`; the `hf` binary never calls it. So intent →
+  verifiable `handoff.task.v1` (real `path_scope`/`acceptance`/`test_commands`) is
+  the unbuilt crux (§11).
+- **Mission Control surfaces (verified):** `envctl/crates/engine/src/dashboard.rs`
+  is a **zellij KDL layout generator** that *calls itself* "meta mission-control
+  dashboard" — the naming collision is real; `meta_dashboard_cli` shims it;
+  `envctl-gui` is an egui app over the same *workspace* ops. RuVocal
+  (`RuVector/ui/ruvocal`) is an **unmodified HuggingFace Chat-UI fork** ("# Chat
+  UI") with an `mcp-bridge/` subpackage; nothing in it consumes loop events. weave
+  has **no** presence dashboard (broadcasts are emitted, nothing renders them).
+  **Net: no existing UI surfaces the handoff loop's live state — greenfield**, but
+  the witnessed ledger (§7) is the ready-made data source.
+- **Delivery endpoint: entirely absent** from the prior ADR. `correlation_id` (=
+  `workflow_id`) is already carried on every WorkOrder, so the round-trip back to
+  the front door is wiring, not new state (§13).
+- **Maturity/honesty:** prompt_hub intake + the egui/TUI precedents are real
+  working code; the *outbound dispatch*, the *loop-observability UI*, and the
+  *delivery endpoint* are greenfield. Verified at source level; did not build/run.
+
 ## Task breakdown
 
 > **HFTASK-0001–0006 are pre-existing** (the original kernel backlog from the
@@ -1003,7 +1136,14 @@ bearing convention claims directly in `~/Desktop/meta` (all confirmed present):
 | **HFTASK-0014** | Surgical AI gatekeeper with full code knowledge (replaces human approvals) | §5b |
 | **HFTASK-0015** | `hf policy` engine + hook-contract wiring (lifecycle automation) | §10, R9 |
 | **HFTASK-0016** | Adopt FlexNetOS meta conventions + two-tier `promote-verify` (avoid rusty-idd drift) | §9.6, R11, R12 |
+| **HFTASK-0017** | `cognitum-gate` as the witnessed `hf policy` decision engine | R13 |
+| **HFTASK-0018** | `ruvector-domain-expansion` next-task routing (highest-value safe task) | R13 |
+| **HFTASK-0019** | Expose `hf` as an MCP server (the T11 control seam) | R13, §11 |
+| **HFTASK-0020** | Mission Control — loop observability (`hf status --json`/`hf watch` + render) | §12, R14 |
+| **HFTASK-0021** | Delivery / output endpoint (`correlation_id` round-trip) | §13, R14 |
+| **HFTASK-0022** | RuVocal front-door chat UI (human surface) | §11/§12, R14 |
 
 Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009/0012; 0011 → 0007;
 0012 → 0001 (repo pushed first); 0013 → 0010; 0014 → 0010/0013; 0015 → 0007;
-0016 → 0012.
+0016 → 0012; 0017 → 0015; 0018 → 0009; 0019 → 0007; 0020 → 0007; 0021 →
+0003/0010; 0022 → 0019/0020.

@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0021",
+  "title": "Delivery / output endpoint (correlation_id round-trip to front door)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0001 §13/R14: the pipeline is prompt_hub(input)->process->delivery(output) but the output endpoint was absent. correlation_id (=prompt_hub workflow_id) is already carried on every WorkOrder, so round-trip a merged cycle's result back to the originating vibe request - surfaced in RuVocal chat or via prompt_hub summarize <run-id>/feedback. Emit on pr_merged.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Delivery / output endpoint (correlation_id round-trip to front door): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0003",
+    "HFTASK-0010"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b8932138d3c26659fb3a3ea32bc1007501991b3955f2bc35ac5a98335db7851c",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:f62551e46c9ba5ffbd15506837d3a0944260ac0be9b294edd581f9730445aefa"
+  }
+}
