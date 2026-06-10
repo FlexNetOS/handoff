@@ -37,6 +37,43 @@ ship → review → merge → sync) to `hf`, configured by `.handoff/policy.toml
 recorded in the ledger, and coordinated through weave (path-scope leases +
 review/permission queues).
 
+### 0a. Lifecycle state machine
+
+The full flow as one state machine. Each transition names the **verb** that
+drives it and the **witnessed event** it emits (§7). Refusals and the
+retryable (non-walling) waits are explicit.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Preflight: hf session start
+    Preflight --> Idle: refuse on drift\n(emit preflight:refuse)
+    Preflight --> SessionActive: pass — meta worktree + path lease\n(emit session_start)
+    SessionActive --> Cyc: hf claim --batch N\n(lease each task, emit cycle_open)
+    state "Working (cycle)" as Cyc
+    Cyc --> Cyc: hf checkpoint\n(cycle counter++)
+    Cyc --> ReadyToShip: cycles >= cycle_flush
+    ReadyToShip --> PROpen: hf ship — 1 squash commit\npush + gh pr create (emit pr_opened)
+    PROpen --> UnderReview: hf review request\n(reviewer per merge.reviewer)
+    UnderReview --> ChangesRequested: verdict deny (out-of-band)\n(emit review_verdict, pr_changes_requested)
+    UnderReview --> Approved: verdict approve (out-of-band)\n(emit review_verdict)
+    ChangesRequested --> Cyc: reopen task(s) for a fix cycle
+    Approved --> AwaitPermission: check permission gate
+    AwaitPermission --> AwaitPermission: pending — wait (retryable)\n(emit permission_verdict:pending)
+    AwaitPermission --> PROpen: denied / timeout — wait/retry
+    AwaitPermission --> Merged: approved + granted\nhf merge --squash, ff develop (emit pr_merged)
+    Merged --> Synced: hf sync\n(emit meta_registered, kb mirror)
+    Synced --> SessionEnd: hf session end
+    SessionEnd --> Preflight: --recycle (emit session_end)
+    SessionEnd --> [*]: stop (emit session_end)
+```
+
+Key properties the machine encodes: the preflight can only **refuse** (never
+corrupt), a denied review **loops back into a fix cycle** rather than failing,
+the permission wait is a **self-loop** (retryable, never a hard wall), and
+`--recycle` returns to `Preflight` so the next session re-validates sync before
+reusing a tree.
+
 ### 1. Configuration — `.handoff/policy.toml`
 
 ```toml
