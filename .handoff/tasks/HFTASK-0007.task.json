@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0007",
+  "title": "hf session worktree lifecycle + policy.toml",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "ADR-0001 §2: add `hf session start|end [--recycle]` — fetch origin, `git worktree add` off origin/<base_branch>, reserve a weave path-scope lease, emit session_start/session_end events; remove worktree on end and optionally recycle a fresh one. Add `.handoff/policy.toml` config (remote/loop/merge).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf session worktree lifecycle + policy.toml: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0002"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:2b85e087ab4673caa178b53f279e5067136e38d2bf46799b44d5adecb1318fb4",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:2d5cad136f9b3c07574f08ac0bb4d33137b3a3b58ec18e6fd54476a54bbbd515"
+  }
+}

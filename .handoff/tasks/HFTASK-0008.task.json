@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0008",
+  "title": "Branch/remote policy engine (develop<->master, clone/fork)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001 §3: policy module resolving clone-vs-fork, base=develop, trunk=master. Enforce: branch off origin/<base> after fetch only, never push trunk directly, ff develop->trunk after merge. Fork model deferred behind remote.model=fork.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Branch/remote policy engine (develop<->master, clone/fork): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0007"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:4603f67ffeed39b8853f8ff5b432c3a979603cd955157b5dc0df967bddcef364",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:c037ad782c43ebe8b2e3122f53af87a9e7d47920e73015f267a040a2ec52f6ef"
+  }
+}

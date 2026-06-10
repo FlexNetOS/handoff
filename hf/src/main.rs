@@ -238,6 +238,17 @@ fn cmd_seed() {
            "Implement hf drift: recompute intent_lock, detect out-of-scope edits (git), hard-fail handoff on drift.", &["HFTASK-0004"]),
         mk("HFTASK-0006", "RVF vector-native ledger v2", Priority::P1,
            "Schedule + implement the RVF (rvf-runtime) vector-native event ledger for semantic recall over session history; keep rusqlite+witness as v1 fallback.", &["HFTASK-0002","HFTASK-0003"]),
+        // --- Loop v2 (ADR-0001): worktree-isolated, cycle-batched, review-gated shipping ---
+        mk("HFTASK-0007", "hf session worktree lifecycle + policy.toml", Priority::P0,
+           "ADR-0001 §2: add `hf session start|end [--recycle]` — fetch origin, `git worktree add` off origin/<base_branch>, reserve a weave path-scope lease, emit session_start/session_end events; remove worktree on end and optionally recycle a fresh one. Add `.handoff/policy.toml` config (remote/loop/merge).", &["HFTASK-0002"]),
+        mk("HFTASK-0008", "Branch/remote policy engine (develop<->master, clone/fork)", Priority::P1,
+           "ADR-0001 §3: policy module resolving clone-vs-fork, base=develop, trunk=master. Enforce: branch off origin/<base> after fetch only, never push trunk directly, ff develop->trunk after merge. Fork model deferred behind remote.model=fork.", &["HFTASK-0007"]),
+        mk("HFTASK-0009", "Cycle-budget batching -> hf ship (commit/push/PR)", Priority::P1,
+           "ADR-0001 §4: ledger-derived per-session cycle counter (checkpoints since session_start); surface cycles:n/flush in status; at threshold next_command=hf ship. `hf ship` = add+commit (ref task ids) -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.", &["HFTASK-0007","HFTASK-0008"]),
+        mk("HFTASK-0010", "PR review/merge automation w/ separate agent + permission gate", Priority::P1,
+           "ADR-0001 §5: `hf review request <pr#>` enqueues weave review (WL-020) + permission ask (WL-021) to a separate reviewer session; reviewer runs /code-review and records approve/deny. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny re-opens task for a fix cycle; pending waits (retryable).", &["HFTASK-0009"]),
+        mk("HFTASK-0011", "hf sync — .meta.yaml + .gitignore + .kb mirror", Priority::P2,
+           "ADR-0001 §6: `hf sync` registers this repo in parent ../.meta.yaml + ../.gitignore (meta-repo rule), and pushes a context doc (brief/active/progress) into FlexNetOS .kb via git kb (one-way ledger->kb, Git stays authoritative). Emit meta_registered; run at session end / post pr_merged.", &["HFTASK-0007"]),
     ];
     for wo in &backlog { save_task(wo); }
     println!("hf seed: wrote {} continuation task cards to {}/", backlog.len(), tasks_dir().display());

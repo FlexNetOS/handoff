@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0009",
+  "title": "Cycle-budget batching -> hf ship (commit/push/PR)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001 §4: ledger-derived per-session cycle counter (checkpoints since session_start); surface cycles:n/flush in status; at threshold next_command=hf ship. `hf ship` = add+commit (ref task ids) -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Cycle-budget batching -> hf ship (commit/push/PR): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0007",
+    "HFTASK-0008"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:af043d62436ca4cc0dd9ec1b089d37a7ba351948ef94f7c940def3d284caa79e",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:39c51f0337d24cff5601e6c0d0ad9d1b17400fbeb78eb743374d23d069874227"
+  }
+}

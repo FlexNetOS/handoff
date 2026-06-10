@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0010",
+  "title": "PR review/merge automation w/ separate agent + permission gate",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001 §5: `hf review request <pr#>` enqueues weave review (WL-020) + permission ask (WL-021) to a separate reviewer session; reviewer runs /code-review and records approve/deny. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny re-opens task for a fix cycle; pending waits (retryable).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PR review/merge automation w/ separate agent + permission gate: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0009"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:3cf8c60b8e6e9740eee54f275bf7e1f006c7091accb1c7e393e2f006ae37c680",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:794f4e93fafe2dce5c493662e3ea28950f7cfb4e0e5bff1f459e353e34261f04"
+  }
+}

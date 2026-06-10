@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0011",
+  "title": "hf sync — .meta.yaml + .gitignore + .kb mirror",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0001 §6: `hf sync` registers this repo in parent ../.meta.yaml + ../.gitignore (meta-repo rule), and pushes a context doc (brief/active/progress) into FlexNetOS .kb via git kb (one-way ledger->kb, Git stays authoritative). Emit meta_registered; run at session end / post pr_merged.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf sync — .meta.yaml + .gitignore + .kb mirror: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0007"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:cf52310b2863356f1624696411989b2e98fc3da9d327a9defe3d0c0cb2472d4d",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:b8e21432f65ccf55b03a37043bde43a45a43a472248a89e4459ce93fa7ec1262"
+  }
+}
