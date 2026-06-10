@@ -612,9 +612,12 @@ actually drives the loop with no human in it":
 The loop's *input endpoint*. Today this is one backlog row (HFTASK-0003) and a
 passing "vision" note — underspecified (Research §R14). Detailed here:
 
-- **prompt_hub is the front door** (mature: `vibe <request>`, `get <role>
-  <intent>`, `generate_swarm_bundle()`, an axum `/vibe` + `/generate_bundle`
-  HTTP API, and a `prompthub` CLI).
+- **The front door = `meta/RuVector/ui` (RuVocal) + prompt_hub.** RuVocal is the
+  *human* chat surface (the real, chosen UI — not the failed envctl/loop-forge
+  zellij dashboard, §12); **prompt_hub** is the *intent engine* behind it (mature:
+  `vibe <request>`, `get <role> <intent>`, `generate_swarm_bundle()`, an axum
+  `/vibe` + `/generate_bundle` HTTP API, and a `prompthub` CLI). The front-door
+  work is **wiring RuVocal → prompt_hub → handoff intake** (HFTASK-0022 + this).
 - **Transport decision (R14):** there is **no MCP server on either side** —
   prompt_hub has none and `hf` has none. So HFTASK-0003's "over the MCP seam" is
   *unbuilt*. Choose one, explicitly: (i) call prompt_hub's existing HTTP
@@ -652,11 +655,17 @@ latter.
 - **Control verbs already exist** — mission control just surfaces them: `hf
   resume`, `hf review request`, the `weave permission` answer, `hf merge
   --confirm` (the `auto_merge=manual` path, §5), and abort.
-- **Render layer is greenfield** but reuses: the **`envctl-gui` egui pattern** as
-  precedent, or a **TUI** (prompt_hub already carries a ratatui surface), and/or
-  **RuVocal** (the HF Chat-UI fork) as the chat front-door. First cut = `hf
-  status --json` + a thin ledger/broadcast-tailing TUI; RuVocal is the
-  longer-horizon human surface. → HFTASK-0020 (+ RuVocal UI = HFTASK-0022).
+- **Render layer — the human surface is `meta/RuVector/ui` (RuVocal), not a new
+  build.** Background (user): envctl already *attempted* a zellij multi-pane
+  dashboard (via the loop-forge / Feature-Forge loop) **and it failed** — so the
+  `envctl dashboard` / `envctl-gui` zellij path is a **dead end, not a precedent
+  to reuse**. The real, chosen front-door + observe surface is **RuVocal** (the
+  `RuVector/ui` chat app), which needs **prompt_hub integration** (and loop-event
+  surfacing). Plan: keep the machine feed (`hf status --json` / `hf watch` over
+  the ledger + broadcasts) as the data layer → HFTASK-0020; the human surface is
+  **RuVocal adopt-and-extend** (prompt_hub intake + loop-state + delivery), now a
+  first-class front-door task → HFTASK-0022 (not a longer-horizon afterthought). A
+  throwaway local TUI is fine only as a stopgap while RuVocal is wired.
 
 ### 13. Delivery / Output endpoint
 
@@ -1103,12 +1112,15 @@ in source** (not just the runbook):
 - **Mission Control surfaces (verified):** `envctl/crates/engine/src/dashboard.rs`
   is a **zellij KDL layout generator** that *calls itself* "meta mission-control
   dashboard" — the naming collision is real; `meta_dashboard_cli` shims it;
-  `envctl-gui` is an egui app over the same *workspace* ops. RuVocal
-  (`RuVector/ui/ruvocal`) is an **unmodified HuggingFace Chat-UI fork** ("# Chat
-  UI") with an `mcp-bridge/` subpackage; nothing in it consumes loop events. weave
-  has **no** presence dashboard (broadcasts are emitted, nothing renders them).
-  **Net: no existing UI surfaces the handoff loop's live state — greenfield**, but
-  the witnessed ledger (§7) is the ready-made data source.
+  `envctl-gui` is an egui app over the same *workspace* ops. **Per the user, this
+  zellij multi-pane dashboard was an envctl/loop-forge attempt that FAILED — it is
+  a dead end, not a reuse precedent.** The **real front door is `meta/RuVector/ui`
+  (RuVocal)** — verified an **unmodified HuggingFace Chat-UI fork** ("# Chat UI")
+  with an `mcp-bridge/` subpackage; it needs **prompt_hub integration** (and
+  nothing in it consumes loop events yet). weave has **no** presence dashboard
+  (broadcasts emitted, nothing renders them). **Net: the human surface is
+  RuVocal (adopt-and-extend); loop state is greenfield to surface, with the
+  witnessed ledger (§7) as the ready-made data source.**
 - **Delivery endpoint: entirely absent** from the prior ADR. `correlation_id` (=
   `workflow_id`) is already carried on every WorkOrder, so the round-trip back to
   the front door is wiring, not new state (§13).

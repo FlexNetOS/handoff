@@ -1,23 +1,24 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0022",
-  "title": "RuVocal front-door chat UI (human surface, adopt-and-extend)",
+  "title": "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated",
   "status": "backlog",
-  "priority": "P3",
-  "objective": "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui/ruvocal) is an unmodified HuggingFace Chat-UI fork (SvelteKit) with an mcp-bridge/ subpackage; nothing in it consumes loop events yet. Adopt-and-extend it as the human chat front door: vibe request in -> dispatch via the MCP seam (HFTASK-0019) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat. Lower priority - handoff is the process middle (R12); this is the human-facing half.",
+  "priority": "P1",
+  "objective": "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui) is the REAL chosen front door (an unmodified HuggingFace Chat-UI fork, SvelteKit, with an mcp-bridge/ subpackage; nothing consumes loop events yet). NOTE: the envctl/loop-forge zellij multi-pane dashboard was attempted and FAILED - do NOT revive it; RuVocal is the surface. Adopt-and-extend RuVocal: integrate prompt_hub (vibe request in -> dispatch via the seam HFTASK-0019/HFTASK-0003) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat via mcp-bridge.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "RuVocal front-door chat UI (human surface, adopt-and-extend): implemented + cargo test green + checkpointed"
+    "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
   ],
   "dependencies": [
     "HFTASK-0019",
-    "HFTASK-0020"
+    "HFTASK-0020",
+    "HFTASK-0003"
   ],
   "blocked_by": [],
   "allows_network": false,
@@ -25,8 +26,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:c7efc810791f39eb0469931d09f6a7104626c845e79d2a4e5ce6303cb1394a49",
+    "objective_hash": "blake3:3a3c96422849561fa6a11c65ce371e58f3936d0ca9460d870f9bbf9f3871961a",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:0487c62b37ac9534d0a9e949c8a72b3a32b967bccdd9b53f789a0431bb28aafa"
+    "acceptance_hash": "blake3:9534db0d533a98c9048d83a092e38df2598fbe69d0ba60dbbd311eafa39c663a"
   }
 }
