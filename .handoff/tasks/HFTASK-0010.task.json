@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0010",
-  "title": "PR review/merge automation - phased cloud_ultra->swarm_local + permission gate",
+  "title": "PR review/merge automation - phased cloud_ultra->swarm_local + gh-aw guardrails",
   "status": "backlog",
   "priority": "P1",
-  "objective": "ADR-0001 §5: reviewer is always a separate role, filled by merge.reviewer. Phase 1 cloud_ultra: `hf review request <pr#>` runs /code-review ultra on the PR, records approve/deny via weave review (WL-020) + permission ask (WL-021). Phase 2 swarm_local: replace with ruvector/ruflo agent-swarm reviewer. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny re-opens task; pending waits (retryable). permission_gate is transitional (lift once swarm trusted). Target current-weave queues only.",
+  "objective": "ADR-0001 §5/§5a (Research R4=gh-aw): reviewer is always a separate role (merge.reviewer). Phase 1 cloud_ultra: `hf review request <pr#>` runs /code-review ultra, records approve/deny via weave review (WL-020)+permission (WL-021). Phase 2 swarm_local: ruvector/ruflo (rvAgent) swarm reviewer. GUARDRAILS: (a) separation of privilege - worker agent read-only, a separate trusted scoped job does gh pr create/merge, agents never hold the merge token; (b) reviewer verdict OUT-OF-BAND in weave state, NOT a native GitHub APPROVE (bot-approval bypasses branch protection, gh-aw #25439); (c) merge is a non-agent Environment-gated job; (d) detection pass + protected-files denylist (.github/, .handoff/policy.toml, ADRs, manifests) before any write; (e) draft PRs, least-privilege tokens. `hf merge <pr#>` merges only on approved+permission-granted (gh pr merge --squash), ff develop; deny reopens task; pending waits. permission_gate transitional. flexnetos_github_app (currently empty) is the candidate home for the trusted writer/merge-gate.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "PR review/merge automation - phased cloud_ultra->swarm_local + permission gate: implemented + cargo test green + checkpointed"
+    "PR review/merge automation - phased cloud_ultra->swarm_local + gh-aw guardrails: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +24,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:123d3316972101cc27f86419effcaff004888e793918dd57187cb717e192b5a2",
+    "objective_hash": "blake3:7ce31c716b13fd4fda74a4412616201bf74ec0ca293ff8a8bf66c497558e5dcf",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:d0cbeb7871e0b5d2d545c31415e692f04f07a489c0d8363057ba4059ad179ca7"
+    "acceptance_hash": "blake3:51b098e50a61e0a79f14ea265940c25f13b2d8e89cb324e2a94ff51b196ea81a"
   }
 }

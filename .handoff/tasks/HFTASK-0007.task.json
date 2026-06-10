@@ -1,16 +1,16 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0007",
-  "title": "hf session via meta git worktree + policy.toml + sync preflight",
+  "title": "hf session on meta_git_lib worktree engine + policy.toml + sync preflight",
   "status": "backlog",
   "priority": "P0",
-  "objective": "ADR-0001 §2: add `hf session start|end [--recycle]` using `meta git worktree create|remove|prune` (NOT raw git worktree) off origin/<base_branch>, reserve a weave path-scope lease, emit session_start/session_end; recycle a fresh set on end. Add `.handoff/policy.toml` (remote/loop/merge). MUST include a start-time preflight that verifies tree/branch/remote are in sync and refuses on drift (lesson from the prior weave loop failure). Depend only on the current lease-capable weave; refuse legacy repowire/mcp-broker.",
+  "objective": "ADR-0001 §2 (Research R3): add `hf session start|end [--recycle]` by DEPENDING ON meta_git_lib (worktree::git_ops add/remove, worktree::store TTL/ephemeral registry, worktree::hooks fire_post_create/destroy, helpers::{resolve_branch,ensure_worktrees_in_gitignore}, snapshot capture/restore) rather than reimplementing; fall back to `meta git worktree` CLI if lib not wired. Off origin/<base_branch>; reserve a weave path-scope lease; emit session_start/session_end; recycle a fresh set on end. Dotdir is .handoff (canonical; .hf does not exist). Add `.handoff/policy.toml` (remote/loop/merge). MUST include a start-time preflight verifying tree/branch/remote sync, refusing on drift (prior weave-loop failure lesson). Depend only on current lease-capable weave; refuse legacy repowire/mcp-broker.",
   "path_scope": [
     "spike/**",
     "handoff/**"
   ],
   "acceptance_criteria": [
-    "hf session via meta git worktree + policy.toml + sync preflight: implemented + cargo test green + checkpointed"
+    "hf session on meta_git_lib worktree engine + policy.toml + sync preflight: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +24,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:e8dd3c0d45a8ea248bddc9c826af6fdfcf9ce26909bddac0465db9183cb2e388",
+    "objective_hash": "blake3:6fcfef13df60b0a17efad52568f81bb39c6011205410405839dd9e96cc502a60",
     "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:a7249be4c1ddb677c6c11b394bc1df3d767a926b0da9a4ba2147a602ece3699c"
+    "acceptance_hash": "blake3:2355967c6075c30f3223341619b6777ab0072d6438e6fdbad680003bfa63c551"
   }
 }

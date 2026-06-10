@@ -62,11 +62,27 @@ permission_gate = true            # TRANSITIONAL human gate; lifted once swarm i
 
 ### 2. Session lifecycle (quick-note items 2, 3, 7)
 
-**Worktrees are managed through `meta git worktree`**, not raw `git worktree`,
-so handoff's isolation is tracked by the meta workspace (one authoritative
-worktree *set*, never ad-hoc trees — see the Lessons section for why this
-matters). The installed integration surface is
-`meta git worktree create|add|remove|list|status|prune`.
+**Worktrees are managed through the meta worktree engine**, not raw
+`git worktree`, so handoff's isolation is tracked by the meta workspace (one
+authoritative worktree *set*, never ad-hoc trees — see the Lessons section for
+why this matters). Two integration surfaces, in order of preference:
+
+1. **Depend on `meta_git_lib` directly** (the Rust crate behind `meta git
+   worktree`). Research (see Research §R3) found it already provides the entire
+   engine `hf` needs: `worktree::git_ops::{git_worktree_add, git_worktree_remove,
+   remove_worktree_repos}`, a locked worktree **registry with TTL/ephemeral
+   cleanup** (`worktree::store`, `~/.meta/worktree.json`), **lifecycle hooks**
+   `worktree::hooks::{fire_post_create, fire_post_destroy, fire_post_prune}` (the
+   natural attach point for hf's PR-create/review steps), `resolve_branch`,
+   `git_ahead_behind`/`git_fetch_branch` (fast-forward signal), `snapshot`
+   capture/restore (per-repo branch+SHA rollback), and
+   `ensure_worktrees_in_gitignore`. **Reuse this wholesale** — do not reimplement.
+2. Fall back to shelling out to `meta git worktree create|add|remove|list|status|
+   prune` when the library dependency isn't wired yet.
+
+**Naming resolved (Research §R2):** the dotdir is **`.handoff`** (canonical;
+`.hf` exists in no repo). `hf` is only the binary name. Worktrees live as a
+tracked meta set under `.worktrees/` at the meta root.
 
 - **`hf session start [--task-slug X]`**
   1. `git fetch origin` (the meta worktree create branches off the fresh remote base)
@@ -152,6 +168,35 @@ once Phase 2 is proven.
   (consistent with the `gh repo create` wall in HFTASK-0001 NEEDS-HUMAN),
   Phase 2 the swarm verdict.
 
+#### 5a. Guardrails adopted from gh-aw (Research §R4)
+
+GitHub's own agentic-workflow system (`gh-aw`) independently arrived at this
+exact worker/reviewer/merge split and hardened it. We adopt its model:
+
+- **Separation of privilege (the #1 rule).** The implementer/worker agent runs
+  **read-only** — it never holds a write or merge token. It emits the change as
+  a **structured intent** (branch + diff + task ids); a **separate, trusted,
+  narrowly-scoped job** performs the actual `gh pr create`/push. The reviewer
+  likewise emits an **approve/deny decision as data**, and a separate gate job
+  acts on it. Agents never hold the merge token — even in the Phase-2 swarm.
+- **The reviewer verdict stays OUT-OF-BAND** — recorded in the weave
+  review/permission state, **not** as a native GitHub `APPROVE`. A bot APPROVE
+  silently counts toward branch-protection required-reviews and would *defeat*
+  the gate (gh-aw issue #25439). Native reviews default to `COMMENT`.
+- **Merge is a non-agent, Environment-gated job** with its own scoped token.
+  This makes the human→swarm transition a change to *who approves the
+  Environment*, not a change to any agent's capabilities.
+- **A detection/validation step runs between agent output and any write** —
+  scan the diff for secrets, protected-file edits, and policy violations before
+  the PR is created or merged.
+- **Created PRs are draft-by-default**, with a **protected-files denylist**
+  (CI config under `.github/`, the loop's own `.handoff/policy.toml` + ADRs,
+  credential/manifest files) so a confused or compromised agent — especially
+  once the human gate is lifted — cannot rewrite its own guardrails.
+- **Least-privilege, per-action tokens**; no broad `write-all`. Network egress
+  allowlisting for any agent that touches the internet. Explicit `noop`/
+  `missing-tool` reporting so a stuck stage fails loudly, never silently.
+
 ### 6. `.kb` + meta sync (item 1)
 
 - **`hf sync`**
@@ -212,7 +257,87 @@ land the sync preflight, and HFTASK-0010 must target current-weave queues only.
   installed `~/.cargo/bin/weave` is older; `hf` degrades but isn't coordinated).
 - Depends on `gh` + branch protection existing; fork model adds cross-repo PR
   edge cases (deferred).
+- The **PR-write side is greenfield** (Research R3): PR create/merge, the
+  review-gate policy, develop→master/ff, and fork support have no existing impl;
+  `flexnetos_github_app` is an empty placeholder. Worktree mechanics are *not*
+  greenfield — reuse `meta_git_lib`.
 - More verbs and config surface to maintain and test.
+
+## Research & Cross-References (evidence base)
+
+> Per process rule: every ADR must be backed by deep web + codebase research,
+> cross-referenced. This section records the evidence behind the decisions above.
+
+### R1 — Prior-session design lineage (codebase)
+
+This ADR continues a same-day research line; the upstream artifacts (all under
+`~/Desktop/meta/`):
+
+- `RUVECTOR-RUNBOOK.md` — RuVector crate-map runbook (314 crates walked with an
+  agentic-role lens). Establishes that `rvAgent` (`rvagent-core/subagents/a2a`)
+  is the **agent-swarm substrate** for the Phase-2 `swarm_local` reviewer (§5).
+- `RUVECTOR-META-MAPPING-S1.md` — maps the 12-crate Ark Handoff Ledger onto
+  existing RuVector/meta capabilities; ~8/12 needs already have production
+  equivalents → "adopt what's built." Source of the `handoff.task.v1` envelope
+  and the Git > ledger > task-cards precedence.
+- `STACK-INTEGRATION-PLANS.md` — three integration plans (contract-/store-/
+  door-first); the real blocker is *connectors*, not more tools.
+- `SESSION-HANDOFF.md` — locks the "Continuity Ledger Kernel" / `.handoff`
+  naming and seeds HFTASK-0001..0006.
+
+### R2 — Naming + dotdir audit (codebase, 65 repos under `~/Desktop/meta`)
+
+- **`.handoff` is canonical**; `.hf` exists in **no** repo. Resolves the open
+  question: binary = `hf`, dotdir = `.handoff`.
+- Worktrees are an established meta concept: `.worktrees/` at the meta root
+  holds ~38 tracked branch sets; `.meta` / `.meta-snapshots` / `.looprc` are
+  meta-CLI/loop owned — confirming §2's "tracked set, not ad-hoc tree."
+- Drift flagged (not handoff's to fix, logged for the workspace): `.agent`
+  (singular) vs `.agents`; `.codex-plugin` coexisting with `.codex` in ECC;
+  `grit/.rtk` vs expected `.roo`.
+
+### R3 — Reuse map (codebase: meta_git_lib / meta_git_cli / loop_lib)
+
+Walk of the named projects (note: `meta_git` and `meta_projects_cli` do **not**
+exist — actual crates are `meta_git_cli/lib`, `meta_project_cli`):
+
+| hf need | Reuse from | Symbol |
+|---|---|---|
+| worktree add/remove/prune | `meta_git_lib` | `worktree::git_ops::*`, `meta_git_cli/commands/worktree/create.rs:handle_create` |
+| worktree registry + TTL/ephemeral | `meta_git_lib` | `worktree::store` (`~/.meta/worktree.json`, locked) |
+| lifecycle hooks (attach PR steps) | `meta_git_lib` | `worktree::hooks::{fire_post_create,fire_post_destroy,fire_post_prune}` |
+| branch resolution / fetch / ahead-behind | `meta_git_lib` | `worktree::helpers::resolve_branch`, `git_ops::{git_fetch_branch,git_ahead_behind}` |
+| snapshot checkpoint/rollback | `meta_git_lib` | `snapshot::{capture_repo_state,restore_repo_state}` |
+| gitignore worktrees | `meta_git_lib` | `worktree::helpers::ensure_worktrees_in_gitignore` |
+| start work from a PR | `meta_git_lib` | `worktree::helpers::resolve_from_pr` (`gh pr view --json headRefName`) |
+| parallel cross-repo fan-out | `loop_lib` | `run`, `run_commands`, `JsonOutput` |
+
+**Greenfield (no existing impl anywhere):** PR *create*, PR *merge* (squash/ff),
+the review-gate policy, develop→master + fast-forward enforcement, fork-vs-clone.
+`flexnetos_github_app` is an **empty placeholder repo** (remote configured, zero
+commits) — a natural future home for the trusted PR-writer / merge-gate (§5a),
+but it must be authored from scratch.
+
+### R4 — External best practice (web: GitHub Agentic Workflows, `gh-aw`)
+
+`github/gh-aw` (GitHub Next) independently validates the worker/reviewer/merge
+split and supplies the §5a guardrails. Load-bearing findings:
+
+- **Separation of privilege:** the agent job is read-only and emits structured
+  "safe-output" intents; separate scoped-write jobs execute them after a
+  threat-detection pass. "Even a fully compromised agent cannot directly modify
+  repository state."
+- **No merge safe-output exists by design** — gh-aw deliberately keeps PR merge
+  a human/branch-protection decision. → our merge stays a non-agent gated job.
+- **Bot-approval bypass (issue #25439):** a `github-actions[bot]` `APPROVE`
+  counts toward required-reviews; keep the reviewer verdict out-of-band.
+- Draft PRs by default; protected-files guard (blocks `.github/`, `CLAUDE.md`,
+  manifests); Environments as the human-in-the-loop gate primitive (swap the
+  approver to flip human→swarm); network egress allowlist; keep source +
+  compiled artifact in sync.
+- Sources: github.com/github/gh-aw · githubnext.github.io/gh-aw (overview,
+  architecture, safe-outputs, safe-outputs-pull-requests, triggers, tokens) ·
+  gh-aw issue #25439.
 
 ## Task breakdown
 
