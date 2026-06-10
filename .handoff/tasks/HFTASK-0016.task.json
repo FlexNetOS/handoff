@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0016",
+  "title": "Adopt FlexNetOS meta conventions (avoid rusty-idd's drift)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0001 §9.6/R12 (3 rusty-idd-vs-meta drift reports, spot-verified in ~/Desktop/meta): handoff is a meta member and lacks the org convention set. Add: commitlint.config.cjs (12 types) + semantic-pr-title.yml (merge-blocking); release-please manifest mode + VERSION file + 5-platform release.yml (NOT cargo-dist); renovate.json (NOT Dependabot - D3); .githooks/{commit-msg,pre-commit,pre-push} + make install-hooks (NOT python pre-commit - D4); Makefile (NOT Justfile - D7); .claude/agent-guard.toml + settings.json hooks + .claude/rules/; 3-OS CI matrix + Swatinem/rust-cache + pinned toolchain (1.96.0); CONTRIBUTING.md. ALSO adopt rusty-idd's two-tier promote-verify (develop->main gate: clean-merge probe + locked build/test + drift + fmt/clippy + cargo audit --deny warnings) into §9 CI. ALREADY DONE: handoff is in .meta.yaml (rusty-idd's D5). Avoid the promote-verify.yml duplicate-run: bug (R11).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Adopt FlexNetOS meta conventions (avoid rusty-idd's drift): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0012"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:77123f094a11230b4522d543c72ae567059aa43f44a32ff74ab1071a3a773ffa",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:5fb5a7f1bf891190d3f5977122e98c0fa94e47d55d1e5830b25063185a58718b"
+  }
+}

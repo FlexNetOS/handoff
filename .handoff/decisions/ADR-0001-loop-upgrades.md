@@ -552,6 +552,34 @@ protection — so adopt the mesh *and* §9.3 together, never the mesh alone.
   4. **Until envctl is wired,** as an interim split the overloaded
      `PARENT_REPO_PAT` into purpose-scoped fine-grained PATs (dispatch vs publish).
 
+#### 9.6 FlexNetOS meta conventions handoff adopts (R12)
+
+handoff is a meta member, so it inherits the org convention set (verified in
+`~/Desktop/meta`, R12). §9.1–9.5 above (built from the weave model) are the
+loop-specific subset; this is the **rest of the org baseline** handoff currently
+lacks, and must adopt to avoid the drift the reports found in rusty-idd:
+
+- **Conventional Commits + semantic PR titles:** `commitlint.config.cjs` (12
+  types) + merge-blocking `semantic-pr-title.yml`. Feeds release-please changelogs.
+- **Release automation:** `release-please` (manifest mode, `release-type: rust`) +
+  a **`VERSION`** source-of-truth file + 5-platform `release.yml`. *Not* cargo-dist.
+- **Dependency updates: Renovate** (`renovate.json`, `config:recommended`). **Not
+  Dependabot** (D3).
+- **Local hooks: `.githooks/`** (`commit-msg`=commitlint, `pre-commit`=`cargo fmt
+  --check`, `pre-push`=fmt+clippy+test) wired by `make install-hooks`. **Not**
+  Python `.pre-commit` (D4).
+- **Task runner: `Makefile`** (`build`/`test`/`lint`/`install-hooks`). Not Justfile (D7).
+- **Agent governance:** `.claude/agent-guard.toml` (destructive-command patterns),
+  `.claude/settings.json` session hooks, `.claude/rules/` — handoff has none today.
+- **CI baseline:** 3-OS matrix (C6), `Swatinem/rust-cache` (C10), pinned toolchain
+  (`rust-toolchain.toml` / workflow pin `1.96.0` — defensible per R12/A2),
+  `CONTRIBUTING.md`.
+- **Already done:** handoff is registered in `.meta.yaml` (the one thing rusty-idd
+  was missing — D5).
+
+These are mechanical alignment, tracked as **HFTASK-0016** (separate from the
+loop-logic tasks).
+
 ### 10. Hook & policy layer — lifecycle automation (brought forward, R9)
 
 The original package shipped a **hook contract** and **policy rules** that the
@@ -867,6 +895,89 @@ broker + relay** library (`envctl_secrets`), driven by `secretd` (gRPC) +
 - **Surface:** Rust API (`Engine`), gRPC `secretd` (`Relay.Mint/Revoke`, `Vault`,
   `Lock`, `Audit`), CLI `secretctl` (`relay create/mint/revoke`, `run`).
 
+### R11 — rusty-idd (a proven sibling merge-automation loop) — hand-verified
+
+`FlexNetOS/rusty-idd` ("IDD" = Intent-Driven Development) is a Rust workspace
+(~20k LOC, ~463 tests) **plus** an autonomous "idd-merge-loop" harness (skills +
+`scripts/ralph-idd.sh`, *prose+bash, not compiled*) that builds it. Cloned
+read-only to `/tmp/rusty-idd-research`; the load-bearing claims below were
+**verified by hand** (read the actual SKILL.md + workflow YAML), not taken from
+the research agent:
+
+- **Merge model (verified `idd-merge-loop/SKILL.md:22,25,65,72,111`):** each run
+  pushes a branch, opens **one** PR `--base develop`, and enables **GitHub-native
+  auto-merge** (`gh pr merge --auto --squash`). `develop` is branch-protected
+  (required check `rust`) → **fail-closed**: GitHub merges only on green CI,
+  async, *even after the agent process exits*. A **red** required check is a hard
+  wall (`NEEDS-HUMAN: PR #N red`) — never force-merged. **The required CI check is
+  the sole merge authority; the agent never calls a blocking merge or overrides
+  red.** Opening+auto-merge is *pre-authorized* (not a per-PR human gate).
+- **Two-tier (verified):** dev → `develop` (loop has authority); `develop` →
+  `main` only via a separate promotion PR gated by `rust` **+** `promote-verify`
+  (`promote-verify.yml`: clean-merge-into-main probe + locked build/test + drift +
+  fmt/clippy + `cargo audit`). The loop never pushes/admin-merges `main`.
+- **CI (verified `ci.yml`):** `rust` job = drift-check → `build --locked` →
+  `test --locked` → `fmt --check` → `clippy -D warnings` → `cargo audit --deny
+  warnings`; `msrv` job builds on the 1.88 floor. `permissions: contents: read`.
+- **Verified bug to avoid if copied:** `promote-verify.yml:37-39` has one step
+  with **two `run:` keys** (`.gemini` then `.claude` drift-check) — YAML keeps
+  only the second; the first is silently dropped.
+- **No `repository_dispatch`, no GitHub Environment** anywhere (grep-confirmed) —
+  so handoff's §9 dispatch mesh + merge-gate Environment are net-new (no reuse).
+- **Could-not-confirm (honest):** I did not execute its build/tests (sandbox
+  blocked `cargo build`); the "~463 tests green" maturity is inferred from source
+  + merged-PR history. The loop/auto-merge layer is prose+bash, not unit-tested.
+
+**Mapping into this ADR:**
+- **§5 merge → adopt rusty-idd's fail-closed model (a real refinement).** `hf
+  ship` enables **GitHub-native `gh pr merge --auto --squash`** against the
+  branch-protected trunk; GitHub merges when *all required checks* (incl. the
+  gatekeeper check, below) are green. `hf` does **not** poll-and-merge or override
+  red. This reconciles §5/§5b with the no-human principle: the **§5b AI gatekeeper
+  is a *required status check* feeding branch protection** (a CI job that posts a
+  check-run), **not** an agent that calls `gh pr merge` out-of-band. → HFTASK-0010.
+- **§9 → adopt the two-tier `promote-verify` + `cargo audit --deny warnings`
+  supply-chain gate + MSRV-floor/toolchain-pinning.** The `develop`→`trunk`
+  promotion PR mirrors §3's `develop==trunk` rule. → HFTASK-0012.
+- **§5b evidence ← `pr-evidence-bundle`** (build/test/lint/secret-scan/rollback/
+  manifest) is a ready checklist for the gatekeeper's required inputs.
+- **Continuity overlap:** rusty-idd's Ralph runner + `HANDOFF.md`/`DONE`/
+  `NEEDS-HUMAN` sentinels are a *sibling* of handoff's loop. handoff's
+  **witnessed-ledger** continuity is the chosen mechanism; rusty-idd validates the
+  sentinel pattern but we do **not** adopt two continuity systems — pick one.
+
+### R12 — FlexNetOS meta-convention set + rusty-idd-vs-meta drift (3 reports, spot-verified)
+
+Three prior reports in `~/Downloads/rusty-idd/` (`gap-analysis-and-roadmap.md`,
+`meta-alignment-report.md`, and the verified two-pass `…-v2.md`) inventory the
+**org-wide meta conventions** and rusty-idd's drift from them. **handoff is also a
+FlexNetOS meta member**, so these conventions apply to it — and §9 (built from the
+weave model alone, R8) covered only a fraction. I **spot-verified** the load-
+bearing convention claims directly in `~/Desktop/meta` (all confirmed present):
+
+- **Verified meta conventions:** Conventional Commits (`commitlint.config.cjs`,
+  12 types) + merge-blocking `semantic-pr-title.yml` (C1/C2); `release-please`
+  manifest mode + `VERSION` file source-of-truth (C3/C4); **Renovate** (`renovate.json`),
+  *not* Dependabot (C5); 3-OS CI matrix (C6); `Swatinem/rust-cache` (C10);
+  5-platform `release.yml` (C11); shared **`.githooks/`** (`commit-msg`=commitlint,
+  `pre-commit`=fmt, `pre-push`=fmt+clippy+test) + `make install-hooks` (H1–H4);
+  `.claude/agent-guard.toml` (8 destructive patterns) + `.claude/settings.json`
+  hooks + 6 `.claude/rules/` (K1–K3); `Makefile` (G2) + `CONTRIBUTING.md` (G1) +
+  `.context/` (G4); notify-parent/downstream dispatch mesh (C7, = R8).
+- **handoff status:** already in `.meta.yaml` (✅ ahead of rusty-idd's D5);
+  pins toolchain `1.96.0` (defensible per the report's A2). Everything else in the
+  convention set is **absent in handoff today** — same gap rusty-idd had.
+- **Drift to AVOID (the reports' corrections):** use **Renovate not Dependabot**
+  (D3); **`.githooks/` (shell) not `.pre-commit` (Python)** (D4); **Makefile not
+  Justfile** (D7); **release-please not cargo-dist** (D6); and don't copy the
+  `promote-verify.yml` **duplicate-`run:` bug** (R11). A4 (the report's "Aligned")
+  independently confirms **develop+main is correct for autonomous loops** (validates §3).
+- **Vision framing:** the gap-analysis frames the pipeline as **prompt_hub (front
+  door / input) → process → delivery (output)**. handoff is the *process* middle;
+  its front door is HFTASK-0003 (prompt_hub `SwarmBundle → handoff.task.v1`).
+
+→ Net: §9.6 adopts the full convention set; HFTASK-0016 implements it.
+
 ## Task breakdown
 
 > **HFTASK-0001–0006 are pre-existing** (the original kernel backlog from the
@@ -886,6 +997,8 @@ broker + relay** library (`envctl_secrets`), driven by `secretd` (gRPC) +
 | **HFTASK-0013** | Integrate envctl `secrets-engine` (relay bearer + broker gate) | secrets/§9.5, R10 |
 | **HFTASK-0014** | Surgical AI gatekeeper with full code knowledge (replaces human approvals) | §5b |
 | **HFTASK-0015** | `hf policy` engine + hook-contract wiring (lifecycle automation) | §10, R9 |
+| **HFTASK-0016** | Adopt FlexNetOS meta conventions + two-tier `promote-verify` (avoid rusty-idd drift) | §9.6, R11, R12 |
 
 Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009/0012; 0011 → 0007;
-0012 → 0001 (repo pushed first); 0013 → 0010; 0014 → 0010/0013; 0015 → 0007.
+0012 → 0001 (repo pushed first); 0013 → 0010; 0014 → 0010/0013; 0015 → 0007;
+0016 → 0012.
