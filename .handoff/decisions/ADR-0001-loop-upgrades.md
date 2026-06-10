@@ -58,7 +58,43 @@ reviewer        = "cloud_ultra"   # Phase 1: "cloud_ultra" (/code-review ultra)
                                   # Phase 2: "swarm_local" (ruvector/ruflo swarm)
 auto_merge      = "on_approve"    # "on_approve" | "never" | "manual"
 permission_gate = true            # TRANSITIONAL human gate; lifted once swarm is trusted
+
+[preflight]
+require_clean_tree     = true     # refuse session start on uncommitted changes
+require_synced_base    = true     # refuse if develop != trunk, or local != origin
+refuse_legacy_weave    = true     # refuse repowire/mcp-broker; require lease-capable weave
+
+[sync]
+kb_enabled    = true              # mirror ledger -> .kb on session end / pr_merged
+kb_slugs      = ["context/overridable/active", "context/overridable/progress"]
+meta_register = true              # idempotently ensure repo in ../.meta.yaml + ../.gitignore
 ```
+
+#### 1.1 Complete key reference
+
+| Section.key | Type | Default | Meaning |
+|---|---|---|---|
+| `remote.model` | enum | `clone` | `clone` (single `origin`, push+PR in-repo) or `fork` (`origin`=fork, `upstream`=truth) — §3.3 |
+| `remote.origin` | string | `FlexNetOS/handoff` | canonical `owner/repo` |
+| `remote.base_branch` | string | `develop` | ref worktrees branch from (after fetch) — §2 |
+| `remote.trunk_branch` | string | `master` | protected PR target — §3.1 |
+| `remote.develop_mirrors_trunk` | bool | `true` | ff `develop`→trunk after each merge so `develop == trunk` |
+| `loop.cycle_flush` | int 3..5 | `4` | tasks completed per cycle before `hf ship` — §4 |
+| `loop.batch_checkout` | bool | `true` | claim N tasks at once so the loop never stalls |
+| `loop.worktree_prefix` | string | `handoff-` | meta worktree set name prefix |
+| `merge.require_review` | bool | `true` | a review verdict is required before merge |
+| `merge.reviewer` | enum | `cloud_ultra` | `cloud_ultra` (Phase 1) or `swarm_local` (Phase 2) — §5 |
+| `merge.auto_merge` | enum | `on_approve` | `on_approve` \| `never` \| `manual` |
+| `merge.permission_gate` | bool | `true` | transitional human/permission gate (§5a); lift for full swarm |
+| `preflight.require_clean_tree` | bool | `true` | refuse `session start` on a dirty tree |
+| `preflight.require_synced_base` | bool | `true` | refuse if base/trunk/origin out of sync — §2a |
+| `preflight.refuse_legacy_weave` | bool | `true` | require the lease-capable weave; refuse repowire/mcp-broker |
+| `sync.kb_enabled` | bool | `true` | enable the one-way `.kb` mirror — §6 |
+| `sync.kb_slugs` | list | the two `overridable` slugs | generated kb docs hf may overwrite (allow-list) |
+| `sync.meta_register` | bool | `true` | idempotently maintain `.meta.yaml`/`.gitignore` entries |
+
+Resolution order: `.handoff/policy.toml` → built-in defaults (above). Unknown
+keys are an error (fail-closed), so a typo can't silently disable a gate.
 
 ### 2. Session lifecycle (quick-note items 2, 3, 7)
 
@@ -100,6 +136,28 @@ tracked meta set under `.worktrees/` at the meta root.
      (item 7: "delete after PR merge and new worktree created").
 - **Recovery:** `session start` is idempotent — if the set exists and the lease
   is ours, adopt it instead of failing.
+
+#### 2a. Sync / drift preflight (the prior-failure guard)
+
+`session start` runs a **preflight before any worktree is created**; on any
+failed check (with the corresponding `[preflight]` key true) it **refuses to
+start** rather than seed a session from drifted state — this is the direct
+mitigation for the prior weave-loop failure (Lessons §1). Checks, each grounded
+in an existing `meta_git_lib` signal (Research §R3):
+
+| Check | How (signal) | Refuse when |
+|---|---|---|
+| **clean tree** | `git_ops::git_status_summary` | uncommitted/untracked changes present (`require_clean_tree`) |
+| **base fetched & current** | `git_ops::git_fetch_branch` then `git_ahead_behind(local, origin/base)` | local base is behind/ahead of `origin/<base>` (`require_synced_base`) |
+| **develop == trunk** | `git_ahead_behind(origin/develop, origin/trunk)` | `develop` has diverged from trunk (not a pure ff mirror) |
+| **single source of truth** | `git remote -v` + the meta worktree registry | more than one writable remote, or an untracked ad-hoc worktree exists |
+| **lease-capable weave** | `weave lease --help` probe (HFTASK-0002 already detects this) | only the legacy repowire/mcp-broker path is available (`refuse_legacy_weave`) |
+
+The preflight emits a `preflight` ledger event recording the verdict and the
+observed SHAs/ahead-behind counts, so a refusal is auditable and a fresh agent
+can see *why* a session wouldn't start. It shares machinery with the
+HFTASK-0005 `hf drift` gate (same git-state comparison), differing only in
+*when* it runs (session entry vs. handoff).
 
 ### 3. Branch & remote policy (item 6)
 
@@ -263,11 +321,33 @@ exact worker/reviewer/merge split and hardened it. We adopt its model:
     state. **One-way (ledger → kb)** to keep Git authoritative.
   - Runs at `session end` / after `pr_merged`.
 
-### 7. New witnessed ledger event types
+### 7. New witnessed ledger event schema
 
-`session_start`, `session_end`, `pr_opened`, `pr_merged`,
-`pr_changes_requested`, `review_verdict`, `permission_verdict`,
-`meta_registered` — all part of the tamper-evident chain like existing events.
+All new events ride the **existing** generic ledger API
+`Ledger::append(event_type, work_order_id, payload_json, ts_ns)` — so each is
+automatically SHA3-hashed and chained into the `rvf-crypto` WitnessChain exactly
+like today's `task_transition` / `checkpoint` events (no schema migration; the
+`events` table already stores arbitrary `event_type` + JSON `payload`). For
+loop events the `work_order_id` column carries the relevant correlation id
+(session id, PR ref, or task id).
+
+| `event_type` | `work_order_id` | payload fields |
+|---|---|---|
+| `session_start` | session id | `worktree_set, branch, base_sha, base_branch, trunk_branch` |
+| `session_end` | session id | `worktree_set, reason ∈ {merged,aborted}, recycled: bool` |
+| `preflight` | session id | `verdict ∈ {pass,refuse}, checks{clean,synced_base,develop_eq_trunk,single_origin,weave_ok}, ahead_behind` |
+| `cycle_open` | session id | `task_ids[], cycle_flush` |
+| `pr_opened` | `pr:<owner>/<repo>#<n>` | `branch, trunk, task_ids[], draft: bool` |
+| `review_verdict` | `pr:…#n` | `reviewer ∈ {cloud_ultra,swarm_local}, verdict ∈ {approve,deny}, reason, out_of_band: true` |
+| `permission_verdict` | `pr:…#n` | `ask_id, status ∈ {pending,approved,denied,timeout}` |
+| `pr_merged` | `pr:…#n` | `merge_sha, squashed: true, develop_ffd: bool` |
+| `pr_changes_requested` | `pr:…#n` | `reason, reopened_task_ids[]` |
+| `meta_registered` | repo name | `meta_yaml: bool, gitignore: bool` |
+
+`hf status`/`hf handoff` derive loop state by replaying these (e.g. cycle count
+= `checkpoint`s since the last `session_start`; an open PR = `pr_opened` with no
+later `pr_merged`/`pr_changes_requested`). Because the chain is witnessed, the
+loop's whole shipping history is tamper-evident and replayable.
 
 ### 8. Weave integration summary
 
