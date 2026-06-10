@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0015",
+  "title": "hf policy engine + hook contract wiring (lifecycle automation)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001 §10/R9: implement `hf policy check-claim|check-edit|check-handoff` reading the brought-forward .handoff/policies/rules.toml (handoff.policy.rules.v1: deny-without-claim, lease timings, drift blocks, protected-files denylist, blocked commands). Wire .handoff/hooks/hooks.toml (handoff.hooks.v1) so the agent harness fires hf on SessionStart/PreSessionStart(preflight)/TaskClaim/PreEdit/PostEdit/PreHandoff/SessionStop/PostMerge with fail_mode block as hard gates. This is the no-human-in-the-loop automation substrate. Reconcile lease heartbeat/stale/force-release timings with HFTASK-0002 claim TTL.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf policy engine + hook contract wiring (lifecycle automation): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0007"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b125bfefe7c5da56b56b740e3f190ebe93c50c832e040126712185aea3e43597",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:cc9636c371d7ca90f10a4f7b5b17ece53a8c837a4b4f2ad424178a2a8919b715"
+  }
+}

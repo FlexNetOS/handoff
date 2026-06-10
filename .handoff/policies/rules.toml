@@ -1,0 +1,68 @@
+# Continuity Ledger Kernel — policy rules (handoff.policy.rules.v1)
+#
+# Brought forward (upgraded) from the 2026-06-02 ark_handoff_ledger_v2_package
+# — see ADR-0001 Research §R9. Read by `hf policy` (HFTASK-0015) and the drift
+# gate (HFTASK-0005). Fail-closed defaults.
+
+[policy]
+schema                  = "handoff.policy.rules.v1"
+default_write_mode      = "deny_without_claim"
+default_network_mode    = "deny_unless_task_allows"
+default_dependency_mode = "deny_without_audit_event"
+
+[leases]
+# Weave-lease coordination (HFTASK-0002). NOTE: these are the *heartbeat/stale*
+# timings for a held lease; the claim-lease TTL (CLAIM_TTL_SECS=3600 in hf) is the
+# outer bound and should be reconciled to force_release on implementation.
+heartbeat_seconds            = 30
+stale_after_seconds          = 300
+force_release_after_seconds  = 1800
+require_disjoint_write_scopes = true
+
+[handoff]
+require_checkpoint     = true
+require_test_evidence  = true
+allow_test_waiver      = true
+require_drift_audit    = true
+require_next_command   = true
+
+[drift]
+block_out_of_scope_write              = true
+block_objective_change_without_adr    = true
+block_acceptance_change_without_reclaim = true
+block_architecture_change_without_adr = true
+
+# --- Loop v2 additions (ADR-0001) ---
+
+[merge]
+# The gate is enforced by hf reading the weave permission verdict + its own
+# review_verdict ledger event (§5/R6). End-state approver = a surgical AI
+# gatekeeper with full code knowledge (§5b), NOT a human and NOT a blind swarm.
+require_review_verdict        = true
+require_permission_granted    = true
+block_protected_file_changes  = true   # see [merge.protected_files]
+
+[merge.protected_files]
+# A confused/compromised agent must not be able to rewrite its own guardrails
+# (gh-aw lesson, §5a). Block PRs that touch these.
+patterns = [
+  ".github/**",
+  ".handoff/policy.toml",
+  ".handoff/policies/**",
+  ".handoff/hooks/**",
+  ".handoff/decisions/**",   # ADRs
+  "**/Cargo.toml",
+  "**/*.lock",
+]
+
+[commands.blocked]
+patterns = [
+  "rm -rf /",
+  "git reset --hard",
+  "git clean -fdx",
+  "git push --force",        # use --force-with-lease
+  "sudo rm",
+  "chmod -R 777",
+  "curl * | sh",
+  "wget * | sh",
+]

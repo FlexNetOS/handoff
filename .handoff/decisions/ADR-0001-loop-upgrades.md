@@ -369,6 +369,33 @@ exact worker/reviewer/merge split and hardened it. We adopt its model:
   allowlisting for any agent that touches the internet. Explicit `noop`/
   `missing-tool` reporting so a stuck stage fails loudly, never silently.
 
+#### 5b. The end-state: a surgical AI gatekeeper with full code knowledge
+
+**Every human-in-the-loop approval is ultimately replaced by a surgical AI
+gatekeeper** — not a human, and not a blind swarm vote. The gatekeeper's defining
+requirement is **full code knowledge**: it must have complete, queryable
+knowledge of the codebase, not just the PR diff. Two layers compose:
+
+- **Judgment layer — the AI gatekeeper.** A code-omniscient reviewer backed by a
+  **code-intelligence index** of the whole repo (e.g. `git kb code index` /
+  `kb_callers`/`kb_impact`, and/or RuVector code understanding), so it reasons
+  about a change against its full blast radius (callers, callees, invariants),
+  not a context-window snippet. This is what makes it *surgical* — it can approve
+  a narrow change and reject a subtly-breaking one because it knows the whole
+  graph. It is the `swarm_local` reviewer (§5 Phase 2) **upgraded with mandatory
+  full-codebase grounding**.
+- **Enforcement layer — a deterministic policy/secret gate.** The gatekeeper's
+  *verdict* is judgment; the *action* (mint a token, merge) is gated by envctl's
+  `broker::decide` (§9.5 / R10) — a pure, default-deny, fail-closed policy engine.
+  The AI decides; the deterministic broker is the only thing that can release the
+  credential or trigger the merge. Compromising the AI still can't bypass the
+  broker.
+
+Trajectory: `permission_gate` is transitional **toward the AI gatekeeper, not
+toward a human** — the human approver is scaffolding removed once the gatekeeper
+(with full code knowledge) + the envctl broker are trusted. "No human in the
+loop" is the target; the gatekeeper is how the loop closes safely.
+
 ### 6. `.kb` + meta sync (item 1)
 
 - **`hf sync`**
@@ -489,11 +516,46 @@ protection — so adopt the mesh *and* §9.3 together, never the mesh alone.
      reviewers + environment-scoped secrets. This is the infra that makes the §5
      "permission-gated merge" real and makes the human→swarm transition a change
      of *who approves the Environment*, not a code change (R4).
-  2. **Split the overloaded `PARENT_REPO_PAT`** into purpose-scoped fine-grained
-     PATs (dispatch vs publish) to shrink leak blast radius; prefer **GitHub App
-     / OIDC** tokens over long-lived PATs. (`flexnetos_github_app`, currently
-     empty, is the natural home for an App-token issuer — R3.)
+  2. **Integrate the envctl `secrets-engine` (R10) as the secret relay/injection
+     layer — the preferred path over raw org PATs.** Instead of handing the loop a
+     long-lived `PARENT_REPO_PAT`, the worker receives only a short-lived,
+     peer-bound, revocable **relay bearer** (`relay_mint`, ≤24h); the real GitHub
+     credential stays in the encrypted vault and is swapped in only at egress
+     (`relay_swap`) by the broker. The **`broker::decide` policy gate** (pure,
+     default-deny, host/path/method allowlists + budgets + fail-closed presence
+     gate) **is** the deterministic enforcement layer under the §5b AI gatekeeper:
+     the gatekeeper judges, the broker is the only thing that releases the token
+     or permits the `POST /repos/{o}/{r}/merges` call. This replaces both the
+     `PARENT_REPO_PAT`-split and the "GitHub App / OIDC" placeholder. **Greenfield
+     (R10):** the GitHub `ProviderMint` (native scoped sub-token) and the
+     `inject.rs`/`run_child` child-env path are stubs — for a genuinely scoped
+     token they must be implemented; the relay-bearer + `relay_swap` HTTP path
+     works today. `flexnetos_github_app` is the home for the GitHub `ProviderMint`.
   3. **SHA-pin all third-party actions** (the release path already does).
+  4. **Until envctl is wired,** as an interim split the overloaded
+     `PARENT_REPO_PAT` into purpose-scoped fine-grained PATs (dispatch vs publish).
+
+### 10. Hook & policy layer — lifecycle automation (brought forward, R9)
+
+The original package shipped a **hook contract** and **policy rules** that the
+Rust spike had dropped; they are restored (upgraded) and are the answer to "what
+actually drives the loop with no human in it":
+
+- **`.handoff/hooks/hooks.toml` (`handoff.hooks.v1`)** — the agent harness fires
+  `hf` on lifecycle events, `fail_mode = block` being a hard gate:
+  `SessionStart → hf resume`; `PreSessionStart → hf session preflight` (§2a, block);
+  `TaskClaim → hf policy check-claim` (block); `PreEdit → hf policy check-edit`
+  (block); `PostEdit → hf checkpoint --auto`; `PreHandoff → hf drift && hf policy
+  check-handoff` (block); `SessionStop → hf checkpoint && hf handoff`;
+  `PostMerge → hf sync`. This is the lifecycle-automation substrate — the loop
+  isn't a script, it's these hooks reacting to events.
+- **`.handoff/policies/rules.toml` (`handoff.policy.rules.v1`)** — fail-closed
+  defaults (`deny_without_claim`, `deny_unless_task_allows`), lease timings
+  (heartbeat 30s, stale 300s, force-release 1800s — to reconcile with the
+  HFTASK-0002 claim TTL), handoff requirements, drift blocks, a **protected-files
+  denylist** (§5a), and a blocked-command list.
+- **`hf policy`** is the implied verb surface (`check-claim`/`check-edit`/
+  `check-handoff`) that reads these rules — tracked as HFTASK-0015.
 
 ## Lessons baked in (from the prior weave loop failure)
 
@@ -740,6 +802,54 @@ so repo-level protection/secrets/envs were readable, org-level secrets were not)
   **Biggest gap:** no GitHub Environments → the merge/publish gate the design
   needs does not exist as infra yet.
 
+### R9 — Source reconciliation vs the original package (no-downgrade check)
+
+Process principle (user, critical): **never downgrade, always upgrade and
+automate.** `~/Downloads/tmp/handoff/.archive/ark_handoff_ledger_v2_package.zip`
+(2026-06-02) is the original "Ark Handoff Ledger v2" package the Rust spike was
+built from. Reconciliation of current repo vs the package:
+
+- **Present / not lost:** `schemas/{task,session,packet}.schema.json` ✅ (the
+  `handoff.task.v1` envelope = the `work-order` crate); `docs/` PRD ✅ (renamed);
+  `backlog.yaml` ✅.
+- **Dropped by the spike → now brought forward (upgraded):**
+  `.handoff/hooks/hooks.toml` (hook contract — §10), `.handoff/policies/rules.toml`
+  (policy rules — §10), `.handoff/skills/session-resume.skill.md` (resume skill).
+  These were a real downgrade (the lifecycle-automation + policy layer); restoring
+  them is the upgrade. The package's `templates/AGENTS.md` still said "Ark" — the
+  repo's `AGENTS.md` is the corrected version.
+- **Conclusion:** the current Rust repo is the *upgrade* of the package's
+  Rust-less template bundle, now re-completed with the dropped automation layer.
+
+### R10 — envctl `secrets-engine` (the secret relay/injection tool)
+
+Verified deep-dive of `~/Desktop/meta/envctl/crates/secrets-engine` (the "secret
+relay/injection tool" to integrate). It is a production-grade **vault + credential
+broker + relay** library (`envctl_secrets`), driven by `secretd` (gRPC) +
+`secretctl` (CLI):
+
+- **Vault (real, tested):** XChaCha20-Poly1305 AEAD per record, fixed canonical
+  AAD binding rows un-relocatable, LUKS-style DEK keyslots (Argon2id passphrase +
+  optional USB), DEK in RAM only, hash-chained tamper-evident audit.
+- **Broker gate (real, tested) — the key reuse:** `broker::decide` is a **pure,
+  sync, default-deny** policy function → `RelayDecision::{Allow, Deny{reason}}`
+  over ~25 `DenyReason`s (host/path/method allowlists, peer binding, budgets,
+  rate, clock-rollback) with a **fail-closed presence gate** (`GateState`,
+  `Unproven → deny`). A clean drop-in **merge-gate** and the enforcement layer
+  under the §5b gatekeeper.
+- **Relay (real, tested):** `relay_mint` issues a ≤24h, peer-bound, revocable
+  `evrelay_…` bearer (only its MAC is persisted); `relay_swap` swaps it for the
+  real key **only at egress** — proven by 20+ tests that the real key never
+  reaches the worker, events, audit, or a hostile upstream. **Replaces
+  `PARENT_REPO_PAT` for `api.github.com` egress today.**
+- **Stubs (greenfield):** the GitHub `ProviderMint` (native scoped sub-token —
+  the literal fine-grained-PAT replacement) is `NoMint`; `inject.rs` /
+  `Engine::run_child` / `secretctl run` (child-env injection into `gh`/`git`) are
+  `todo!()` (Phase 6/8); the MITM `ca.rs` is a placeholder (only needed for the
+  proxy data-plane mode).
+- **Surface:** Rust API (`Engine`), gRPC `secretd` (`Relay.Mint/Revoke`, `Vault`,
+  `Lock`, `Audit`), CLI `secretctl` (`relay create/mint/revoke`, `run`).
+
 ## Task breakdown
 
 | Task | Pillar | Quick-note items |
@@ -750,6 +860,9 @@ so repo-level protection/secrets/envs were readable, org-level secrets were not)
 | **HFTASK-0010** | PR review/merge automation — phased cloud_ultra→swarm_local + permission gate | 5 |
 | **HFTASK-0011** | `hf sync` — `.meta.yaml` + `.gitignore` + `.kb` mirror | 1 |
 | **HFTASK-0012** | CI/CD bring-up — workflows + branch protection + merge-gate Environment | 5, 6 |
+| **HFTASK-0013** | Integrate envctl `secrets-engine` (relay bearer + broker gate) | secrets/§9.5, R10 |
+| **HFTASK-0014** | Surgical AI gatekeeper with full code knowledge (replaces human approvals) | §5b |
+| **HFTASK-0015** | `hf policy` engine + hook-contract wiring (lifecycle automation) | §10, R9 |
 
 Dependencies: 0008 → 0007; 0009 → 0007/0008; 0010 → 0009/0012; 0011 → 0007;
-0012 → 0001 (repo must be pushed first).
+0012 → 0001 (repo pushed first); 0013 → 0010; 0014 → 0010/0013; 0015 → 0007.
