@@ -5,17 +5,23 @@
 //! task / next command — no chat archaeology. Built on the validated `work-order` (the
 //! handoff.task.v1 envelope) + `ledger` (rusqlite event store + rvf-crypto witness) crates.
 //!
-//! Verbs: init · seed · status · claim <id> · checkpoint <id> [note] · handoff · resume [--json]
+//! Verbs: init · seed · status · claim <id> · release <id> · checkpoint <id> [note] · handoff · resume [--json]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
+
+mod lease;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use lease::Leaser;
 use ledger::Ledger;
 use work_order::{Priority, Status, WorkOrder};
 
 const HF: &str = ".handoff";
+/// TTL of a claim lease: a claim represents an active work session. Re-claiming
+/// (heartbeat) extends it; `hf release` or expiry frees it.
+const CLAIM_TTL_SECS: u64 = 3600;
 
 fn now_ns() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
@@ -81,11 +87,41 @@ fn cmd_init() {
 }
 
 fn cmd_claim(id: &str) {
+    cmd_claim_with(id, &lease::WeaveCli::from_env());
+}
+
+/// Mesh-coordinated claim: reserve a weave lease on the task *before* recording the
+/// ledger transition, so two sessions can't claim the same task. Refuses the claim
+/// if another peer holds it; degrades to ledger-only when no weave mesh is present.
+fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
     let tasks = load_tasks();
     let Some(wo) = tasks.iter().find(|t| t.id == id) else { eprintln!("no such task {id}"); return };
+    let resource = lease::claim_resource(id);
+    match lease::gate(leaser.reserve(&resource, CLAIM_TTL_SECS, &format!("hf claim {id}"))) {
+        lease::ClaimGate::Refuse(reason) => {
+            eprintln!("hf claim: {id} BLOCKED — {resource} is held by another peer ({reason}); not claiming");
+            return;
+        }
+        lease::ClaimGate::ProceedDegraded => {
+            eprintln!("hf claim: weave lease unavailable — proceeding ledger-only (no mesh coordination)");
+        }
+        lease::ClaimGate::Proceed => {
+            println!("hf claim: reserved weave lease {resource} (ttl {CLAIM_TTL_SECS}s)");
+        }
+    }
     let mut led = Ledger::open(&ledger_path()).unwrap();
     led.record_transition(wo, Status::Claimed, now_ns()).unwrap();
     println!("hf claim: {id} -> claimed");
+}
+
+/// Release the weave lease held on a task's claim (mesh hygiene after handoff/abort).
+fn cmd_release(id: &str) {
+    let resource = lease::claim_resource(id);
+    if lease::WeaveCli::from_env().release(&resource) {
+        println!("hf release: freed weave lease {resource}");
+    } else {
+        eprintln!("hf release: no active lease {resource} held by you (or weave unavailable)");
+    }
 }
 
 fn cmd_checkpoint(id: &str, note: &str) {
@@ -214,11 +250,12 @@ fn main() {
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(),
         Some("claim") => cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("checkpoint") => cmd_checkpoint(args.get(1).map(|s| s.as_str()).unwrap_or(""), &args[2..].join(" ")),
         Some("handoff") => cmd_handoff(),
         Some("resume") => cmd_resume(args.iter().any(|a| a == "--json")),
         _ => {
-            eprintln!("hf <init|seed|status|claim ID|checkpoint ID [note]|handoff|resume [--json]>");
+            eprintln!("hf <init|seed|status|claim ID|release ID|checkpoint ID [note]|handoff|resume [--json]>");
         }
     }
 }
