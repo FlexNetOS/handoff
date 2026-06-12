@@ -45,7 +45,10 @@ pub fn parse_reserve(success: bool, stdout: &str, stderr: &str) -> Reserve {
     }
     // Genuine reserve failure (cross-holder conflict or validation): weave prints
     // "failed: <reason>" on stdout and exits 1.
-    if let Some(reason) = stdout.lines().find_map(|l| l.trim().strip_prefix("failed:")) {
+    if let Some(reason) = stdout
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("failed:"))
+    {
         return Reserve::Conflict(reason.trim().to_string());
     }
     // Unknown failure shape: prefer liveness over a hard wall — fall back to ledger-only.
@@ -88,7 +91,9 @@ pub struct WeaveCli {
 
 impl WeaveCli {
     pub fn from_env() -> Self {
-        Self { bin: std::env::var("HF_WEAVE_BIN").unwrap_or_else(|_| "weave".into()) }
+        Self {
+            bin: std::env::var("HF_WEAVE_BIN").unwrap_or_else(|_| "weave".into()),
+        }
     }
 }
 
@@ -96,10 +101,14 @@ impl Leaser for WeaveCli {
     fn reserve(&self, resource: &str, ttl: u64, note: &str) -> Reserve {
         let out = Command::new(&self.bin)
             .args([
-                "lease", "reserve",
-                "--resource", resource,
-                "--ttl", &ttl.to_string(),
-                "--note", note,
+                "lease",
+                "reserve",
+                "--resource",
+                resource,
+                "--ttl",
+                &ttl.to_string(),
+                "--note",
+                note,
             ])
             .output();
         match out {
@@ -200,13 +209,19 @@ mod tests {
         let res = claim_resource("HFTASK-0002");
 
         // We claim it: acquired -> Proceed.
-        let me = FakeMesh { me: "me", held_by: shared.clone() };
+        let me = FakeMesh {
+            me: "me",
+            held_by: shared.clone(),
+        };
         assert_eq!(gate(me.reserve(&res, 3600, "")), ClaimGate::Proceed);
         // Heartbeat (same holder re-reserves) stays Proceed.
         assert_eq!(gate(me.reserve(&res, 3600, "")), ClaimGate::Proceed);
 
         // A different peer is refused while we hold it.
-        let other = FakeMesh { me: "other", held_by: shared.clone() };
+        let other = FakeMesh {
+            me: "other",
+            held_by: shared.clone(),
+        };
         assert_eq!(
             gate(other.reserve(&res, 3600, "")),
             ClaimGate::Refuse("held by me".into())

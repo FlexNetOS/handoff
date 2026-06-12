@@ -63,7 +63,11 @@ impl Ledger {
         if prev.len() == 32 {
             prev_witness_hash.copy_from_slice(&prev);
         }
-        Ok(Self { conn, seq, prev_witness_hash })
+        Ok(Self {
+            conn,
+            seq,
+            prev_witness_hash,
+        })
     }
 
     /// Append a witnessed event. ts_ns is passed in (deterministic in tests).
@@ -94,7 +98,12 @@ impl Ledger {
     }
 
     /// Convenience: record a work-order state transition.
-    pub fn record_transition(&mut self, wo: &WorkOrder, status: Status, ts_ns: u64) -> rusqlite::Result<u64> {
+    pub fn record_transition(
+        &mut self,
+        wo: &WorkOrder,
+        status: Status,
+        ts_ns: u64,
+    ) -> rusqlite::Result<u64> {
         let payload = serde_json::json!({
             "id": wo.id, "status": status, "correlation_id": wo.correlation_id, "role": wo.role
         })
@@ -103,9 +112,9 @@ impl Ledger {
     }
 
     pub fn all_events(&self) -> rusqlite::Result<Vec<EventRow>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT seq, event_type, work_order_id, payload_json FROM events ORDER BY seq")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT seq, event_type, work_order_id, payload_json FROM events ORDER BY seq",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(EventRow {
