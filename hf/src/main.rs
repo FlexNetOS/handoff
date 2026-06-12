@@ -9,6 +9,7 @@
 //!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
+mod kb;
 mod lease;
 mod policy;
 mod session;
@@ -206,6 +207,48 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     if !quiet {
         println!("hf checkpoint: {id} :: {note}");
     }
+}
+
+/// `hf done <id> [--pr N]` — record the terminal `Done` transition (the loop's completion
+/// signal, previously missing: claim→Claimed and checkpoint is a non-status event, so nothing
+/// ever marked a task Done). With `--pr`, also witnesses a `pr_merged` event (ADR-0003 terminal).
+fn cmd_done(id: &str, pr: Option<&str>) {
+    if id.is_empty() {
+        eprintln!("usage: hf done <task-id> [--pr N]");
+        return;
+    }
+    let tasks = load_tasks();
+    let Some(wo) = tasks.iter().find(|t| t.id == id) else {
+        eprintln!("hf done: no such task {id}");
+        return;
+    };
+    let mut led = Ledger::open(&ledger_path()).unwrap();
+    led.record_transition(wo, Status::Done, now_ns()).unwrap();
+    if let Some(p) = pr {
+        let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
+        let _ = led.append("pr_merged", id, &payload, now_ns());
+    }
+    println!(
+        "hf done: {id} -> done{}",
+        pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
+    );
+}
+
+/// Persist each card's ledger-replayed status into its `.task.json` (ADR-0003 single-registry
+/// rule: cards are derived snapshots of ledger truth). Returns the number of cards changed.
+/// This is the deterministic fix for D3 (cards stale at `backlog` despite ledger progress).
+fn sync_cards() -> usize {
+    let replay = current_statuses();
+    let mut changed = 0;
+    for mut wo in load_tasks() {
+        let live = status_of(&wo.id, &replay, &wo);
+        if live != wo.status {
+            wo.status = live;
+            save_task(&wo);
+            changed += 1;
+        }
+    }
+    changed
 }
 
 /// Run a subprocess with explicit argv (no shell), capturing trimmed stdout.
@@ -674,6 +717,34 @@ fn main() {
             let id = positional.first().copied();
             let note = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
             cmd_checkpoint(id, &note, auto, quiet);
+            if args.iter().any(|a| a == "--sync-cards") {
+                let n = sync_cards();
+                if !quiet {
+                    println!("hf checkpoint: synced {n} card(s) from ledger truth");
+                }
+            }
+        }
+        Some("sync-cards") => {
+            let n = sync_cards();
+            println!("hf sync-cards: synced {n} card(s) from ledger truth");
+        }
+        Some("done") => {
+            let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            let pr = args
+                .iter()
+                .position(|a| a == "--pr")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str());
+            cmd_done(id, pr);
+        }
+        Some("task") if args.get(1).map(|s| s.as_str()) == Some("mint") => {
+            let slug = args
+                .iter()
+                .position(|a| a == "--from-kb")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            kb::cmd_mint_from_kb(slug);
         }
         Some("ship") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
@@ -712,7 +783,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json|--compact]>");
         }
     }
 }

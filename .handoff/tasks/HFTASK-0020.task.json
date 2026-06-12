@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0020",
   "title": "Mission Control - loop observability (hf status --json / hf watch + render)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §12/R14: NO existing UI surfaces the handoff loop's live state ('mission control' currently = envctl's zellij layout generator - naming collision). The witnessed ledger event stream (§7) IS the read-model. Build `hf status --json` + `hf watch` (tail ledger + weave broadcasts; optional SSE) as the machine feed; surface the existing control verbs (resume, review request, weave permission answer, hf merge --confirm, abort). Render layer greenfield: reuse envctl-gui egui pattern or a TUI (prompt_hub has ratatui) first cut. Disambiguate workspace-mission-control vs loop-mission-control.",
   "path_scope": [

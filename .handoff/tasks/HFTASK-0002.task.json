@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0002",
   "title": "Wire weave leases into hf claim",
-  "status": "backlog",
+  "status": "done",
   "priority": "P0",
   "objective": "Replace the ledger-only claim with a weave lease (reserve/heartbeat/release) so claims are mesh-coordinated; hf claim -> weave_lease_reserve.",
   "path_scope": [

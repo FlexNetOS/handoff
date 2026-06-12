@@ -1,0 +1,26 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "KBTASK-FLEET-HANDOFF-ROLLOUT",
+  "title": "Fleet .handoff rollout (P7)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "Minted from kb task tasks/fleet-handoff-rollout",
+  "path_scope": [
+    "."
+  ],
+  "acceptance_criteria": [
+    "Fleet .handoff rollout (P7): delivered + tests green + drift-audited (kb_ref tasks/fleet-handoff-rollout)"
+  ],
+  "test_commands": [],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "tasks/fleet-handoff-rollout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:f2a873cbf1f6a731fbb007e5ef919cf578be0563116111fc9abc057ade9a7aa3",
+    "path_scope_hash": "blake3:a2b910880c859d384db4e83c839bb0442c90f331bd609c832349ebd04bbda043",
+    "acceptance_hash": "blake3:ad56f071187f3d76d363ab5cf79b060594a7dbcf25f6a0406414d671bd044d00"
+  }
+}
