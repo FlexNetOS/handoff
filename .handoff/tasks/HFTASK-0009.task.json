@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0009",
   "title": "Batch checkout (3-5) + cycle counter -> hf ship (one squash commit/PR)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §4: `hf claim --batch N` (up to cycle_flush=4) reserves a lease per task so the loop never stalls; ledger-derived cycle counter (checkpoints since session_start) surfaced as cycles:n/flush; at threshold next_command=hf ship. `hf ship` = add + ONE squash commit listing all HFTASK ids -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.",
   "path_scope": [

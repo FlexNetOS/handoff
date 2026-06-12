@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0012",
   "title": "CI/CD bring-up - workflows + branch protection + merge-gate Environment",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §9 (Research R8): handoff has NO .github/ yet and isn't pushed. Add canonical workflows .github/workflows/{ci,auto-format,notify-parent}.yml (ci jobs test/clippy/format/build with RUSTFLAGS=-D warnings, CARGO_TERM_COLOR; least-privilege permissions: top-level contents:read, escalate per-job; auto-format loop-guarded). Turn on REAL branch protection on trunk (required checks test/clippy/format/build, strict=true up-to-date, enforce_admins deliberate, native required-reviews OFF to avoid the bot-APPROVE bypass #25439). Create a GitHub Environment 'merge-gate' (org has ZERO today) with required reviewers + env-scoped secrets = the infra that makes §5 permission-gated merge real and the human->swarm flip a config change. Join the repository_dispatch mesh (child-repo-updated to FlexNetOS/meta after CI green, SHA-pinned actions). Split overloaded PARENT_REPO_PAT into scoped fine-grained PATs; prefer GitHub App/OIDC (flexnetos_github_app is the home).",
   "path_scope": [
