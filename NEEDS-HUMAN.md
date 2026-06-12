@@ -1,31 +1,26 @@
-# NEEDS-HUMAN — HFTASK-0001
+# NEEDS-HUMAN — HFTASK-0001 ✅ RESOLVED 2026-06-12
 
-## Blocked step: create + push FlexNetOS/handoff GitHub repo
+## Blocked step (historical): create + push the handoff GitHub repo
 
-The local portion of HFTASK-0001 is **done and committed** (rename to
+The local portion of HFTASK-0001 was done and committed (rename to
 Continuity Ledger Kernel, drop Ark/V1/V2, PRD file renamed, `cargo test`
-green, initial commit `06432b5`).
+green, initial commit `06432b5`). The final step — creating the GitHub repo
+and pushing — was denied by the Claude Code permission classifier as an
+outward-facing action (a genuine human wall, not a retryable failure).
 
-The final objective item — creating the GitHub repo and pushing — was
-**denied by the Claude Code permission classifier**. It treats creating a new
-external GitHub repo and pushing the whole working tree as an outward-facing
-action requiring explicit human approval. This is a genuine human wall, not a
-transient/retryable failure, so it is not auto-retried.
+## Resolution
 
-### To unblock, run this yourself (gh is already authed as `drdave-flexnetos`):
+- The human created and pushed the repo. It lives canonically at
+  **`FlexNetOS/handoff`** (public, default branch `master`); the interim
+  `drdave-flexnetos/handoff` URL redirects there. The local `origin` remote
+  is normalized to `git@github.com:FlexNetOS/handoff.git`.
+- `handoff` is registered in `~/Desktop/meta/.meta.yaml` (FlexNetOS URL) and
+  `handoff/` is ignored in the parent repo — both per `~/Desktop/meta/CLAUDE.md`.
+- A `develop` branch mirrors `master` as the worktree base, per the branch
+  policy (worktree off `origin/develop` → PR into `master` → ff `develop`).
 
-```bash
-cd ~/Desktop/meta/handoff
-gh repo create FlexNetOS/handoff --private --source=. --remote=origin \
-  --description "Continuity Ledger Kernel — Rust-native, repo-local handoff kernel for AI coding agents (hf CLI)" \
-  --push
-```
-
-Or run `! gh repo create ...` directly in the Claude Code prompt to keep it in-session.
-
-### After the repo exists (per ~/Desktop/meta/CLAUDE.md — new crates):
-- Add `handoff` to `~/Desktop/meta/.meta.yaml` projects.
-- Add the `handoff/` dir to `~/Desktop/meta/.gitignore` (child repos are not part of the parent).
-
-Once pushed, HFTASK-0001 is fully satisfied; next safe task is HFTASK-0002
-(wire weave leases into `hf claim`).
+HFTASK-0001 is fully satisfied. The PR that lands this file is also the
+pipe-proof of the ship policy (branch → push → PR → merge) on this repo;
+required-check protection arrives with HFTASK-0012 (CI bring-up). Next safe
+task: HFTASK-0003 (prompt_hub SwarmBundle → handoff.task.v1 dispatch) —
+HFTASK-0002 (weave leases in `hf claim`) is already implemented.
