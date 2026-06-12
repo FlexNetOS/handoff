@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "claude-plugins",
+  "role": "Claude Code plugin marketplace: a two-file repo whose .claude-plugin/marketplace.json registers the meta and gitkb plugins via git-subdir sources from the gitkb GitHub org. Contains no code of its own \u2014 purely a distribution manifest for installing those plugins into Claude Code.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Fix D1: re-point marketplace sources from dead gitkb org to FlexNetOS forks",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

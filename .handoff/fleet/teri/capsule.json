@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "teri",
+  "role": "Rust multi-agent swarm simulation/prediction engine: ingests seed documents into a petgraph knowledge graph, spawns persona agents with redb-backed memory, and runs rayon/tokio parallel simulations served over an axum SSE API. Provider-agnostic LLM client (src/llm.rs) targets OpenAI/Anthropic/Gemini/local models.",
+  "plane": "swarm-inference",
+  "tier": "C",
+  "northstar": "Full-feature Rust MiroFish: teri is the engine skeleton, shimmy the local inference slot.",
+  "next_command": "W4: MiroFish feature-parity matrix -> straightest-line port-plan ADR (GAP-REGISTER #6)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

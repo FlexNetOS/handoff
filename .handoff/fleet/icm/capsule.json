@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "icm",
+  "role": "Rust CLI + MCP server for persistent agent memory: SQLite/sqlite-vec store with hybrid BM25+vector recall, decay/consolidation, feedback and transcript tracking (crates icm-core/store/mcp/cli). It is the live ICM memory backend mandated by this workspace's CLAUDE.md and connected as an MCP server.",
+  "plane": "rtk-tooling",
+  "tier": "C",
+  "northstar": "rtk-ai tooling is foundational to every feature: tokens filtered, memory persistent, voice on milestones, locks for parallel agents.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}
