@@ -73,7 +73,11 @@ fn b3(s: &str) -> String {
 }
 
 impl WorkOrder {
-    pub fn compute_intent_lock(objective: &str, path_scope: &[String], acceptance: &[String]) -> IntentLock {
+    pub fn compute_intent_lock(
+        objective: &str,
+        path_scope: &[String],
+        acceptance: &[String],
+    ) -> IntentLock {
         IntentLock {
             objective_hash: b3(objective),
             path_scope_hash: b3(&path_scope.join("\n")),
@@ -98,7 +102,7 @@ impl WorkOrder {
 //         consistency_report: Vec<Conflict>, evolution_suggestions: Vec<String> }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwarmBundle {
-    pub workflow_id: String, // Uuid as string for the spike
+    pub workflow_id: String,                 // Uuid as string for the spike
     pub role_prompts: Vec<(String, String)>, // (role, prompt) — HashMap flattened for determinism
     pub handoff_template: String,
 }
@@ -113,7 +117,9 @@ pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
         .map(|(i, (role, prompt))| {
             let id = format!("TASK-{:04}", i + 1);
             let path_scope = vec![".".to_string()];
-            let acceptance = vec![format!("{role} deliverable accepted via test_commands + drift audit")];
+            let acceptance = vec![format!(
+                "{role} deliverable accepted via test_commands + drift audit"
+            )];
             let objective = prompt.clone();
             let intent_lock = WorkOrder::compute_intent_lock(&objective, &path_scope, &acceptance);
             WorkOrder {
@@ -150,8 +156,14 @@ mod tests {
         SwarmBundle {
             workflow_id: "wf-0001".to_string(),
             role_prompts: vec![
-                ("architect".to_string(), "Design the storefront schema".to_string()),
-                ("coder".to_string(), "Implement the checkout flow".to_string()),
+                (
+                    "architect".to_string(),
+                    "Design the storefront schema".to_string(),
+                ),
+                (
+                    "coder".to_string(),
+                    "Implement the checkout flow".to_string(),
+                ),
             ],
             handoff_template: "standard".to_string(),
         }

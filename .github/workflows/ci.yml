@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      # ledger depends on rvf-crypto via a relative path
+      # (../../RuVector/crates/rvf/rvf-crypto from ledger/), mirroring the
+      # meta workspace layout where RuVector is a sibling checkout.
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Run tests
+        working-directory: handoff
+        run: cargo test --workspace
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Run clippy
+        working-directory: handoff
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        working-directory: handoff
+        run: cargo fmt --all -- --check
