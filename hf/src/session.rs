@@ -104,8 +104,15 @@ fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<Pat
                 &root,
                 "meta",
                 &[
-                    "git", "worktree", "create", "--repo", "handoff", "--branch", branch,
-                    "--from-ref", from_ref,
+                    "git",
+                    "worktree",
+                    "create",
+                    "--repo",
+                    "handoff",
+                    "--branch",
+                    branch,
+                    "--from-ref",
+                    from_ref,
                 ],
             )?;
             return Ok(root.join(".worktrees").join(branch).join("handoff"));
@@ -221,7 +228,10 @@ fn session_start(base_override: Option<&str>, leaser: &dyn Leaser) {
     }
     println!("hf session start: {branch} off {base_ref}");
     println!("  worktree: {}", worktree.display());
-    println!("  next: cd into the worktree, then `hf claim --batch {}`", policy.loop_cfg.cycle_flush);
+    println!(
+        "  next: cd into the worktree, then `hf claim --batch {}`",
+        policy.loop_cfg.cycle_flush
+    );
 }
 
 fn session_end(recycle: bool, base_override: Option<&str>, leaser: &dyn Leaser) {
@@ -352,7 +362,10 @@ mod tests {
 
     #[test]
     fn branch_and_resource_are_deterministic() {
-        assert_eq!(session_branch("handoff-", 1_700_000_000), "handoff-1700000000");
+        assert_eq!(
+            session_branch("handoff-", 1_700_000_000),
+            "handoff-1700000000"
+        );
         assert_eq!(
             session_resource("handoff-1700000000"),
             "handoff:session:handoff-1700000000"

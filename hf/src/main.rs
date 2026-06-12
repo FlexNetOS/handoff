@@ -345,8 +345,8 @@ fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
         .unwrap_or(0);
     let sess = session::open_session_and_cycle();
     let policy = policy::Policy::load(Path::new(HF));
-    let project =
-        capsule_field("project_name").unwrap_or_else(|| "handoff (Continuity Ledger Kernel)".into());
+    let project = capsule_field("project_name")
+        .unwrap_or_else(|| "handoff (Continuity Ledger Kernel)".into());
 
     let out = serde_json::json!({
         "schema": "handoff.loop_status.v1",
