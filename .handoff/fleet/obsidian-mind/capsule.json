@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "obsidian-mind",
+  "role": "Obsidian vault template that gives AI coding agents (Claude Code, Codex, Gemini) persistent cross-session memory via TypeScript lifecycle hooks (session-start, classify-message, validate-write, qmd-refresh, pre-compact, stop-checklist) plus QMD semantic search. Ships a PKM scaffold (brain/, work/, org/, perf/) with templates, skills, and multi-agent configs rather than application code.",
+  "plane": "knowledge-docs",
+  "tier": "C",
+  "northstar": "Knowledge survives session resets: kb documents, memoirs, vaults \u2014 the planning plane.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

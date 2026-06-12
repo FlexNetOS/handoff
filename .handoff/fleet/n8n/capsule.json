@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "n8n",
+  "role": "FlexNetOS fork of the n8n workflow-automation platform (TS pnpm/turbo monorepo: packages/cli, core, workflow, nodes-base, frontend) used as an autonomous-harness testbed. The n8n-loop skill plus ralph-n8n.sh runner work a committed _workspace/ backlog (harness pillars, Claude-CLI to n8n-chat bridge, meta-codebase viz workflows) against a local n8n dev instance.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Build the meta estate visual-map workflows (blocked: needs user docker, item D-1)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

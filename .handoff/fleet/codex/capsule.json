@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "codex",
+  "role": "Fork of OpenAI's Codex CLI \u2014 the Rust coding-agent workspace (codex-rs: core, tui, exec, app-server, MCP). FlexNetOS adds a single \"Deep Code Harness\" commit: .codex agent/hook/skill profiles plus tools/codex-harness, a Node orchestrator wrapping `codex exec` with schema-validated repo-map/debug/review/trace pipelines.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

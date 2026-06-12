@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "vox",
+  "role": "Rust TTS CLI with six speech backends (say, piper, qwen, qwen-native, kokoro, voxtream) plus an MCP server, daemon, voice cloning/packs, STT, TUI, and a Claude-API streaming chat module. It is the spoken-feedback / voice-conversation tool used by agent sessions across this workspace.",
+  "plane": "rtk-tooling",
+  "tier": "C",
+  "northstar": "rtk-ai tooling is foundational to every feature: tokens filtered, memory persistent, voice on milestones, locks for parallel agents.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

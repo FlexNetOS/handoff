@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "kasetto",
+  "role": "Rust CLI (bins `kasetto`/`kst`) that declaratively syncs AI agent assets \u2014 skills, slash commands, and MCP server configs \u2014 from git hosts or local dirs into 21 agent environments (Claude Code, Cursor, Codex, etc.). Lock-first design: kasetto.lock pins installed content hashes for reproducible, zero-fetch syncs (src/lock.rs, src/commands/sync split into skills/mcps/commands, model/Agent enum).",
+  "plane": "env-control",
+  "tier": "C",
+  "northstar": "One env-control story: envctl injects/relays secrets, kasetto provisions agent assets; COGNITUM seeds the vault.",
+  "next_command": "W1: sync fork 3.0.0 -> 3.1.0; kasetto<->envctl split ADR; sync --locked preflight (P6.28)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}
