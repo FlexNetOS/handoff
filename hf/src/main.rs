@@ -6,6 +6,7 @@
 //! handoff.task.v1 envelope) + `ledger` (rusqlite event store + rvf-crypto witness) crates.
 //!
 //! Verbs: init · seed · status · claim <id> · release <id> · checkpoint <id> [note] · handoff · resume [--json]
+//!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod lease;
@@ -176,6 +177,128 @@ fn cmd_checkpoint(id: &str, note: &str) {
     let mut led = Ledger::open(&ledger_path()).unwrap();
     led.append("checkpoint", id, &payload, now_ns()).unwrap();
     println!("hf checkpoint: {id} :: {note}");
+}
+
+/// Run a subprocess with explicit argv (no shell), capturing trimmed stdout.
+/// Mirrors the lease::WeaveCli discipline (ADR-0002): no shell, explicit args.
+fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
+    match std::process::Command::new(bin).args(args).output() {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
+        Ok(o) => Err(format!(
+            "{bin} {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&o.stderr).trim()
+        )),
+        Err(e) => Err(format!("{bin} not runnable: {e}")),
+    }
+}
+
+/// HFTASK-0009 core: one squash-style commit → push branch → PR → arm GitHub-native
+/// auto-merge (HFTASK-0010 merge model: GitHub merges when ALL required checks are
+/// green; hf never polls-and-merges and never overrides red). Emits `pr_opened`.
+fn cmd_ship(id: &str, base: &str) {
+    if id.is_empty() {
+        eprintln!("usage: hf ship <task-id> [--base BRANCH]");
+        return;
+    }
+    let branch = match run_out("git", &["branch", "--show-current"]) {
+        Ok(b) if !b.is_empty() => b,
+        _ => {
+            eprintln!("hf ship: not on a branch (detached HEAD?) — refusing");
+            return;
+        }
+    };
+    if branch == base || branch == "master" || branch == "main" {
+        eprintln!(
+            "hf ship: refusing to ship from trunk '{branch}' — work happens on session branches"
+        );
+        return;
+    }
+    // single squash-style commit of the working tree (if dirty)
+    let dirty = run_out("git", &["status", "--porcelain"]).unwrap_or_default();
+    if !dirty.is_empty() {
+        if let Err(e) = run_out("git", &["add", "-A"]) {
+            eprintln!("hf ship: {e}");
+            return;
+        }
+        let msg = format!(
+            "feat: ship {id}
+
+Shipped via `hf ship` (handoff.task.v1 {id}).
+
+Implements [[tasks/{id}]]"
+        );
+        if let Err(e) = run_out("git", &["commit", "-m", &msg]) {
+            eprintln!("hf ship: {e}");
+            return;
+        }
+        println!("hf ship: committed working tree on {branch}");
+    }
+    if let Err(e) = run_out("git", &["push", "-u", "origin", &branch]) {
+        eprintln!("hf ship: push failed — {e}");
+        return;
+    }
+    println!("hf ship: pushed {branch}");
+    // PR create (idempotent: reuse an existing open PR for this branch)
+    let pr_url = match run_out(
+        "gh",
+        &["pr", "view", &branch, "--json", "url", "--jq", ".url"],
+    ) {
+        Ok(u) if u.starts_with("http") => {
+            println!("hf ship: reusing open PR {u}");
+            u
+        }
+        _ => {
+            let title = format!("feat: ship {id}");
+            let body = format!(
+                "Shipped via `hf ship` (handoff.task.v1 **{id}**).\n\nAuto-merge is armed; GitHub merges when all required checks on `{base}` pass."
+            );
+            match run_out(
+                "gh",
+                &[
+                    "pr", "create", "--base", base, "--head", &branch, "--title", &title, "--body",
+                    &body,
+                ],
+            ) {
+                Ok(u) => u.lines().last().unwrap_or_default().to_string(),
+                Err(e) => {
+                    eprintln!("hf ship: PR creation failed — {e}");
+                    return;
+                }
+            }
+        }
+    };
+    println!("hf ship: PR {pr_url}");
+    // arm GitHub-native auto-merge — non-fatal (e.g. unprotected base merges need no arming)
+    match run_out("gh", &["pr", "merge", "--auto", "--squash", &pr_url]) {
+        Ok(_) => {
+            println!("hf ship: native auto-merge armed (squash) — GitHub completes on green checks")
+        }
+        Err(e) => {
+            eprintln!("hf ship: auto-merge not armed ({e}) — merge manually or via review flow")
+        }
+    }
+    let payload =
+        serde_json::json!({ "id": id, "branch": branch, "pr": pr_url, "base": base }).to_string();
+    let mut led = Ledger::open(&ledger_path()).unwrap();
+    led.append("pr_opened", id, &payload, now_ns()).unwrap();
+    println!("hf ship: pr_opened recorded for {id}");
+}
+
+/// HFTASK-0010 verdict channel (R6): verdicts ride OUT-OF-BAND — a weave permission
+/// answer carries approve/deny, and hf records `review_verdict` in its own witnessed
+/// ledger. Never a native GitHub APPROVE (bot-approval bypasses branch protection).
+fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
+    if id.is_empty() || pr.is_empty() || !matches!(verdict, "approve" | "deny") {
+        eprintln!("usage: hf review verdict <task-id> <pr> <approve|deny> [--by WHO]");
+        return;
+    }
+    let payload =
+        serde_json::json!({ "id": id, "pr": pr, "verdict": verdict, "by": by }).to_string();
+    let mut led = Ledger::open(&ledger_path()).unwrap();
+    led.append("review_verdict", id, &payload, now_ns())
+        .unwrap();
+    println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
 }
 
 fn cmd_status() {
@@ -405,10 +528,34 @@ fn main() {
             args.get(1).map(|s| s.as_str()).unwrap_or(""),
             &args[2..].join(" "),
         ),
+        Some("ship") => {
+            let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            let base = args
+                .iter()
+                .position(|a| a == "--base")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("master");
+            cmd_ship(id, base);
+        }
+        Some("review") if args.get(1).map(|s| s.as_str()) == Some("verdict") => {
+            let by = args
+                .iter()
+                .position(|a| a == "--by")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("unattributed");
+            cmd_review_verdict(
+                args.get(2).map(|s| s.as_str()).unwrap_or(""),
+                args.get(3).map(|s| s.as_str()).unwrap_or(""),
+                args.get(4).map(|s| s.as_str()).unwrap_or(""),
+                by,
+            );
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => cmd_resume(args.iter().any(|a| a == "--json")),
         _ => {
-            eprintln!("hf <init|seed|status|claim ID|release ID|checkpoint ID [note]|handoff|resume [--json]>");
+            eprintln!("hf <init|seed|status|claim ID|release ID|checkpoint ID [note]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json]>");
         }
     }
 }
