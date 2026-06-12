@@ -1,0 +1,31 @@
+# handoff.policy.v1 — loop policy for the Continuity Ledger Kernel (ADR-0001 §1).
+# Read by `hf session` (preflight + worktree), `hf ship`/merge (remote+merge), `hf sync`.
+# Missing keys fall back to the compiled defaults in hf/src/policy.rs.
+
+[remote]
+model        = "clone"            # "clone" | "fork"
+origin       = "FlexNetOS/handoff"
+base_branch  = "develop"          # branch sessions/worktrees start from
+trunk_branch = "master"           # protected trunk PRs target
+develop_mirrors_trunk = true
+
+[loop]
+cycle_flush     = 4               # tasks per cycle before `hf ship`
+batch_checkout  = true            # `hf claim --batch N` (≤ cycle_flush)
+worktree_prefix = "handoff-"      # session worktree/branch prefix
+
+[merge]
+require_review = true
+reviewer       = "cloud_ultra"    # Phase 1; Phase 2 = "swarm_local"
+auto_merge     = "on_approve"
+permission_gate = true            # transitional → AI gatekeeper (HFTASK-0014)
+
+[preflight]
+require_clean_tree  = true        # refuse session start on a dirty tree
+require_synced_base = true        # refuse if base is behind origin (drift)
+refuse_legacy_weave = true        # only the lease-capable weave is accepted
+
+[sync]
+kb_enabled   = true               # one-way ledger → .kb write-back
+kb_slugs     = ["context/overridable/active", "context/overridable/progress"]
+meta_register = true              # idempotent .meta.yaml/.gitignore ensure
