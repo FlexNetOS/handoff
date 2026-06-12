@@ -10,6 +10,8 @@
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod lease;
+mod policy;
+mod session;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -301,9 +303,20 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
 }
 
-fn cmd_status() {
+/// Read a top-level string field from the context capsule (best-effort).
+fn capsule_field(key: &str) -> Option<String> {
+    let s = fs::read_to_string(capsule_path()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    v.get(key).and_then(|x| x.as_str()).map(String::from)
+}
+
+fn cmd_status(json: bool) {
     let tasks = load_tasks();
     let replay = current_statuses();
+    if json {
+        emit_status_json(&tasks, &replay);
+        return;
+    }
     println!("=== hf status ===  ({} tasks)", tasks.len());
     for t in &tasks {
         println!(
@@ -317,6 +330,48 @@ fn cmd_status() {
     if let Some(n) = next_safe(&tasks, &replay) {
         println!("next safe: {} — {}", n.id, n.title);
     }
+}
+
+/// HFTASK-0020: the loop's machine read-model (`handoff.loop_status.v1`) — the witnessed
+/// ledger event stream rendered as JSON for Mission Control / the MCP seam / RuVocal.
+fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
+    let done = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, replay, t) == Status::Done)
+        .count();
+    let next = next_safe(tasks, replay);
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    let sess = session::open_session_and_cycle();
+    let policy = policy::Policy::load(Path::new(HF));
+    let project =
+        capsule_field("project_name").unwrap_or_else(|| "handoff (Continuity Ledger Kernel)".into());
+
+    let out = serde_json::json!({
+        "schema": "handoff.loop_status.v1",
+        "project": project,
+        "tasks_total": tasks.len(),
+        "done": done,
+        "remaining": tasks.len() - done,
+        "tasks": tasks.iter().map(|t| serde_json::json!({
+            "id": t.id,
+            "status": format!("{:?}", status_of(&t.id, replay, t)),
+            "priority": t.priority_str(),
+            "title": t.title,
+        })).collect::<Vec<_>>(),
+        "next_task_id": next.map(|t| t.id.clone()),
+        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "session": {
+            "open": sess.open_branch.is_some(),
+            "branch": sess.open_branch,
+            "cycle": sess.cycle,
+            "cycle_flush": policy.loop_cfg.cycle_flush,
+            "ready_to_ship": sess.cycle >= policy.loop_cfg.cycle_flush,
+        },
+        "witnessed_events_verified": witness,
+    });
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
 }
 
 fn cmd_handoff() {
@@ -521,7 +576,7 @@ fn main() {
     match args.first().map(|s| s.as_str()) {
         Some("init") => cmd_init(),
         Some("seed") => cmd_seed(),
-        Some("status") => cmd_status(),
+        Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
         Some("claim") => cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("checkpoint") => cmd_checkpoint(
@@ -552,10 +607,11 @@ fn main() {
                 by,
             );
         }
+        Some("session") => session::cmd_session(&args[1..]),
         Some("handoff") => cmd_handoff(),
         Some("resume") => cmd_resume(args.iter().any(|a| a == "--json")),
         _ => {
-            eprintln!("hf <init|seed|status|claim ID|release ID|checkpoint ID [note]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json]>");
+            eprintln!("hf <init|seed|status|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json]>");
         }
     }
 }
