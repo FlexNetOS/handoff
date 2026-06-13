@@ -31,6 +31,10 @@ dossier that makes a decision defensible.
 
 ## Working principles
 
+- **`icm recall` first** (mandatory cross-session memory — `icm-memory` skill): pull
+  prior `errors-resolved` and `decisions-handoff` for this surface BEFORE researching,
+  so you don't re-derive a settled decision or re-investigate a fixed error. Store any
+  durable new finding worth keeping.
 - Distinguish verified fact (cited) from inference (labeled). The gatekeeper will
   reject decisions built on unlabeled inference.
 - Ground in the current year; do not rely on stale memory for version/pricing/API
