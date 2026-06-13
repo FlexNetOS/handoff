@@ -98,6 +98,10 @@ mod tests {
         ));
         let root = tmp.clone();
         fs::create_dir_all(&root).unwrap();
+        // Canonicalize so the fixture root matches what `find_meta_root()` returns:
+        // it walks up from `current_dir()`, which macOS resolves through symlinks
+        // (`/var` -> `/private/var`), so a raw temp_dir() path would mismatch.
+        let root = root.canonicalize().unwrap();
         fs::write(
             root.join(".meta.yaml"),
             "projects:\n  handoff:\n    repo: git@example/handoff.git\n",
@@ -163,7 +167,7 @@ mod tests {
         // FLEET home = the meta root's .handoff, NOT the member's.
         assert_eq!(db, fx.root.join(".handoff").join("ledger.db"));
         assert_eq!(tasks, fx.root.join(".handoff").join("tasks"));
-        assert!(!db.starts_with(&fx.member.join(".handoff")));
+        assert!(!db.starts_with(fx.member.join(".handoff")));
     }
 
     #[test]
