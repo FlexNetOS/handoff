@@ -125,6 +125,39 @@ FLEET ledger when you run from `meta/`.
 
 ---
 
+## 4b. Parallel work with grit (zero merge conflicts)
+
+Many sessions/repos run at once. **`grit`** (ADR-0009) is the fleet's parallel-agent
+coordination layer: AST-symbol-level locks + per-agent worktrees + serialized
+conflict-free merge. It composes with handoff — handoff locks the **task**, grit
+locks the **code symbols**:
+
+| Lock | Tool | Granularity |
+|------|------|-------------|
+| task | `hf claim <TASK>` | `HFTASK-####` (weave lease + ledger) |
+| code | `grit claim <symbols>` | `file::function` (AST) |
+
+**The cycle for any parallel code change:**
+```bash
+hf claim <TASK>                 # task lease + ledger transition
+grit plan                       # declare intent, get free-symbol suggestions
+grit claim <file::symbol> …     # lock the functions/types you'll edit
+   # … work in the grit worktree (.grit/worktrees/agent-N) — full isolation …
+grit done                       # auto-commit → rebase on main → serialized merge → release
+hf checkpoint <TASK> "<note>"   # witness the landed work
+```
+- **grit is the worktree standard** — parallel code work happens in a grit worktree
+  (`grit session` / `grit worktree`), not an ad-hoc `git worktree`.
+- Different symbols in the **same file** never conflict; `grit done` merges under a
+  file lock (no `index.lock` races, no discarded work).
+- **Setup:** `grit init` (local SQLite backend, zero-config) — done for every repo by
+  `scripts/fleet-rollout.sh`. `.grit/` is binary state and is **gitignored** (same
+  rule as the ledger). The cross-repo/team upgrade is a shared backend (S3/R2/Azure)
+  with creds from envctl: `envctl run -- grit …`.
+- `grit status` shows current locks; `grit symbols` lists what can be claimed.
+
+---
+
 ## 5. The lifecycle hooks (autonomous substrate)
 
 `.handoff/hooks/hooks.toml` (`handoff.hooks.v1`) fires `hf` on agent events so the

@@ -35,8 +35,13 @@ proof trail.
 - Secrets (LLM keys etc.) are injected by envctl: design for `envctl run -- <tool>`
   and the `agent-env.toml` registration seam — never write `export LLM_API_KEY`
   or read keys before arg-parse.
-- Run in a fresh git worktree (isolation) so parallel cycles never collide on the
-  working tree.
+- Work parallel-safe via **grit** (ADR-0009): after `hf claim <TASK>`, run `grit plan`
+  then `grit claim <file::symbol>` to lock the exact functions/types you'll edit, work in
+  the grit worktree (`.grit/worktrees/agent-N`), and `grit done` to rebase+merge under a
+  file lock. handoff locks the task; grit locks the code symbols — different symbols in
+  the same file never collide and no parallel session's work is discarded. Use grit's
+  worktree, not an ad-hoc `git worktree`. (`grit init` per repo is done by the fleet
+  rollout; `.grit/` is gitignored binary state.)
 
 ## Input/output protocol
 

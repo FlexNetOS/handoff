@@ -18,11 +18,12 @@ set -uo pipefail
 META_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # handoff/scripts -> meta root
 [ -f "$META_ROOT/.meta.yaml" ] || { echo "no .meta.yaml at $META_ROOT"; exit 1; }
 
-DO_COMMIT=0; DO_PUSH=0; ONLY=()
+DO_COMMIT=0; DO_PUSH=0; NO_GRIT=0; ONLY=()
 for a in "$@"; do
   case "$a" in
     --commit) DO_COMMIT=1 ;;
     --push)   DO_COMMIT=1; DO_PUSH=1 ;;
+    --no-grit) NO_GRIT=1 ;;
     --*) echo "unknown flag $a"; exit 2 ;;
     *) ONLY+=("$a") ;;
   esac
@@ -88,6 +89,17 @@ packet is compiled centrally by \`hf fleet render ${repo}\`. See \`meta/handoff/
 Cold start: read \`context/capsule.json\`, then run \`hf resume\`.
 MD
   GENERATED=$((GENERATED+1)); echo "generated $repo (role=$role plane=$plane)"
+
+  # grit (ADR-0009): initialize the parallel-agent coordination layer per repo (local
+  # SQLite backend, zero-setup). .grit/ is binary state — gitignored by grit init, so
+  # it never enters git (same rule as the handoff ledger, ADR-0004 §3). Best-effort.
+  if [ "$NO_GRIT" = 0 ] && command -v grit >/dev/null 2>&1 && [ ! -d "$dir/.grit" ]; then
+    if (cd "$dir" && grit config set-local >/dev/null 2>&1 && grit init >/dev/null 2>&1); then
+      echo "  grit initialized $repo"
+    else
+      echo "  grit init skipped $repo (non-fatal)"
+    fi
+  fi
 
   if [ "$DO_COMMIT" = 1 ]; then
     if git -C "$dir" add .handoff && \
