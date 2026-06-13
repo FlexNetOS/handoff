@@ -61,6 +61,13 @@ impl Ledger {
                 prev_hash      BLOB NOT NULL    -- witness chain link
             );",
         )?;
+        // HFTASK-0031 (ADR-0004 §3.3 rev): additive, backward-compatible migration for
+        // rollup provenance. A NULL origin_repo marks a *native* (local) event — this
+        // ledger's own. When the CENTRAL fleet ledger re-appends an event rolled up from a
+        // per-repo ledger (HFTASK-0032 `hf sync`), it stamps the origin_* columns so both the
+        // per-repo chain and the central chain verify independently (CT/RFC6962 model).
+        // This task is schema-only: it does NOT write the rollup or a verifier.
+        Self::migrate_provenance(&conn)?;
         // resume seq + prev hash from the tail (replay-safe)
         let (seq, prev): (u64, Vec<u8>) = conn
             .query_row(
@@ -78,6 +85,97 @@ impl Ledger {
             seq,
             prev_witness_hash,
         })
+    }
+
+    /// HFTASK-0031 (ADR-0004 §3.3 rev): idempotent, additive migration that bolts rollup
+    /// provenance onto an existing (or fresh) `events` table without touching any existing
+    /// row or breaking the witness chain.
+    ///
+    /// SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `PRAGMA table_info(events)` and
+    /// only `ALTER TABLE ... ADD COLUMN` the columns that are absent — safe to run on every
+    /// `open()`, on both pre-migration and post-migration DBs.
+    ///
+    /// - `origin_repo TEXT` / `origin_seq INTEGER` / `origin_action_hash BLOB`: all NULL for
+    ///   native (local) events. `append()` never writes them, so old + new local events stay
+    ///   NULL. `verify_witness_chain()` reads only `ts_ns` + `action_hash` ordered by `seq`,
+    ///   so these columns are invisible to it — old ledgers verify unchanged.
+    /// - `idx_events_origin`: a PARTIAL unique index — the idempotency guard for rollup
+    ///   (`UNIQUE(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL`), so native NULL
+    ///   events are unconstrained while a given source event can be rolled up at most once.
+    /// - `sync_cursor`: per-source-repo high-water mark, lives in the CENTRAL ledger so a
+    ///   re-run of `hf sync` only re-appends events past the last rolled-up seq.
+    fn migrate_provenance(conn: &Connection) -> rusqlite::Result<()> {
+        // Which provenance columns already exist? (idempotency: ALTER only the missing ones.)
+        let mut have_origin_repo = false;
+        let mut have_origin_seq = false;
+        let mut have_origin_action_hash = false;
+        {
+            let mut stmt = conn.prepare("PRAGMA table_info(events)")?;
+            let cols = stmt.query_map([], |r| r.get::<_, String>(1))?; // column 1 = name
+            for col in cols {
+                match col?.as_str() {
+                    "origin_repo" => have_origin_repo = true,
+                    "origin_seq" => have_origin_seq = true,
+                    "origin_action_hash" => have_origin_action_hash = true,
+                    _ => {}
+                }
+            }
+        }
+        if !have_origin_repo {
+            conn.execute_batch("ALTER TABLE events ADD COLUMN origin_repo TEXT")?;
+        }
+        if !have_origin_seq {
+            conn.execute_batch("ALTER TABLE events ADD COLUMN origin_seq INTEGER")?;
+        }
+        if !have_origin_action_hash {
+            conn.execute_batch("ALTER TABLE events ADD COLUMN origin_action_hash BLOB")?;
+        }
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_origin
+                 ON events(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL;
+             CREATE TABLE IF NOT EXISTS sync_cursor (
+                 origin_repo  TEXT PRIMARY KEY,
+                 last_seq     INTEGER NOT NULL,
+                 updated_ns   INTEGER NOT NULL
+             );",
+        )?;
+        Ok(())
+    }
+
+    /// HFTASK-0031: read a source repo's rollup high-water mark from the central ledger's
+    /// `sync_cursor` (the last per-repo `seq` already rolled up). `None` = never synced.
+    /// (The rollup itself is HFTASK-0032; this is the cursor accessor it will use.)
+    pub fn sync_cursor_get(&self, origin_repo: &str) -> rusqlite::Result<Option<u64>> {
+        self.conn
+            .query_row(
+                "SELECT last_seq FROM sync_cursor WHERE origin_repo = ?1",
+                rusqlite::params![origin_repo],
+                |r| Ok(r.get::<_, i64>(0)? as u64),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })
+    }
+
+    /// HFTASK-0031: upsert a source repo's rollup high-water mark (last rolled-up per-repo
+    /// `seq`) into the central ledger's `sync_cursor`.
+    pub fn sync_cursor_set(
+        &mut self,
+        origin_repo: &str,
+        last_seq: u64,
+        updated_ns: u64,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO sync_cursor (origin_repo, last_seq, updated_ns)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(origin_repo) DO UPDATE SET
+                 last_seq   = excluded.last_seq,
+                 updated_ns = excluded.updated_ns",
+            rusqlite::params![origin_repo, last_seq as i64, updated_ns as i64],
+        )?;
+        Ok(())
     }
 
     /// Append a witnessed event. ts_ns is passed in (deterministic in tests).
@@ -363,6 +461,216 @@ mod tests {
             );
             expected_prev = action_hash.clone();
         }
+
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    /// Helpers shared by the HFTASK-0031 provenance migration tests.
+    fn column_names(conn: &Connection, table: &str) -> Vec<String> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    }
+
+    fn object_exists(conn: &Connection, kind: &str, name: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = ?1 AND name = ?2",
+            rusqlite::params![kind, name],
+            |_| Ok(()),
+        )
+        .is_ok()
+    }
+
+    /// HFTASK-0031 AC1: a fresh DB gets the 3 origin columns, the partial unique index, and
+    /// the sync_cursor table.
+    #[test]
+    fn fresh_open_creates_provenance_schema() {
+        let db = temp_db();
+        let led = Ledger::open(db.to_str().unwrap()).unwrap();
+
+        let cols = column_names(&led.conn, "events");
+        for expected in ["origin_repo", "origin_seq", "origin_action_hash"] {
+            assert!(
+                cols.iter().any(|c| c == expected),
+                "events must have column {expected}; got {cols:?}"
+            );
+        }
+        assert!(
+            object_exists(&led.conn, "index", "idx_events_origin"),
+            "idx_events_origin must exist"
+        );
+        assert!(
+            object_exists(&led.conn, "table", "sync_cursor"),
+            "sync_cursor table must exist"
+        );
+
+        // The index is partial — native (NULL origin_repo) events are unconstrained, so two
+        // appends with NULL origin_* must not collide on the unique index.
+        let mut led = led;
+        led.append("checkpoint", "HFTASK-X", "{}", 10).unwrap();
+        led.append("checkpoint", "HFTASK-X", "{}", 11).unwrap();
+        assert_eq!(led.all_events().unwrap().len(), 2);
+
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    /// HFTASK-0031 AC2: migration is idempotent — open() twice on the same path does not
+    /// error and does not duplicate the origin columns.
+    #[test]
+    fn migration_is_idempotent() {
+        let db = temp_db();
+        {
+            let _ = Ledger::open(db.to_str().unwrap()).unwrap();
+        }
+        // Second open re-runs migrate_provenance over an already-migrated DB.
+        let led = Ledger::open(db.to_str().unwrap()).unwrap();
+        let cols = column_names(&led.conn, "events");
+        let count = |name: &str| cols.iter().filter(|c| c.as_str() == name).count();
+        assert_eq!(count("origin_repo"), 1, "no duplicate origin_repo column");
+        assert_eq!(count("origin_seq"), 1, "no duplicate origin_seq column");
+        assert_eq!(
+            count("origin_action_hash"),
+            1,
+            "no duplicate origin_action_hash column"
+        );
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    /// HFTASK-0031 AC3 (THE backward-compat proof): a pre-migration ledger (events table
+    /// WITHOUT the origin columns) with real appended events still verifies after open()
+    /// migrates it in place — no data loss, full chain, old rows have NULL origin_*.
+    #[test]
+    fn old_schema_db_migrates_and_still_verifies() {
+        let db = temp_db();
+        let path = db.to_str().unwrap();
+
+        // 1. Hand-build the OLD schema (exactly the pre-HFTASK-0031 events table) and append
+        //    a few witnessed events the SAME way append() does, so we have a real chain.
+        {
+            let conn = Connection::open(path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE events (
+                    seq            INTEGER PRIMARY KEY,
+                    ts_ns          INTEGER NOT NULL,
+                    event_type     TEXT NOT NULL,
+                    work_order_id  TEXT NOT NULL,
+                    payload_json   TEXT NOT NULL,
+                    action_hash    BLOB NOT NULL,
+                    prev_hash      BLOB NOT NULL
+                );",
+            )
+            .unwrap();
+            // Confirm the pre-condition: no origin columns yet.
+            let cols = column_names(&conn, "events");
+            assert!(
+                !cols.iter().any(|c| c == "origin_repo"),
+                "precondition: old schema has no origin_repo"
+            );
+
+            let mut prev = [0u8; 32];
+            for (i, (et, wo, pl)) in [
+                ("task_transition", "HFTASK-OLD", "{\"status\":\"Claimed\"}"),
+                ("checkpoint", "HFTASK-OLD", "{}"),
+                ("task_transition", "HFTASK-OLD", "{\"status\":\"Done\"}"),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let ah = hash_action(et, wo, pl);
+                conn.execute(
+                    "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        (i as i64) + 1,
+                        1_000i64 + i as i64,
+                        et,
+                        wo,
+                        pl,
+                        ah.to_vec(),
+                        prev.to_vec(),
+                    ],
+                )
+                .unwrap();
+                prev = ah;
+            }
+        }
+
+        // 2. open() triggers migrate_provenance over the existing (populated) old DB.
+        let mut led = Ledger::open(path).unwrap();
+
+        // 3. Schema was migrated in place — origin columns + sync_cursor now exist.
+        let cols = column_names(&led.conn, "events");
+        for expected in ["origin_repo", "origin_seq", "origin_action_hash"] {
+            assert!(
+                cols.iter().any(|c| c == expected),
+                "migration must add {expected} to the old table"
+            );
+        }
+        assert!(object_exists(&led.conn, "table", "sync_cursor"));
+
+        // 4. No data loss + the witness chain verifies over the full original count.
+        assert_eq!(led.all_events().unwrap().len(), 3, "no rows lost");
+        assert_eq!(
+            led.verify_witness_chain().unwrap(),
+            3,
+            "old chain must still verify after migration"
+        );
+
+        // 5. Old rows have NULL origin_* (they are native local events).
+        let null_origins: i64 = led
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE origin_repo IS NULL
+                   AND origin_seq IS NULL AND origin_action_hash IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(null_origins, 3, "all pre-existing rows stay native (NULL)");
+
+        // 6. append() still works on the migrated ledger and still leaves origin_* NULL.
+        led.append("checkpoint", "HFTASK-OLD", "{}", 2_000).unwrap();
+        assert_eq!(led.verify_witness_chain().unwrap(), 4);
+        let native_after_append: i64 = led
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE origin_repo IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            native_after_append, 4,
+            "append() must keep origin_* NULL (native events)"
+        );
+
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    /// HFTASK-0031 AC4: the sync_cursor get/set helper round-trips (None before set, value
+    /// after, upsert overwrites).
+    #[test]
+    fn sync_cursor_get_set_round_trips() {
+        let db = temp_db();
+        let mut led = Ledger::open(db.to_str().unwrap()).unwrap();
+
+        assert_eq!(led.sync_cursor_get("repo-a").unwrap(), None, "unset = None");
+
+        led.sync_cursor_set("repo-a", 7, 111).unwrap();
+        assert_eq!(led.sync_cursor_get("repo-a").unwrap(), Some(7));
+
+        // Upsert: a later sync advances the high-water mark for the same repo.
+        led.sync_cursor_set("repo-a", 12, 222).unwrap();
+        assert_eq!(led.sync_cursor_get("repo-a").unwrap(), Some(12));
+
+        // Distinct repos are independent rows.
+        led.sync_cursor_set("repo-b", 3, 333).unwrap();
+        assert_eq!(led.sync_cursor_get("repo-b").unwrap(), Some(3));
+        assert_eq!(led.sync_cursor_get("repo-a").unwrap(), Some(12));
 
         let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
