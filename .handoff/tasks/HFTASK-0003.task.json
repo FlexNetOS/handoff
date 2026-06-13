@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0003",
   "title": "Front door: prompt_hub SwarmBundle -> verifiable handoff.task.v1 intake",
-  "status": "claimed",
+  "status": "done",
   "priority": "P0",
   "objective": "ADR-0001 §11/R14 (verified): promote the spike - work_orders_from_bundle is test-only + uses a MIRRORED SwarmBundle; depend on prompt_hub's REAL SwarmBundle (models.rs:528) and wire it into a real `hf intake`/`hf dispatch` verb. TRANSPORT: there is NO MCP server on either side (prompt_hub or hf), so do NOT assume 'the MCP seam' - either call prompt_hub HTTP /vibe+/generate_bundle, depend on the prompt-hub crate, or build the seam (HFTASK-0019). CRUX: SwarmBundle role_prompts are prompt STRINGS (and empty-in-prod), not work specs - the intake must SYNTHESIZE a vibe Intent into REAL path_scope/acceptance_criteria/test_commands or every dispatched WorkOrder is unverifiable by the §5 review gate + §5b gatekeeper.",
   "path_scope": [
