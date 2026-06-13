@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0031",
+  "title": "Ledger schema: rollup provenance (origin_repo/origin_seq/origin_action_hash) + sync_cursor",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0004 §3.3 (rev): additive, backward-compatible migration in ledger/src/lib.rs — ALTER events ADD COLUMN origin_repo TEXT / origin_seq INTEGER / origin_action_hash BLOB (NULL = native local event); CREATE UNIQUE INDEX idx_events_origin ON events(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL (idempotency); CREATE TABLE sync_cursor(origin_repo PK, last_seq, updated_ns) in the CENTRAL ledger. Old rows verify unchanged (verify_witness_chain rebuilds from ordered action_hash, ignores stored prev_hash). No rvf-crypto change.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Ledger schema: rollup provenance (origin_repo/origin_seq/origin_action_hash) + sync_cursor: implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:7e1a523586f0808d5924107120adaa819af0234bc9edbe4ffc3fbe15cc58312e",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:251d1729713607703d1001269e15046d1d518507f157b41eca69bc99597b650c"
+  }
+}

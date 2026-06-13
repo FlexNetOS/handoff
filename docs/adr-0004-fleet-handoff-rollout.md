@@ -1,9 +1,13 @@
 # ADR-0004 — fleet `.handoff`: per-repo continuity layer + central coordination (policy P7)
 
-**Status:** accepted (2026-06-12) · **Owner:** handoff kernel · **Derived from:** vision items 2/13
-(UPGRADE-MISSION-PROMPT.md), the original design bundle (`~/Downloads/tmp/handoff` — schemas, templates,
-capsule), ADR-0001 §2/§7 + R3/R9, ADR-0003, open-questions #13 (session-ledger location),
-ARCHITECTURE-TRUTH.md census.
+**Status:** accepted (2026-06-12) · **REVISED 2026-06-13** (owner-directed: ledger residency §3.3 + policy
+P7 §6 — per-repo gitignored ledger + central rollup; supersedes the original central-only rule) · **Owner:**
+handoff kernel · **Derived from:** vision items 2/13 (UPGRADE-MISSION-PROMPT.md), the original design
+bundle (`~/Downloads/tmp/handoff` — schemas, templates, capsule), ADR-0001 §2/§7 + R3/R9, ADR-0003,
+open-questions #13 (session-ledger location), ARCHITECTURE-TRUTH.md census. **Revision research:**
+`_workspace/research_adr-0004-rev.md` — cited: [RFC 6962 / Certificate
+Transparency](https://www.rfc-editor.org/rfc/rfc6962.html) (local→aggregate append-only model), the git
+object model (immutable objects + provenance), beads dual-store, grit per-worktree SQLite.
 
 ## Context
 
@@ -32,16 +36,34 @@ host `.handoff` under meta policy; item 13 asks how per-repo dirs coordinate wit
    - **Tier C forks (stub):** `context/capsule.json` + `README.md` only — exactly one commit,
      merge-safe across upstream syncs, **no CI/policy forcing** (POLICY v2 Tier C discipline).
    - **Tier D hubs/docs (stub):** same as C.
-3. **Ledger residency (settles open-questions #13).** There is **one witnessed ledger per orchestration
-   home**: `handoff/.handoff/ledger.db` is the meta-fleet ledger. Per-repo `.handoff/` carries **no
-   ledger.db and no binary state — git-committed text only** (the beads lesson: binary DB never in git;
-   JSONL/JSON text is the git-visible state). Worktree/session ledgers are ephemeral; canonical events
-   are checkpointed into the fleet ledger (the proven `pr_opened` pattern from the 2026-06-12 loop
-   proof). Session events adopt the **`handoff.session_event.v1`** vocabulary from the design bundle
-   (12 event types: session_started/resumed, task_claimed, lease_heartbeat, command_run, files_changed,
-   checkpoint_created, tests_run, drift_audited, handoff_created, lease_released, session_stopped) —
-   implemented by HFTASK-0007 (`hf session start|end`), which also owns `.handoff/policy.toml`
-   (merging the design bundle's `rules.toml` sections with R3's remote/loop/merge keys).
+3. **Ledger residency — REVISED 2026-06-13 (owner-directed; supersedes the 2026-06-12 decision; settles
+   open-questions #13).** Continuity is **per-repo-first with central rollup**, restoring the full beads
+   dual-store. The 2026-06-12 rule conflated two different things; only one was ever the real lesson:
+   - ❌ A **git-committed binary `.db`** stays **BANNED** (merge conflicts, bloat, not diff-able — the
+     real beads lesson). Git-visible state is text only.
+   - ✅ A **gitignored, local `.handoff/ledger.db`** is **LEGITIMATE and expected** — it is the
+     **source of record for that repo's witnessed history**, so a repo cloned standalone travels with its
+     own continuity (the 2026-06-12 central-only rule detached a repo's history from the repo: a lone
+     clone of, e.g., prompt_hub lost its witnessed past, which lived only in `meta/.handoff`).
+
+   **(a) Per-repo local ledger** (gitignored, never committed) = per-repo source of record.
+   **(b) Central FLEET ledger** (`meta/.handoff/ledger.db`) = the rollup/merge point + canonical
+   cross-repo board. **(c) Feed = repo → central, one-way:** `hf sync` rolls up each repo's NEW events
+   (those past a per-repo sync cursor) by **re-appending** them through the normal witnessed `append()`
+   path — chains are never "merged"; self-contained events are re-appended, each re-chained onto the
+   central tail. Every rolled-up central event carries provenance `(origin_repo, origin_seq,
+   origin_action_hash)` so the per-repo chain AND the central chain each verify independently and any
+   central event traces back to its repo. Rollup is idempotent (UNIQUE `(origin_repo, origin_seq)` + a
+   per-repo cursor, single central transaction; re-running `hf sync` is a no-op). Zero changes to
+   `rvf-crypto`. **(d) Precedence:** Git (intent/shape) > central FLEET ledger (canonical joined/ordered
+   view) > per-repo local ledger (per-repo source of record). Cross-repo order = central arrival/`seq`
+   order; `ts_ns` is advisory (clocks skew). **(e) Worktrees** follow grit's per-worktree local-SQLite
+   model: each worktree's cwd-relative `.handoff/ledger.db` rolls up to central with a composite origin id.
+
+   This restores beads' full dual-store (local binary DB + text-in-git + deterministic rollup) and the
+   model mirrors Certificate Transparency (RFC 6962): N self-verifying append-only logs, an aggregator
+   re-appends self-contained entries into its own log; ordering = leaf index, not wall-clock. Session
+   events adopt the **`handoff.session_event.v1`** vocabulary (HFTASK-0007, `hf session start|end`).
 4. **Aggregation = `hf fleet status`.** Enumerate members from `../.meta.yaml`, read each repo's
    `.handoff` (capsule + cards), join with fleet-ledger events → one board. **Git is the sync
    transport** — no daemons, no new services; `meta git update` pulls fleet state naturally; precedence
@@ -50,9 +72,14 @@ host `.handoff` under meta policy; item 13 asks how per-repo dirs coordinate wit
 5. **Card-sync rule** (fixes defect D3 permanently): cards are derived snapshots;
    `hf checkpoint --sync-cards` rewrites card status from ledger truth (ADR-0003 rule 4). First
    implementation pass refreshes the kernel's 22 stale cards and replaces dead `spike/**` path-scopes.
-6. **Policy P7** (added to META-ORG-POLICY.md): per-tier presence requirements; capsule REQUIRED
-   fields; minted-cards-only rule; ledger residency; no binary state in git; rival-convention
-   deprecation for new state.
+6. **Policy P7 — REVISED 2026-06-13.** Per-tier presence requirements; capsule REQUIRED fields;
+   minted-cards-only rule; rival-convention deprecation for new state. **Ledger residency (flipped):** a
+   *git-committed* binary ledger is BANNED; a *gitignored* local `.handoff/ledger.db` is LEGITIMATE and
+   expected. Enforcement gates on **git-TRACKED** `.db` under `.handoff` (fail) + requires the
+   `.handoff/**/ledger.db` `.gitignore` guard (fail if missing); a `.db` merely present on disk is **not**
+   a violation. `hf fleet status` flags only a *tracked* per-repo ledger. **Cross-fleet:** this reverses
+   envctl `ci/gates/p7.sh` Gate 3b (the "no per-repo *.db" check, PR #56) and the "no local ledger.db"
+   member rule shipped to prompt_hub (#82/#83) and lane (#29) — coordinated follow-ups (see backlog).
 7. **Rollout mechanics:** deterministic generator (census rows → capsules; no agent creativity in the
    payload), one branch + PR per repo (`chore: seed .handoff continuity layer (P7)`), auto-merge where
    armed, direct merge where a repo has no required checks; `meta git snapshot create` before the
