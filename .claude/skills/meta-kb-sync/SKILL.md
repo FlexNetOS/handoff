@@ -32,6 +32,9 @@ parallelism, error handling) as a finding even where a direct dependency isn't t
   (`tags: [orchestration, handoff]`) + `../.gitignore`. There is no
   `meta project add` — edit those files with **grep-guarded** edits, never blind
   append; clean the known duplicate `.gitignore` line. Never re-add what's present.
+  **SSH default:** every `.meta.yaml` `repo:` is `git@github.com:FlexNetOS/<name>.git`
+  (SSH) — register new members in that form, never `https://github.com/…` (HTTPS fails
+  the workspace's auth).
 - **Convention set (HFTASK-0016):** commitlint.config.cjs (12 types) +
   semantic-pr-title (merge-blocking); release-please manifest mode + VERSION +
   5-platform release.yml (NOT cargo-dist); renovate.json (NOT Dependabot);

@@ -75,8 +75,10 @@ no CI/policy forcing.
    `README.md`; add OPTIONAL `hooks/policies/skills` (from the design-bundle
    templates at `~/Downloads/tmp/handoff/handoff/templates/.handoff/`) only if the
    repo runs autonomous loops. Adapt any `policy.toml` `[remote]` to that repo's
-   origin/branches. **Do NOT run `hf init`/`hf seed` in the repo** — those create a
-   per-repo `ledger.db` (forbidden) and `seed` stamps handoff's own backlog.
+   origin/branches — **SSH form** (`git@github.com:FlexNetOS/<repo>.git`), matching the
+   `.meta.yaml` default; never `https://` (it fails the workspace's auth). **Do NOT run
+   `hf init`/`hf seed` in the repo** — those create a per-repo `ledger.db` (forbidden)
+   and `seed` stamps handoff's own backlog.
 4. **Events go to the FLEET ledger; packets are compiled centrally.** Witnessed
    events for the repo are checkpointed into `meta/.handoff/ledger.db` (run `hf`
    from `meta/`). The repo's `packets/` are compiled by `hf fleet status` (kernel

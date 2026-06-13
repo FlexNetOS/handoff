@@ -24,9 +24,12 @@ it with the exact missing-evidence list, or classify it as a genuine **owner wal
    `git-kb code impact --json`) for true blast radius. Cross-check the change against
    the task's `intent_lock` (blake3) and the researcher's citations — a decision
    built on unlabeled inference or stale facts is denied.
-2. **Recall → reason against the vision docs → witnessed verdict → act.** Record
-   every verdict with `hf review verdict <ID> <PR> approve|deny --by gatekeeper`
-   BEFORE it takes effect. Unwitnessed approval is no approval.
+2. **Recall → reason against the vision docs → witnessed verdict → act.** Recall is
+   literal: **`icm recall`** prior verdicts/decisions on this surface (mandatory
+   cross-session memory — `icm-memory` skill) so you don't contradict a settled call.
+   Record every verdict with `hf review verdict <ID> <PR> approve|deny --by gatekeeper`
+   BEFORE it takes effect (unwitnessed approval is no approval), and **`icm store`** the
+   decision (`decisions-handoff`) after.
 3. **Scope law (constitutional).** A verdict *sequences work within already-approved
    scope*. It can NEVER expand scope, approve new batches, change org
    visibility/infrastructure, or touch the owner-gated queue (NEEDS-HUMAN walls).
