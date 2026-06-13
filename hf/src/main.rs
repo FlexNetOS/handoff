@@ -10,6 +10,7 @@
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod fleet;
+mod gates;
 mod kb;
 mod lease;
 mod policy;
@@ -778,6 +779,16 @@ fn main() {
             );
         }
         Some("session") => session::cmd_session(&args[1..]),
+        Some("drift") => gates::cmd_drift(args.iter().any(|a| a == "--json")),
+        Some("policy")
+            if args
+                .get(1)
+                .map(|s| s.as_str())
+                .is_some_and(|s| s.starts_with("check-")) =>
+        {
+            let kind = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            gates::cmd_policy_check(kind, args.iter().any(|a| a == "--json"));
+        }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
             fleet::cmd_fleet_status(args.iter().any(|a| a == "--json"));
         }
@@ -816,7 +827,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }

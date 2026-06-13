@@ -29,7 +29,8 @@ hf checkpoint <ID> [note]
 hf handoff
 ```
 
-(`hf drift` is a planned gate — HFTASK-0005 — not yet implemented.)
+(`hf drift` and `hf policy check-{claim,edit,handoff}` are implemented — the
+PreHandoff/TaskClaim/PreEdit hard gates. Run `hf drift` before any handoff.)
 
 ## Navigation order
 
