@@ -1,0 +1,28 @@
+# handoff.fleet.pilot.v1 — fleet rollout scope gate.
+#
+# Read by the `fleet-handoff` skill / `fleet-steward` agent before any .handoff
+# rollout. While a pilot is active, rollout is RESTRICTED to `targets` only — the
+# full fleet under .handoff/fleet/ is NOT touched. This is the "start with one repo
+# for testing" gate (owner directive 2026-06-13): prove the rollout on a single
+# clean repo, then promote.
+#
+# To go fleet-wide later: set active = false (or widen `targets`) — the gatekeeper
+# must witness that promotion (it widens scope; scope law applies).
+
+active  = true
+reason  = "Pilot: validate .handoff rollout on one clean repo before fleet-wide (owner directive 2026-06-13)."
+
+# Only these repos may receive a rollout while the pilot is active.
+targets = ["flexnetos_runner"]
+
+# Chosen because: registered in ../.meta.yaml (tags ops,runner), single-commit P0
+# husk (ADR-0008), clean tree, no pre-existing .handoff — minimal blast radius.
+# Residency (ADR-0004 §3): the rollout writes a GIT-TEXT-ONLY .handoff (capsule +
+# tasks/packets dirs + README, optional hooks/policies); NO per-repo ledger.db.
+# Events go to the FLEET ledger (meta/.handoff); packets compile via `hf fleet status`.
+
+[promotion]
+# The gate to widen beyond the pilot. A witnessed gatekeeper verdict is required to
+# flip `active=false` or add targets, because going fleet-wide expands scope.
+requires_verdict = true
+next_candidates  = ["icm", "vox", "teri"]   # suggested second wave after the pilot proves out
