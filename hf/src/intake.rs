@@ -178,14 +178,18 @@ pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool) {
     } else {
         matching
     };
+    // Reuse the witnessed claim path (lease + ledger transition), but call the bool-
+    // returning `cmd_claim_with` directly (NOT `cmd_claim`, which exits the process on a
+    // blocked claim — HFTASK-0029 Defect C). A blocked order is skipped so dispatch keeps
+    // claiming the rest of the workflow's orders.
+    let leaser = crate::lease::WeaveCli::from_env();
+    let mut dispatched = 0usize;
     for wo in &to_claim {
-        // Reuse the witnessed claim path (lease + ledger transition).
-        crate::cmd_claim(&wo.id);
+        if crate::cmd_claim_with(&wo.id, &leaser) {
+            dispatched += 1;
+        }
     }
-    println!(
-        "hf dispatch: dispatched {} order(s) for workflow {cid}",
-        to_claim.len()
-    );
+    println!("hf dispatch: dispatched {dispatched} order(s) for workflow {cid}");
 }
 
 /// Resolve a default bundle path under `.handoff/` (used only by the help text / future seam).
