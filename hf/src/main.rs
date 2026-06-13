@@ -9,10 +9,12 @@
 //!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
+mod fleet;
 mod kb;
 mod lease;
 mod policy;
 mod session;
+mod sync;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -728,6 +730,11 @@ fn main() {
             let n = sync_cards();
             println!("hf sync-cards: synced {n} card(s) from ledger truth");
         }
+        Some("sync") => {
+            let auto = args.iter().any(|a| a == "--auto");
+            let dry = args.iter().any(|a| a == "--dry-run");
+            sync::cmd_sync(auto, dry);
+        }
         Some("done") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             let pr = args
@@ -771,6 +778,30 @@ fn main() {
             );
         }
         Some("session") => session::cmd_session(&args[1..]),
+        Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
+            fleet::cmd_fleet_status(args.iter().any(|a| a == "--json"));
+        }
+        Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("render") => {
+            // hf fleet render <member> — compile <member>'s packet from the FLEET ledger
+            let member = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            if member.is_empty() {
+                eprintln!("hf fleet render <member> — member name required");
+                std::process::exit(2);
+            }
+            match fleet::find_meta_root() {
+                Some(root) => match fleet::render_member_packet(&root, member) {
+                    Ok(p) => println!("hf fleet render: wrote {}", p.display()),
+                    Err(e) => {
+                        eprintln!("hf fleet render: {e}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("hf fleet render: no .meta.yaml found from the current directory upward");
+                    std::process::exit(1);
+                }
+            }
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
@@ -783,7 +814,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
