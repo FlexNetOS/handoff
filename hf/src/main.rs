@@ -916,6 +916,34 @@ fn cmd_seed() {
             intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
         });
     }
+    {
+        let id = "HFTASK-0030";
+        let title = "preflight mirrors each repo's CI clippy flags (--all-targets gap that failed PR #30) + loop agents run --all-targets";
+        let objective = "Defect D (cross-workspace): the shared pre-push gate scripts/preflight.sh ran `cargo clippy --all-features` with NO --all-targets, assuming --all-targets is always stricter than CI. That is FALSE for repos whose CI uses --all-targets (handoff: `cargo clippy --workspace --all-targets -- -D warnings`). --all-targets lints TEST code; without mirroring it a test-code lint (needless &borrow in a #[cfg(test)] assert) passed preflight but FAILED CI (PR #30). Fix: (meta repo) preflight greps each repo's .github/workflows/*.yml clippy line and mirrors --all-targets only when that repo's CI uses it (per-repo subset-mirror; a blanket --all-targets would false-block repos whose CI omits it; preserve the --all-features default-features fallback on the --all-features axis only). (handoff repo) the loop's kernel-verifier + kernel-implementer agents mandate `cargo clippy --workspace --all-targets -- -D warnings` to match handoff CI exactly, and CLAUDE.md documents that handoff CI uses --all-targets.";
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec![
+            "preflight runs --all-targets where the repo's CI does; kernel-verifier/implementer mandate --all-targets"
+                .to_string(),
+        ];
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P1,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        });
+    }
     // HFTASK-0029 Defect B: seed is IDEMPOTENT/ADDITIVE — only write cards that are
     // MISSING on disk. Overwriting an existing card clobbered its live status (done →
     // backlog) on re-seed; skipping existing cards preserves status and still creates

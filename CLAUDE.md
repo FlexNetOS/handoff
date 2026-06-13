@@ -3,6 +3,16 @@
 The repo is the source of truth; chat history is not. First command in any session:
 `hf resume`. Navigation order and hard rules live in `AGENTS.md`.
 
+## CI lint gate (mirror it locally — the PR #30 lesson)
+
+handoff CI runs `cargo clippy --workspace --all-targets -- -D warnings` (`.github/workflows/ci.yml`).
+The `--all-targets` flag **lints test code**, so a lint inside a `#[cfg(test)]` block (e.g. a
+needless `&borrow` in an assert) fails CI even when `--all-features` is green locally — exactly
+what sank PR #30. Before pushing, run that exact command plus `cargo fmt --all --check`. The
+loop's `kernel-implementer` + `kernel-verifier` agents mandate `--all-targets`, and the shared
+pre-push gate (`meta/scripts/preflight.sh`, HFTASK-0030) now auto-mirrors each repo's own CI
+clippy flags — so for handoff it adds `--all-targets` automatically.
+
 ## Harness: Handoff Loop (Continuity Kernel Loop)
 
 **Goal:** advance the kernel one witnessed task per cycle — reconcile drift → research →
