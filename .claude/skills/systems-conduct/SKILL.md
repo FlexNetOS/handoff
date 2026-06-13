@@ -14,7 +14,7 @@ next task by value — not letting every repo back-fill its queue.
 | System | Concern (owns) | Does NOT own |
 |--------|----------------|--------------|
 | **meta loop** (`loop_lib`) | running commands across dirs | git, coordination |
-| **meta git** | cross-repo git (status/commit/snapshot/worktree) | task state |
+| **meta git** | cross-repo git (status/commit/snapshot/worktree) — **SSH remotes** (`git@github.com:…`, the `.meta.yaml` default; never HTTPS) | task state |
 | **meta exec** | cross-repo command execution (parallel/filtered) | git semantics |
 | **grit** | code coordination (AST locks, worktrees, conflict-free merge) | task continuity |
 | **handoff** (`hf`) | continuity (ledger, resume, tasks, fleet status/render, drift, policy) | code locks |

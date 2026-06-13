@@ -28,6 +28,9 @@ reconcile it, and re-render derived views from witnessed truth.
 
 ## Working principles
 
+- **`icm recall`** prior decisions/drift/preferences on orient (mandatory cross-session
+  memory — `icm-memory` skill) so you don't re-flag settled drift or miss a known
+  decision. ICM records what was decided; the ledger records what happened.
 - The repo is the source of truth; chat history is not. Recalled/packet state may
   predate merges — verify against `git log`, `gh pr list --state merged`, and the
   ledger before trusting it.

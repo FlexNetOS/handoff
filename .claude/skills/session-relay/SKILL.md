@@ -29,6 +29,9 @@ the ledger.
    systems-orchestrator pulls the next-best task across the fleet. Do not auto-work the
    backlog (back-fill flood).
 5. Reconcile drift before acting (`hf drift`; `drift-reconcile` skill).
+6. **`icm recall`** prior decisions/errors/preferences for what you're resuming
+   (mandatory cross-session memory — `icm-memory` skill). The packet says *what
+   happened*; ICM says *what was decided/learned*.
 
 ## HAND OFF (session end) — release + record in every system
 
@@ -40,6 +43,7 @@ Release and witness across all planes so nothing is left half-held:
 | **handoff** | `hf checkpoint <ID> "<what landed, verified, next>"` → `hf handoff` (re-render packet from the real ledger) |
 | **fleet** | `hf fleet render <repo>` for any repo whose state changed |
 | **.kb** | `hf sync` (one-way ledger→kb: active/progress) — when envctl injection is up |
+| **ICM** | `icm store` the cycle's decisions/errors-resolved/completion (mandatory cross-session memory — `icm-memory` skill) before stopping |
 | **leases** | release the weave task lease (`hf release <ID>` / session end) |
 
 The rendered packet IS the next-session prompt. The SessionEnd hook runs

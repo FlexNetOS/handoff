@@ -48,6 +48,20 @@ Cards and packets are *derived* — regenerate them (`hf checkpoint --sync-cards
 `hf handoff`); never hand-edit. This is what keeps "Done 0/22" from lying after a
 ship.
 
+## ICM persistent memory (mandatory — `icm-memory` skill)
+
+ICM is the cross-session memory the owner requires. **Recall** relevant memory at
+Phase 2 (orient) before selecting/deciding; **store** at Phase 5 (and immediately on
+any error-resolved / decision / preference / completion trigger — before responding).
+The ledger records what happened; ICM records what was learned and decided. See the
+`icm-memory` skill for the recall queries + store triggers/topics.
+
+## Conventions
+
+- **SSH is the git default.** Every `.meta.yaml` remote is `git@github.com:FlexNetOS/…`
+  — clones, `git remote`, and `gh`/`meta git` operations assume SSH auth. Never write an
+  `https://github.com/…` remote; it will fail the workspace's auth.
+
 ## Workflow
 
 ### Phase 0: Context check (follow-up support)
@@ -80,7 +94,9 @@ Invoke `continuity-navigator` (model: opus). It runs `hf resume`, applies the
 precedence ladder, **re-renders any stale derived views**, and writes
 `_workspace/01_navigator_truth.md` with the ledger-verified backlog and the single
 next safe task (`hf claim <ID>`). If it emits a P0 finding (broken witness chain,
-ledger unreadable) → STOP and surface it; do not pick a task.
+ledger unreadable) → STOP and surface it; do not pick a task. **First**, `icm recall`
+relevant prior decisions/errors/preferences for the selected task (icm-memory skill) so
+the cycle doesn't re-litigate settled architecture or repeat a resolved error.
 
 ### Phase 2b: Conduct + select  — **Execution mode: Sub-agent**
 
@@ -156,6 +172,9 @@ add the CLAUDE.md change-history row, and **regenerate derived views** (`hf chec
    next-session prompt.
 3. Preserve `_workspace/` (audit trail). Report a per-cycle summary: task shipped,
    verdict, drift reconciled, next safe task.
+4. **`icm store`** the cycle's outcome on its trigger (completion → `context-handoff`;
+   any decision → `decisions-handoff`; resolved error → `errors-resolved`) before
+   handing off — ICM is the cross-session memory (icm-memory skill).
 
 ## Data flow
 
