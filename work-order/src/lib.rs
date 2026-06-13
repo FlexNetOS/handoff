@@ -6,6 +6,9 @@
 //! and gap #3 (integration contract). Intent/scope/acceptance are hashed (blake3) so a
 //! downstream verifier (`ruvector-verified`) can treat the order as a provable contract.
 
+pub mod intake;
+pub use intake::{synthesize_spec, Intent, SynthSpec};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,31 +100,87 @@ impl WorkOrder {
     }
 }
 
-// --- minimal mirror of prompt_hub's SwarmBundle (prompt_hub/prompt-hub/src/models.rs) ---
-// Real: { workflow_id: Uuid, role_prompts: HashMap<Role,String>, handoff_template,
-//         consistency_report: Vec<Conflict>, evolution_suggestions: Vec<String> }
+// --- integration contract: mirror of prompt_hub's `SwarmBundle` ---
+//
+// Field-for-field against `prompt_hub/prompt-hub/src/models.rs:528`:
+//   pub struct SwarmBundle {
+//       pub workflow_id: Uuid,                      // 530
+//       pub role_prompts: HashMap<Role, String>,    // 532
+//       pub handoff_template: String,               // 534
+//       pub consistency_report: Vec<Conflict>,      // 536
+//       pub evolution_suggestions: Vec<String>,     // 538
+//   }
+//
+// This is a *contract mirror*, not a path-dependency: prompt-hub's Cargo uses
+// `version.workspace`/`edition.workspace` inheritance, so a path-dep from this workspace
+// risks a workspace-inheritance build break (HFTASK-0003 research §A.1/§B.3). Mirroring the
+// shape keeps the dependency a documented contract with no cross-repo build edge.
+//
+// Representation notes (decouple from upstream wire churn, stay deterministic):
+//   - `workflow_id: Uuid` is carried as a `String` (the `correlation_id` handle).
+//   - `role_prompts: HashMap<Role,String>` is carried as an ordered `Vec<(String,String)>`
+//     (role token, prompt). A Vec — not a map — so intake order, and therefore minted ids,
+//     are deterministic. `Role` is a string token (matches the enum's serde repr + `Custom`).
+//   - `consistency_report: Vec<Conflict>` is reduced to `Vec<String>` (human-readable
+//     conflict summaries) — the conflict detail is not needed to synthesize a WorkOrder.
+//   - `#[serde(default)]` on the trailing three fields so older 3-field bundle JSON
+//     (the S1 spike shape) still deserializes — backward compatible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwarmBundle {
-    pub workflow_id: String,                 // Uuid as string for the spike
-    pub role_prompts: Vec<(String, String)>, // (role, prompt) — HashMap flattened for determinism
+    /// = prompt_hub `workflow_id: Uuid`, as string. Becomes each order's `correlation_id`.
+    pub workflow_id: String,
+    /// = prompt_hub `role_prompts: HashMap<Role,String>`, ordered for determinism.
+    #[serde(default)]
+    pub role_prompts: Vec<(String, String)>,
+    /// = prompt_hub `handoff_template: String` (Handlebars skeleton).
+    #[serde(default)]
     pub handoff_template: String,
+    /// = prompt_hub `consistency_report: Vec<Conflict>`, reduced to summary strings.
+    #[serde(default)]
+    pub consistency_report: Vec<String>,
+    /// = prompt_hub `evolution_suggestions: Vec<String>`.
+    #[serde(default)]
+    pub evolution_suggestions: Vec<String>,
 }
 
 /// THE SEAM: prompt_hub SwarmBundle -> Vec<WorkOrder> (one provable handoff.task.v1 per role).
-/// This is the single connector gap #2 (front door) and gap #3 (envelope) meet at.
-pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
+///
+/// Each order's verifiable fields (`path_scope`, `acceptance_criteria`, `test_commands`) are
+/// **synthesized deterministically** from a vibe `Intent` via [`synthesize_spec`] — closing
+/// the HFTASK-0003 gap where the spike emitted `path_scope: ["."]` + `test_commands: []`
+/// (unverifiable by the drift gate). The per-role Intent is, in precedence:
+///   1. `intent_override` (the `--vibe`/`--intent` whole-bundle intent), else
+///   2. `Intent::classify(role_prompt)` (deterministic, mirrors prompt_hub's classifier).
+///
+/// `objective = "<TaskType>: <prompt>"` (≥10 chars, schema minLength), `correlation_id =
+/// workflow_id` (the cross-ref handle), and `intent_lock` is computed over the synthesized
+/// triple. Pure: same `(bundle, intent_override, scope_override)` → byte-identical orders.
+pub fn work_orders_from_bundle_with(
+    bundle: &SwarmBundle,
+    intent_override: Option<&Intent>,
+    scope_override: Option<&[String]>,
+) -> Vec<WorkOrder> {
     bundle
         .role_prompts
         .iter()
         .enumerate()
         .map(|(i, (role, prompt))| {
             let id = format!("TASK-{:04}", i + 1);
-            let path_scope = vec![".".to_string()];
-            let acceptance = vec![format!(
-                "{role} deliverable accepted via test_commands + drift audit"
-            )];
-            let objective = prompt.clone();
-            let intent_lock = WorkOrder::compute_intent_lock(&objective, &path_scope, &acceptance);
+            let classified;
+            let intent = match intent_override {
+                Some(it) => it,
+                None => {
+                    classified = Intent::classify(prompt);
+                    &classified
+                }
+            };
+            let spec = synthesize_spec(intent, Some(role), scope_override);
+            let objective = compose_objective(&intent.task_type, prompt);
+            let intent_lock = WorkOrder::compute_intent_lock(
+                &objective,
+                &spec.path_scope,
+                &spec.acceptance_criteria,
+            );
             WorkOrder {
                 schema: "handoff.task.v1".to_string(),
                 id,
@@ -129,9 +188,9 @@ pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
                 status: Status::Backlog,
                 priority: Priority::P1,
                 objective,
-                path_scope,
-                acceptance_criteria: acceptance,
-                test_commands: vec![],
+                path_scope: spec.path_scope,
+                acceptance_criteria: spec.acceptance_criteria,
+                test_commands: spec.test_commands,
                 dependencies: vec![],
                 blocked_by: vec![],
                 allows_network: false,
@@ -142,6 +201,32 @@ pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
             }
         })
         .collect()
+}
+
+/// Back-compat convenience: synthesize with a per-role classified Intent and default scope.
+pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
+    work_orders_from_bundle_with(bundle, None, None)
+}
+
+/// Compose a schema-valid objective (`minLength: 10`) from the task_type + prompt. When the
+/// prompt is empty (prod `role_prompts` can be empty) a descriptive fallback is used.
+fn compose_objective(task_type: &str, prompt: &str) -> String {
+    let p = prompt.trim();
+    let composed = if p.is_empty() {
+        format!("{task_type}: work order synthesized from SwarmBundle (no role prompt)")
+    } else {
+        let verb = task_type
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().collect::<String>() + &task_type[1..])
+            .unwrap_or_else(|| task_type.to_string());
+        format!("{verb}: {p}")
+    };
+    if composed.len() < 10 {
+        format!("{composed} (handoff work order)")
+    } else {
+        composed
+    }
 }
 
 fn first_line(s: &str) -> String {
@@ -158,14 +243,16 @@ mod tests {
             role_prompts: vec![
                 (
                     "architect".to_string(),
-                    "Design the storefront schema".to_string(),
+                    "Design the storefront schema in rust".to_string(),
                 ),
                 (
                     "coder".to_string(),
-                    "Implement the checkout flow".to_string(),
+                    "Implement the checkout flow in rust".to_string(),
                 ),
             ],
             handoff_template: "standard".to_string(),
+            consistency_report: vec![],
+            evolution_suggestions: vec![],
         }
     }
 
@@ -178,6 +265,46 @@ mod tests {
         assert_eq!(orders[0].id, "TASK-0001");
         assert_eq!(orders[0].role.as_deref(), Some("architect"));
         assert_eq!(orders[0].schema, "handoff.task.v1");
+    }
+
+    #[test]
+    fn synthesized_orders_are_verifiable_no_junk_defaults() {
+        // HFTASK-0003 acceptance #1: never path_scope ["."], never empty test_commands.
+        for o in work_orders_from_bundle(&sample_bundle()) {
+            assert!(!o.path_scope.is_empty());
+            assert!(
+                !o.path_scope.iter().any(|s| s == "." || s == "./"),
+                "{}: path_scope must be narrower than repo root, got {:?}",
+                o.id,
+                o.path_scope
+            );
+            assert!(
+                !o.test_commands.is_empty(),
+                "{}: test_commands must be non-empty",
+                o.id
+            );
+            // rust prompts → cargo test present
+            assert!(o.test_commands.iter().any(|c| c == "cargo test"));
+            // objective satisfies schema minLength 10
+            assert!(o.objective.len() >= 10);
+            // acceptance is non-empty and intent_lock is fresh
+            assert!(!o.acceptance_criteria.is_empty());
+            assert!(o.intent_unchanged());
+        }
+    }
+
+    #[test]
+    fn intake_is_deterministic_same_ids_same_locks() {
+        // HFTASK-0003 acceptance #3: re-running yields identical ids + intent_lock hashes.
+        let a = work_orders_from_bundle(&sample_bundle());
+        let b = work_orders_from_bundle(&sample_bundle());
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b.iter()) {
+            assert_eq!(x.id, y.id);
+            assert_eq!(x.intent_lock, y.intent_lock);
+            assert_eq!(x.correlation_id, y.correlation_id);
+            assert_eq!(x.objective, y.objective);
+        }
     }
 
     #[test]

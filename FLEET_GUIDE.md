@@ -103,6 +103,8 @@ FLEET ledger when you run from `meta/`.
 |------|--------------|
 | `hf resume [--json\|--compact]` | rehydrate: project / done / remaining / next-safe / next command |
 | `hf status [--json]` | full task board from ledger truth |
+| `hf intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]` | front door: parse a prompt_hub `SwarmBundle` → deterministically synthesize one gate-passing `handoff.task.v1` card per role (no LLM); each shares `correlation_id = workflow_id` |
+| `hf dispatch <workflow_id> [--next]` | claim/activate the synthesized orders by `correlation_id` (witnessed `claim` path); `--next` claims only the first |
 | `hf claim <ID>` | reserve the weave lease + record the claim (no edit without a claim) |
 | `hf checkpoint <ID> [note] [--sync-cards]` | witness progress; `--sync-cards` re-renders cards from ledger truth |
 | `hf sync [--auto] [--dry-run]` | repair `.meta.yaml`/`.gitignore` registration + one-way `ledger→.kb` mirror |
@@ -242,6 +244,8 @@ merge token — a human or an Environment-gated job merges).
 
 ```bash
 hf resume                       # where am I? what's next?
+hf intake --bundle b.json       # SwarmBundle -> synthesized task cards (front door)
+hf dispatch <workflow_id>       # claim the synthesized cards by correlation_id
 hf fleet status                 # whole-fleet board
 hf fleet render <repo>          # compile a repo's packet
 hf claim <ID> && <work>         # claim, then edit in scope

@@ -187,6 +187,8 @@ mod tests {
                 ("coder".to_string(), "Build checkout".to_string()),
             ],
             handoff_template: "standard".to_string(),
+            consistency_report: vec![],
+            evolution_suggestions: vec![],
         }
     }
 

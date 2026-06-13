@@ -1,4 +1,4 @@
 # Active
 
-Next: HFTASK-0003
-Done 9/23 · witness-verified 279 events
+Next: KBTASK-SEED-UNLOCK-UNDER-SYSTEMD
+Done 11/25 · witness-verified 336 events

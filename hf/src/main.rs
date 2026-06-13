@@ -11,6 +11,7 @@
 
 mod fleet;
 mod gates;
+mod intake;
 mod kb;
 mod lease;
 mod policy;
@@ -754,6 +755,34 @@ fn main() {
                 .unwrap_or("");
             kb::cmd_mint_from_kb(slug);
         }
+        Some("intake") => {
+            let flag = |name: &str| {
+                args.iter()
+                    .position(|a| a == name)
+                    .and_then(|i| args.get(i + 1))
+                    .map(|s| s.as_str())
+            };
+            let scope: Option<Vec<String>> = flag("--scope").map(|s| {
+                s.split(',')
+                    .map(|g| g.trim().to_string())
+                    .filter(|g| !g.is_empty())
+                    .collect()
+            });
+            intake::cmd_intake(
+                flag("--bundle"),
+                flag("--vibe"),
+                flag("--intent"),
+                scope.as_deref(),
+            );
+        }
+        Some("dispatch") => {
+            let next_only = args.iter().any(|a| a == "--next");
+            let cid = args
+                .get(1)
+                .map(|s| s.as_str())
+                .filter(|s| !s.starts_with("--"));
+            intake::cmd_dispatch(cid, next_only);
+        }
         Some("ship") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             let base = args
@@ -827,7 +856,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -845,6 +874,8 @@ mod tests {
                 ("coder".into(), "build".into()),
             ],
             handoff_template: "standard".into(),
+            consistency_report: vec![],
+            evolution_suggestions: vec![],
         })
     }
 
