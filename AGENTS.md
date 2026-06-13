@@ -8,21 +8,28 @@ Run:
 hf resume
 ```
 
-## North Star (canon)
+## North Star (canon — two levels)
 
-This kernel serves the fleet north-star: **NO HUMAN IN THE LOOP — a multi-provider
-agentic autopilot where the user gives direction and the system synthesizes, builds,
-verifies, and delivers**; `NEEDS-HUMAN` walls are a *scaffold* to be replaced by a model
-with the human's skillset; end-state = a single-person conglomerate run by the system.
-The authoritative vision/architecture/runbook live at the meta root — read them, don't
-re-derive:
+This repo carries TWO canonical layers; read both before planning:
 
-- **Vision / compass:** `../NORTH-STAR.md` (mission, laws, planes, build-order, steward rubric)
+**1. Kernel doctrine (local, authoritative for *how* this kernel governs change):**
+[`NORTH-STAR.md`](NORTH-STAR.md) — a local-first, auditable, reversible, model-native
+agentic OS where **every agent action increases verified capability without corrupting the
+baseline**: Integrity · Reversibility · Capability Gain (no promotion without all three).
+CECCA/NOA is the executive kernel; the **Gold World** is the protected baseline; failures
+compress into evidence. The keystone ADR is [`docs/adr-0001-flexnetos-autopilot-keystone.md`](docs/adr-0001-flexnetos-autopilot-keystone.md).
+
+**2. Fleet vision (the *why/where* — meta root):** **NO HUMAN IN THE LOOP — a multi-provider
+agentic autopilot; the user gives direction, the system builds/verifies/delivers/operates;
+`NEEDS-HUMAN` is a scaffold replaced by a model with the human's skillset; end-state = a
+single-person conglomerate run by the system.**
+
+- **Fleet vision:** `../NORTH-STAR.md` (mission, laws, planes, build-order, steward rubric)
 - **Architecture:** `../ARCHITECTURE-TRUTH.md` (the 5 planes, verified vs code)
 - **Runbook:** `../RUVECTOR-RUNBOOK.md` (the agentic pipeline + build-out)
 
-The rendered north-star in every packet derives from `.handoff/context/capsule.json`
-(`northstar`), which points here — not from a hardcoded string (ADR-0006).
+The packet's North Star derives from `.handoff/context/capsule.json` (`northstar`), which
+points here — not a hardcoded string (ADR-0006).
 
 ## Mission
 
@@ -50,6 +57,7 @@ PreHandoff/TaskClaim/PreEdit hard gates. Run `hf drift` before any handoff.)
 
 ## Navigation order
 
+0. Kernel doctrine + keystone: `NORTH-STAR.md` · `docs/adr-0001-flexnetos-autopilot-keystone.md`
 1. `.handoff/active.md`
 2. `.handoff/context/capsule.json`
 3. `.handoff/packets/latest.md`

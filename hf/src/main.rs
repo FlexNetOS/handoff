@@ -137,7 +137,7 @@ fn cmd_init() {
     let capsule = serde_json::json!({
         "schema": "handoff.context_capsule.v1",
         "project_name": "handoff (Continuity Ledger Kernel)",
-        "northstar": "NO HUMAN IN THE LOOP — a multi-provider agentic autopilot: the user gives direction, the system synthesizes/builds/verifies/delivers, witnessed and fail-closed at every gate; NEEDS-HUMAN walls are a scaffold to be replaced by a model with the human's skillset; end-state = single-person conglomerate run by the system. Canon (authoritative): ../NORTH-STAR.md · architecture ../ARCHITECTURE-TRUTH.md · runbook ../RUVECTOR-RUNBOOK.md",
+        "northstar": "KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native agentic OS where every agent action increases verified capability without corrupting the baseline: Integrity · Reversibility · Capability Gain (no promotion without all three). CECCA/NOA is the executive kernel; the Gold World is the protected baseline; failures compress into evidence. Authoritative: NORTH-STAR.md · keystone docs/adr-0001-flexnetos-autopilot-keystone.md. FLEET VISION (the why): NO HUMAN IN THE LOOP — multi-provider autopilot; user directs, system builds/operates; NEEDS-HUMAN is a scaffold replaced by a model with the human's skillset; end-state = single-person conglomerate. See ../NORTH-STAR.md · ../ARCHITECTURE-TRUTH.md · ../RUVECTOR-RUNBOOK.md",
         "next_command": "hf resume"
     });
     let _ = fs::write(
