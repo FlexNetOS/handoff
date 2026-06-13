@@ -58,7 +58,11 @@ ship.
 1. Confirm cwd is `handoff/`. Read `.handoff/policy.toml` for loop params
    (`cycle_flush`, base/trunk branch, `permission_gate`).
 2. Run the session preflight discipline: clean tree, base synced with origin.
-   Work happens in a fresh worktree off the policy base branch (`develop`).
+   Work happens in a **grit worktree** (ADR-0009), not an ad-hoc `git worktree`:
+   `hf claim <TASK>` (task lease) → `grit plan` → `grit claim <file::symbol>` (AST
+   locks) → work in `.grit/worktrees/agent-N` → `grit done` (rebase+merge under file
+   lock). Different symbols in the same file never collide, so cycles run truly
+   parallel with zero discarded work. (`.grit/` is gitignored binary state.)
 3. Note the cycle budget: ship after `cycle_flush` tasks (default 4), then hand off.
 
 ### Phase 2: Orient + reconcile  — **Execution mode: Sub-agent**
