@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0015",
   "title": "hf policy engine + hook contract wiring (lifecycle automation)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §10/R9: implement `hf policy check-claim|check-edit|check-handoff` reading the brought-forward .handoff/policies/rules.toml (handoff.policy.rules.v1: deny-without-claim, lease timings, drift blocks, protected-files denylist, blocked commands). Wire .handoff/hooks/hooks.toml (handoff.hooks.v1) so the agent harness fires hf on SessionStart/PreSessionStart(preflight)/TaskClaim/PreEdit/PostEdit/PreHandoff/SessionStop/PostMerge with fail_mode block as hard gates. This is the no-human-in-the-loop automation substrate. Reconcile lease heartbeat/stale/force-release timings with HFTASK-0002 claim TTL.",
   "path_scope": [
