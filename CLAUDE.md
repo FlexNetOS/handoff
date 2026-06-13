@@ -3,13 +3,18 @@
 The repo is the source of truth; chat history is not. First command in any session:
 `hf resume`. Navigation order and hard rules live in `AGENTS.md`.
 
-**North Star (canon):** this kernel serves the fleet north-star — **NO HUMAN IN THE LOOP:
-a multi-provider agentic autopilot; user gives direction, the system builds/verifies/
-delivers; `NEEDS-HUMAN` is a scaffold to be replaced by a model with the human's skillset;
-end-state = a single-person conglomerate run by the system.** The authoritative
-vision/architecture/runbook are at the meta root — read, don't re-derive: `../NORTH-STAR.md`
-(vision), `../ARCHITECTURE-TRUTH.md` (architecture), `../RUVECTOR-RUNBOOK.md` (runbook). The
-packet's North Star renders from `.handoff/context/capsule.json`, not a hardcode (ADR-0006).
+**North Star (canon — two levels):**
+- **Kernel doctrine (local, authoritative):** [`NORTH-STAR.md`](NORTH-STAR.md) — a local-first,
+  auditable, reversible, model-native agentic OS; every action increases verified capability
+  without corrupting the baseline (**Integrity · Reversibility · Capability Gain — no promotion
+  without all three**); CECCA/NOA executive kernel; the **Gold World** is the protected baseline.
+  Keystone ADR: [`docs/adr-0001-flexnetos-autopilot-keystone.md`](docs/adr-0001-flexnetos-autopilot-keystone.md).
+- **Fleet vision (the why, meta root):** **NO HUMAN IN THE LOOP — multi-provider autopilot; user
+  directs, system builds/operates; `NEEDS-HUMAN` is a scaffold replaced by a model with the
+  human's skillset; end-state = single-person conglomerate.** See `../NORTH-STAR.md`,
+  `../ARCHITECTURE-TRUTH.md`, `../RUVECTOR-RUNBOOK.md`.
+
+The packet's North Star renders from `.handoff/context/capsule.json`, not a hardcode (ADR-0006).
 
 ## CI lint gate (mirror it locally — the PR #30 lesson)
 
