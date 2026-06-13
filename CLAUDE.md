@@ -3,6 +3,14 @@
 The repo is the source of truth; chat history is not. First command in any session:
 `hf resume`. Navigation order and hard rules live in `AGENTS.md`.
 
+**North Star (canon):** this kernel serves the fleet north-star — **NO HUMAN IN THE LOOP:
+a multi-provider agentic autopilot; user gives direction, the system builds/verifies/
+delivers; `NEEDS-HUMAN` is a scaffold to be replaced by a model with the human's skillset;
+end-state = a single-person conglomerate run by the system.** The authoritative
+vision/architecture/runbook are at the meta root — read, don't re-derive: `../NORTH-STAR.md`
+(vision), `../ARCHITECTURE-TRUTH.md` (architecture), `../RUVECTOR-RUNBOOK.md` (runbook). The
+packet's North Star renders from `.handoff/context/capsule.json`, not a hardcode (ADR-0006).
+
 ## CI lint gate (mirror it locally — the PR #30 lesson)
 
 handoff CI runs `cargo clippy --workspace --all-targets -- -D warnings` (`.github/workflows/ci.yml`).

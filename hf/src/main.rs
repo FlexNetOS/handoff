@@ -137,7 +137,7 @@ fn cmd_init() {
     let capsule = serde_json::json!({
         "schema": "handoff.context_capsule.v1",
         "project_name": "handoff (Continuity Ledger Kernel)",
-        "northstar": "Adopt RuVector as the foundation; wire the .handoff contract onto existing crates.",
+        "northstar": "NO HUMAN IN THE LOOP — a multi-provider agentic autopilot: the user gives direction, the system synthesizes/builds/verifies/delivers, witnessed and fail-closed at every gate; NEEDS-HUMAN walls are a scaffold to be replaced by a model with the human's skillset; end-state = single-person conglomerate run by the system. Canon (authoritative): ../NORTH-STAR.md · architecture ../ARCHITECTURE-TRUTH.md · runbook ../RUVECTOR-RUNBOOK.md",
         "next_command": "hf resume"
     });
     let _ = fs::write(
@@ -593,7 +593,15 @@ fn render_packet_md(tasks: &[WorkOrder], replay: &[(String, Status)], witness: u
 
     let mut md = String::new();
     md.push_str("# Handoff Packet (latest) — handoff.packet.v2\n\n");
-    md.push_str("## 1. North Star\nAdopt RuVector as the foundation; wire the .handoff contract onto existing crates.\n\n");
+    // North Star is rendered from the context capsule (ADR-0006 portability: no
+    // hardcoded northstar in the renderer). The capsule points to the canonical
+    // fleet vision/architecture/runbook docs at the meta root.
+    let northstar = capsule_field("northstar").unwrap_or_else(|| {
+        "See ../NORTH-STAR.md (canon). NO HUMAN IN THE LOOP: a multi-provider agentic autopilot \
+         — the user gives direction, the system builds/verifies/delivers."
+            .to_string()
+    });
+    md.push_str(&format!("## 1. North Star\n{northstar}\n\n"));
     md.push_str("## 2. State Precedence\nGit > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.\n\n");
     md.push_str(&format!(
         "## 3. Progress\nDone: {}/{}.  Tamper-evident events verified: {}.\n\n",
