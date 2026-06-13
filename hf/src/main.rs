@@ -952,6 +952,52 @@ fn cmd_seed() {
             intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
         });
     }
+    // ADR-0004 §3.3 revision (2026-06-13, owner-directed): per-repo gitignored ledger + central rollup.
+    for (id, title, objective, deps) in [
+        ("HFTASK-0031",
+         "Ledger schema: rollup provenance (origin_repo/origin_seq/origin_action_hash) + sync_cursor",
+         "ADR-0004 §3.3 (rev): additive, backward-compatible migration in ledger/src/lib.rs — ALTER events ADD COLUMN origin_repo TEXT / origin_seq INTEGER / origin_action_hash BLOB (NULL = native local event); CREATE UNIQUE INDEX idx_events_origin ON events(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL (idempotency); CREATE TABLE sync_cursor(origin_repo PK, last_seq, updated_ns) in the CENTRAL ledger. Old rows verify unchanged (verify_witness_chain rebuilds from ordered action_hash, ignores stored prev_hash). No rvf-crypto change.",
+         Vec::<String>::new()),
+        ("HFTASK-0032",
+         "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx)",
+         "ADR-0004 §3.3 (rev): hf/src/sync.rs + a ledger rollup API. For each member repo, read its gitignored .handoff/ledger.db events with seq > sync_cursor.last_seq, RE-APPEND each through the central ledger's witnessed append() path (re-chained onto the central tail), tagging provenance (origin_repo, origin_seq, origin_action_hash = the source action_hash, byte-identical since hash_action inputs match). Advance the cursor in the SAME central transaction. UNIQUE(origin_repo,origin_seq) makes re-runs no-ops (at-least-once -> exactly-once). Chains are never merged; self-contained events are re-appended (CT/RFC6962 model).",
+         vec!["HFTASK-0031".to_string()]),
+        ("HFTASK-0033",
+         "verify_rollup_provenance() + hf fleet status verifies both chains + provenance",
+         "ADR-0004 §3.3 (rev): add verify_rollup_provenance() (pure SQL + existing hash_action) that, for each rolled-up central row, re-derives SHA3-256(event_type||work_order_id||payload_json) and byte-compares to origin_action_hash (the proof bridge). Extend hf fleet status to verify (i) the central chain via verify_witness_chain (unchanged), (ii) each per-repo chain independently, (iii) provenance faithfulness. Both chains verify independently; any central event traces to its repo.",
+         vec!["HFTASK-0031".to_string()]),
+        ("HFTASK-0034",
+         "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard",
+         "ADR-0004 §6 (rev): flip hf/src/fleet.rs P7 enforcement — a gitignored local .handoff/ledger.db is LEGITIMATE; only a git-TRACKED .db under .handoff is a violation. Gate: fail on tracked .db; fail if the .handoff/**/ledger.db .gitignore guard is missing; a .db merely present on disk is NOT a violation (remove the stray-ledger flag at fleet.rs:102/111/145-154). Cross-fleet follow-up (other repos): envctl ci/gates/p7.sh Gate 3b removal; prompt_hub/lane member-rule capsule/README edits.",
+         Vec::<String>::new()),
+        ("HFTASK-0035",
+         "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide",
+         "ADR-0004 §3.3/§6 (rev): ensure every continuity member's .gitignore ignores .handoff/**/ledger.db (and *.db-wal/*.db-shm) so the per-repo local ledger is never committed (keeps the one good half of the old rule). Update the handoff repo + the fleet rollout generator so seeded repos get the guard. Idempotent.",
+         Vec::<String>::new()),
+    ] {
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P1,
+            objective: objective.into(),
+            path_scope: vec!["handoff/**".to_string()],
+            acceptance_criteria: vec![format!("{title}: implemented + cargo test green + drift-audited")],
+            test_commands: vec!["cargo test".into()],
+            dependencies: deps,
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(
+                objective,
+                &["handoff/**".to_string()],
+                &[format!("{title}: implemented + cargo test green + drift-audited")],
+            ),
+        });
+    }
     // HFTASK-0029 Defect B: seed is IDEMPOTENT/ADDITIVE — only write cards that are
     // MISSING on disk. Overwriting an existing card clobbered its live status (done →
     // backlog) on re-seed; skipping existing cards preserves status and still creates

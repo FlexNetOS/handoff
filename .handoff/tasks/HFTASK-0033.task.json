@@ -1,0 +1,30 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0033",
+  "title": "verify_rollup_provenance() + hf fleet status verifies both chains + provenance",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0004 §3.3 (rev): add verify_rollup_provenance() (pure SQL + existing hash_action) that, for each rolled-up central row, re-derives SHA3-256(event_type||work_order_id||payload_json) and byte-compares to origin_action_hash (the proof bridge). Extend hf fleet status to verify (i) the central chain via verify_witness_chain (unchanged), (ii) each per-repo chain independently, (iii) provenance faithfulness. Both chains verify independently; any central event traces to its repo.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "verify_rollup_provenance() + hf fleet status verifies both chains + provenance: implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0031"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b1652728fee81d28f6dde64942b44cfcbf2a791568f7200cb462e61c86226f06",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:a126d56b46e09ee2dd30ef894eb71235f22140654b341097e61e8b211c41a188"
+  }
+}

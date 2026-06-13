@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0034",
+  "title": "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0004 §6 (rev): flip hf/src/fleet.rs P7 enforcement — a gitignored local .handoff/ledger.db is LEGITIMATE; only a git-TRACKED .db under .handoff is a violation. Gate: fail on tracked .db; fail if the .handoff/**/ledger.db .gitignore guard is missing; a .db merely present on disk is NOT a violation (remove the stray-ledger flag at fleet.rs:102/111/145-154). Cross-fleet follow-up (other repos): envctl ci/gates/p7.sh Gate 3b removal; prompt_hub/lane member-rule capsule/README edits.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard: implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b6bce2352964cef97a55f45cecfbe582e58be0b3543a884912c3ac0cdd7b7863",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:15e6e373dc6ccf0a2568a4d2922b99b73970f8bf68aa88f7c2331e91af4129ea"
+  }
+}

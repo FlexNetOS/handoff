@@ -1,0 +1,30 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0032",
+  "title": "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0004 §3.3 (rev): hf/src/sync.rs + a ledger rollup API. For each member repo, read its gitignored .handoff/ledger.db events with seq > sync_cursor.last_seq, RE-APPEND each through the central ledger's witnessed append() path (re-chained onto the central tail), tagging provenance (origin_repo, origin_seq, origin_action_hash = the source action_hash, byte-identical since hash_action inputs match). Advance the cursor in the SAME central transaction. UNIQUE(origin_repo,origin_seq) makes re-runs no-ops (at-least-once -> exactly-once). Chains are never merged; self-contained events are re-appended (CT/RFC6962 model).",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx): implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0031"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:109156721faad32861e583a32dec369ae1b7cb0d4359faac6beed7cb01b01913",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:33a229964f7bda280177a23320581bc1b1da37bcc5acfaeb5c01305c357a745c"
+  }
+}

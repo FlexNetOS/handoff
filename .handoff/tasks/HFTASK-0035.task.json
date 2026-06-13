@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0035",
+  "title": "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0004 §3.3/§6 (rev): ensure every continuity member's .gitignore ignores .handoff/**/ledger.db (and *.db-wal/*.db-shm) so the per-repo local ledger is never committed (keeps the one good half of the old rule). Update the handoff repo + the fleet rollout generator so seeded repos get the guard. Idempotent.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide: implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e781df32644c2e3ced75a01f75a1aa5bb189a5b84a3ffff60bfbe16b03c39e79",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:0bcc8e775524dc75db740562bccee8b7902f917787a5cfe7abe6e3d3e72bb224"
+  }
+}
