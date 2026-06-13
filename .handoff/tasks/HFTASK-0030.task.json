@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0030",
+  "title": "preflight mirrors each repo's CI clippy flags (--all-targets gap that failed PR #30) + loop agents run --all-targets",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Defect D (cross-workspace): the shared pre-push gate scripts/preflight.sh ran `cargo clippy --all-features` with NO --all-targets, assuming --all-targets is always stricter than CI. That is FALSE for repos whose CI uses --all-targets (handoff: `cargo clippy --workspace --all-targets -- -D warnings`). --all-targets lints TEST code; without mirroring it a test-code lint (needless &borrow in a #[cfg(test)] assert) passed preflight but FAILED CI (PR #30). Fix: (meta repo) preflight greps each repo's .github/workflows/*.yml clippy line and mirrors --all-targets only when that repo's CI uses it (per-repo subset-mirror; a blanket --all-targets would false-block repos whose CI omits it; preserve the --all-features default-features fallback on the --all-features axis only). (handoff repo) the loop's kernel-verifier + kernel-implementer agents mandate `cargo clippy --workspace --all-targets -- -D warnings` to match handoff CI exactly, and CLAUDE.md documents that handoff CI uses --all-targets.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "preflight runs --all-targets where the repo's CI does; kernel-verifier/implementer mandate --all-targets"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e1f63d4280e5879e1cd3bc9e9ee0834db65081a963f9c2ffd4a87d6f9f91c6b5",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:20ebd4edf5e4358596f55e9f70ea433f426e0dde21c44ea5e4f01bc2909db889"
+  }
+}
