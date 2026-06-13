@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "rtk-tokenkill",
+  "role": "CLI proxy binary `rtk` that wraps dev commands (git, gh, cargo, npm/pnpm, pytest, docker, kubectl, etc.) and filters/compresses their output before it reaches LLM context, claiming 60-90% token savings. Includes SQLite-backed savings analytics (rtk gain), Claude Code hook integration that auto-rewrites commands, ~60 TOML filter configs, and a discover/learn subsystem that mines Claude Code history for missed optimizations.",
+  "plane": "rtk-tooling",
+  "tier": "C",
+  "northstar": "rtk-ai tooling is foundational to every feature: tokens filtered, memory persistent, voice on milestones, locks for parallel agents.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

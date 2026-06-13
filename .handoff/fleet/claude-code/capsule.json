@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "claude-code",
+  "role": "Unmodified fork of anthropics/claude-code, the upstream's public release/issue-tracker repo: CHANGELOG + RSS feed, the bundled official plugin marketplace (.claude-plugin/marketplace.json + plugins/), examples (hooks/mdm/settings), and GitHub issue-triage automation. Contains no CLI source code; its workspace value is as the vendor reference for harness plugins/config.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

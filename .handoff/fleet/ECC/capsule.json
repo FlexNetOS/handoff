@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "ECC",
+  "role": "Fork of affaan-m/ECC (\"Everything Claude Code\"): a multi-harness agent operating system \u2014 agents, skills, hooks, rules, commands, and MCP configs for Claude Code/Codex/Cursor/Gemini, shipped as npm ecc-universal plus a Rust TUI control plane (ecc2/ecc-tui) and a Python llm-abstraction layer. Locally it also serves as the committed persistence pad for forge-loop bookkeeping (_workspace/) that documents envctl/meta dashboard work.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

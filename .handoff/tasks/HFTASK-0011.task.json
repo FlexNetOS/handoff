@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0011",
   "title": "hf sync — idempotent .meta.yaml/.gitignore repair + one-way .kb mirror",
-  "status": "backlog",
+  "status": "claimed",
   "priority": "P2",
   "objective": "ADR-0001 §6 (Research R7): Part A is IDEMPOTENT ensure/repair (handoff is ALREADY in ../.meta.yaml + ../.gitignore - there is a dup gitignore line to clean; no `meta project add` exists so grep-guard file edits, never blind append). Part B: git kb has NO upsert - do show-or-create -> checkout -> full-overwrite -> commit, scoped to context/overridable/active + context/overridable/progress (preserve frontmatter id; never rm+recreate). ONE-WAY: write only those generated slugs from a ledger-derived body, never read .kb back as truth, tag generated, never touch immutable/extensible/tasks slugs. Emit meta_registered; run at session end / post pr_merged.",
   "path_scope": [

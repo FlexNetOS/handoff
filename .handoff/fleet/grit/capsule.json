@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "grit",
+  "role": "Function-level (AST) lock coordinator letting many parallel AI agents edit one git codebase without merge conflicts: agents claim tree-sitter-parsed symbols, locks persist in a \"room\" store (SQLite/S3/Azure), work happens in parallel worktrees, then rebase-merge on done. Rust CLI (clap) with ci/release-please automation.",
+  "plane": "rtk-tooling",
+  "tier": "C",
+  "northstar": "rtk-ai tooling is foundational to every feature: tokens filtered, memory persistent, voice on milestones, locks for parallel agents.",
+  "next_command": "Charter: AST function-locks enabling parallel-agent workflows; schedule bring-up",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

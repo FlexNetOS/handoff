@@ -9,7 +9,10 @@
 //!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
+mod kb;
 mod lease;
+mod policy;
+mod session;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -172,11 +175,80 @@ fn cmd_release(id: &str) {
     }
 }
 
-fn cmd_checkpoint(id: &str, note: &str) {
+/// `hf checkpoint <ID> [note]` — or `--auto` to checkpoint the current active task (the
+/// resume target), `--quiet` to suppress stdout (for hook callers). Rejects a missing or
+/// flag-shaped id so a malformed invocation can't pollute the witnessed ledger.
+fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
+    let resolved = if auto {
+        let tasks = load_tasks();
+        let replay = current_statuses();
+        next_safe(&tasks, &replay).map(|t| t.id.clone())
+    } else {
+        id.map(|s| s.to_string())
+    };
+    let Some(id) = resolved else {
+        eprintln!(
+            "hf checkpoint: no task id — use `hf checkpoint <ID> [note]`, or `--auto` with an active task"
+        );
+        return;
+    };
+    if id.is_empty() || id.starts_with("--") {
+        eprintln!("hf checkpoint: invalid task id '{id}'");
+        return;
+    }
+    let note = if note.trim().is_empty() && auto {
+        "auto checkpoint"
+    } else {
+        note
+    };
     let payload = serde_json::json!({ "id": id, "note": note }).to_string();
     let mut led = Ledger::open(&ledger_path()).unwrap();
-    led.append("checkpoint", id, &payload, now_ns()).unwrap();
-    println!("hf checkpoint: {id} :: {note}");
+    led.append("checkpoint", &id, &payload, now_ns()).unwrap();
+    if !quiet {
+        println!("hf checkpoint: {id} :: {note}");
+    }
+}
+
+/// `hf done <id> [--pr N]` — record the terminal `Done` transition (the loop's completion
+/// signal, previously missing: claim→Claimed and checkpoint is a non-status event, so nothing
+/// ever marked a task Done). With `--pr`, also witnesses a `pr_merged` event (ADR-0003 terminal).
+fn cmd_done(id: &str, pr: Option<&str>) {
+    if id.is_empty() {
+        eprintln!("usage: hf done <task-id> [--pr N]");
+        return;
+    }
+    let tasks = load_tasks();
+    let Some(wo) = tasks.iter().find(|t| t.id == id) else {
+        eprintln!("hf done: no such task {id}");
+        return;
+    };
+    let mut led = Ledger::open(&ledger_path()).unwrap();
+    led.record_transition(wo, Status::Done, now_ns()).unwrap();
+    if let Some(p) = pr {
+        let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
+        let _ = led.append("pr_merged", id, &payload, now_ns());
+    }
+    println!(
+        "hf done: {id} -> done{}",
+        pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
+    );
+}
+
+/// Persist each card's ledger-replayed status into its `.task.json` (ADR-0003 single-registry
+/// rule: cards are derived snapshots of ledger truth). Returns the number of cards changed.
+/// This is the deterministic fix for D3 (cards stale at `backlog` despite ledger progress).
+fn sync_cards() -> usize {
+    let replay = current_statuses();
+    let mut changed = 0;
+    for mut wo in load_tasks() {
+        let live = status_of(&wo.id, &replay, &wo);
+        if live != wo.status {
+            wo.status = live;
+            save_task(&wo);
+            changed += 1;
+        }
+    }
+    changed
 }
 
 /// Run a subprocess with explicit argv (no shell), capturing trimmed stdout.
@@ -301,9 +373,20 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
 }
 
-fn cmd_status() {
+/// Read a top-level string field from the context capsule (best-effort).
+fn capsule_field(key: &str) -> Option<String> {
+    let s = fs::read_to_string(capsule_path()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    v.get(key).and_then(|x| x.as_str()).map(String::from)
+}
+
+fn cmd_status(json: bool) {
     let tasks = load_tasks();
     let replay = current_statuses();
+    if json {
+        emit_status_json(&tasks, &replay);
+        return;
+    }
     println!("=== hf status ===  ({} tasks)", tasks.len());
     for t in &tasks {
         println!(
@@ -317,6 +400,89 @@ fn cmd_status() {
     if let Some(n) = next_safe(&tasks, &replay) {
         println!("next safe: {} — {}", n.id, n.title);
     }
+}
+
+/// HFTASK-0020: the loop's machine read-model (`handoff.loop_status.v1`) — the witnessed
+/// ledger event stream rendered as JSON for Mission Control / the MCP seam / RuVocal.
+fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
+    let done = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, replay, t) == Status::Done)
+        .count();
+    let next = next_safe(tasks, replay);
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    let sess = session::open_session_and_cycle();
+    let policy = policy::Policy::load(Path::new(HF));
+    let project = capsule_field("project_name")
+        .unwrap_or_else(|| "handoff (Continuity Ledger Kernel)".into());
+
+    let out = serde_json::json!({
+        "schema": "handoff.loop_status.v1",
+        "project": project,
+        "tasks_total": tasks.len(),
+        "done": done,
+        "remaining": tasks.len() - done,
+        "tasks": tasks.iter().map(|t| serde_json::json!({
+            "id": t.id,
+            "status": format!("{:?}", status_of(&t.id, replay, t)),
+            "priority": t.priority_str(),
+            "title": t.title,
+        })).collect::<Vec<_>>(),
+        "next_task_id": next.map(|t| t.id.clone()),
+        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "session": {
+            "open": sess.open_branch.is_some(),
+            "branch": sess.open_branch,
+            "cycle": sess.cycle,
+            "cycle_flush": policy.loop_cfg.cycle_flush,
+            "ready_to_ship": sess.cycle >= policy.loop_cfg.cycle_flush,
+        },
+        "witnessed_events_verified": witness,
+    });
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
+}
+
+/// Build the handoff.packet.v2 machine summary from already-known facts. Pure over its
+/// inputs (the witness count is computed by the caller) so it is unit-testable — this is
+/// the single source for both the packet and `hf resume --json`.
+fn summary_json(
+    tasks: &[WorkOrder],
+    replay: &[(String, Status)],
+    witness: usize,
+) -> serde_json::Value {
+    let done: Vec<&String> = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, replay, t) == Status::Done)
+        .map(|t| &t.id)
+        .collect();
+    let remaining: Vec<&String> = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, replay, t) != Status::Done)
+        .map(|t| &t.id)
+        .collect();
+    let next = next_safe(tasks, replay);
+    serde_json::json!({
+        "schema": "handoff.packet.v2",
+        "project": "handoff (Continuity Ledger Kernel)",
+        "tasks_total": tasks.len(),
+        "done": done,
+        "remaining": remaining,
+        "next_task_id": next.map(|t| &t.id),
+        "witnessed_events_verified": witness,
+        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+    })
+}
+
+/// The live machine read-model, computed straight from the ledger + cards. Both `hf handoff`
+/// and `hf resume --json` go through this, so resume never lags the ledger (FIX-2: resume
+/// previously echoed the last packet, under-counting by any event appended since).
+fn machine_summary(tasks: &[WorkOrder], replay: &[(String, Status)]) -> serde_json::Value {
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    summary_json(tasks, replay, witness)
 }
 
 fn cmd_handoff() {
@@ -335,16 +501,7 @@ fn cmd_handoff() {
         .and_then(|l| l.verify_witness_chain())
         .unwrap_or(0);
 
-    let summary = serde_json::json!({
-        "schema": "handoff.packet.v2",
-        "project": "handoff (Continuity Ledger Kernel)",
-        "tasks_total": tasks.len(),
-        "done": done.iter().map(|t| &t.id).collect::<Vec<_>>(),
-        "remaining": remaining.iter().map(|t| &t.id).collect::<Vec<_>>(),
-        "next_task_id": next.map(|t| &t.id),
-        "witnessed_events_verified": witness,
-        "next_command": next.map(|t| format!("hf claim {} && hf start", t.id)).unwrap_or_else(|| "done".into()),
-    });
+    let summary = summary_json(&tasks, &replay, witness);
 
     let mut md = String::new();
     md.push_str("# Handoff Packet (latest) — handoff.packet.v2\n\n");
@@ -399,21 +556,46 @@ fn cmd_handoff() {
     );
 }
 
-fn cmd_resume(json: bool) {
-    let packet = fs::read_to_string(packet_path()).unwrap_or_default();
-    if json {
-        // emit the machine summary block if present, else recompute via handoff
-        if let Some(start) = packet.find("```json") {
-            if let Some(end) = packet[start + 7..].find("```") {
-                println!("{}", &packet[start + 7..start + 7 + end].trim());
-                return;
+enum ResumeMode {
+    /// Full compiled packet (markdown read-model).
+    Full,
+    /// Live machine summary (recomputed from the ledger — never stale).
+    Json,
+    /// One-line live status for hooks / fast resume.
+    Compact,
+}
+
+fn cmd_resume(mode: ResumeMode) {
+    match mode {
+        ResumeMode::Json => {
+            let tasks = load_tasks();
+            let replay = current_statuses();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&machine_summary(&tasks, &replay)).unwrap()
+            );
+        }
+        ResumeMode::Compact => {
+            let tasks = load_tasks();
+            let replay = current_statuses();
+            let s = machine_summary(&tasks, &replay);
+            let done = s["done"].as_array().map(|a| a.len()).unwrap_or(0);
+            println!(
+                "handoff: {done}/{} done · {} witnessed · next: {} → {}",
+                s["tasks_total"],
+                s["witnessed_events_verified"],
+                s["next_task_id"].as_str().unwrap_or("—"),
+                s["next_command"].as_str().unwrap_or(""),
+            );
+        }
+        ResumeMode::Full => {
+            let packet = fs::read_to_string(packet_path()).unwrap_or_default();
+            if packet.is_empty() {
+                println!("No packet yet. Run: hf handoff");
+            } else {
+                println!("{packet}");
             }
         }
-        println!("{{\"error\":\"run hf handoff first\"}}");
-    } else if packet.is_empty() {
-        println!("No packet yet. Run: hf handoff");
-    } else {
-        println!("{packet}");
     }
 }
 
@@ -521,13 +703,49 @@ fn main() {
     match args.first().map(|s| s.as_str()) {
         Some("init") => cmd_init(),
         Some("seed") => cmd_seed(),
-        Some("status") => cmd_status(),
+        Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
         Some("claim") => cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
-        Some("checkpoint") => cmd_checkpoint(
-            args.get(1).map(|s| s.as_str()).unwrap_or(""),
-            &args[2..].join(" "),
-        ),
+        Some("checkpoint") => {
+            let auto = args.iter().any(|a| a == "--auto");
+            let quiet = args.iter().any(|a| a == "--quiet");
+            let positional: Vec<&str> = args[1..]
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|a| !a.starts_with("--"))
+                .collect();
+            let id = positional.first().copied();
+            let note = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
+            cmd_checkpoint(id, &note, auto, quiet);
+            if args.iter().any(|a| a == "--sync-cards") {
+                let n = sync_cards();
+                if !quiet {
+                    println!("hf checkpoint: synced {n} card(s) from ledger truth");
+                }
+            }
+        }
+        Some("sync-cards") => {
+            let n = sync_cards();
+            println!("hf sync-cards: synced {n} card(s) from ledger truth");
+        }
+        Some("done") => {
+            let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            let pr = args
+                .iter()
+                .position(|a| a == "--pr")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str());
+            cmd_done(id, pr);
+        }
+        Some("task") if args.get(1).map(|s| s.as_str()) == Some("mint") => {
+            let slug = args
+                .iter()
+                .position(|a| a == "--from-kb")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            kb::cmd_mint_from_kb(slug);
+        }
         Some("ship") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             let base = args
@@ -552,10 +770,66 @@ fn main() {
                 by,
             );
         }
+        Some("session") => session::cmd_session(&args[1..]),
         Some("handoff") => cmd_handoff(),
-        Some("resume") => cmd_resume(args.iter().any(|a| a == "--json")),
-        _ => {
-            eprintln!("hf <init|seed|status|claim ID|release ID|checkpoint ID [note]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json]>");
+        Some("resume") => {
+            let mode = if args.iter().any(|a| a == "--json") {
+                ResumeMode::Json
+            } else if args.iter().any(|a| a == "--compact") {
+                ResumeMode::Compact
+            } else {
+                ResumeMode::Full
+            };
+            cmd_resume(mode);
         }
+        _ => {
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|done ID [--pr N]|task mint --from-kb SLUG|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|handoff|resume [--json|--compact]>");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use work_order::{work_orders_from_bundle, SwarmBundle};
+
+    fn sample_tasks() -> Vec<WorkOrder> {
+        work_orders_from_bundle(&SwarmBundle {
+            workflow_id: "wf-test".into(),
+            role_prompts: vec![
+                ("architect".into(), "design".into()),
+                ("coder".into(), "build".into()),
+            ],
+            handoff_template: "standard".into(),
+        })
+    }
+
+    /// FIX-2 regression: the summary's witnessed count is exactly the count it is given —
+    /// resume/handoff compute it live from the ledger, never echo a stale packet value.
+    #[test]
+    fn summary_reports_the_witness_count_it_is_given() {
+        let tasks = sample_tasks();
+        let replay: Vec<(String, Status)> = vec![];
+        let s = summary_json(&tasks, &replay, 42);
+        assert_eq!(s["witnessed_events_verified"], 42);
+        // a different witness count must flow straight through (no caching/staleness)
+        let s2 = summary_json(&tasks, &replay, 43);
+        assert_eq!(s2["witnessed_events_verified"], 43);
+    }
+
+    #[test]
+    fn summary_counts_done_vs_remaining_and_picks_next() {
+        let tasks = sample_tasks();
+        // mark the first task Done via replay; the second is the next safe task
+        let replay = vec![(tasks[0].id.clone(), Status::Done)];
+        let s = summary_json(&tasks, &replay, 7);
+        assert_eq!(s["tasks_total"], 2);
+        assert_eq!(s["done"].as_array().unwrap().len(), 1);
+        assert_eq!(s["remaining"].as_array().unwrap().len(), 1);
+        assert_eq!(s["next_task_id"], serde_json::json!(tasks[1].id));
+        assert_eq!(
+            s["next_command"],
+            serde_json::json!(format!("hf claim {}", tasks[1].id))
+        );
     }
 }

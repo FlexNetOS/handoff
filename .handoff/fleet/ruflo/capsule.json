@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "ruflo",
+  "role": "ruvnet flow/agent framework companion to RuVector. Genuine org fork; local main intentionally pinned behind (pin-meta-2026-06-12).",
+  "plane": "agentic-os",
+  "tier": "C",
+  "northstar": "RuVector is the foundation meta builds on (adopt-then-extend law); code is truth, docs are traps.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

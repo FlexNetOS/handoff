@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "hermes-agent",
+  "role": "Fork of NousResearch's Hermes Agent: a large Python self-improving agent platform with multi-provider LLM adapters, conversation loop, context compression and curator memory (agent/), a multi-platform chat gateway for Telegram/Discord/Slack/WhatsApp/Signal (gateway/), TUI, cron scheduler, and a skills system. FlexNetOS's only original code is an unmerged tmux-backed \"squad sessions\" CLI feature on a side branch; main is a straight upstream mirror.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

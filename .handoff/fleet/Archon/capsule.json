@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "Archon",
+  "role": "Bun/TypeScript workflow engine for AI coding agents: YAML-defined DAG workflows (plan/implement/validate/review/PR) executed by Claude/Codex/Pi providers in isolated git worktrees. Driven from CLI, web UI, Slack, Telegram, or GitHub via a Hono server plus platform adapters.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "W5: charter as the harness-builder over harness_hub; land the first org commit",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

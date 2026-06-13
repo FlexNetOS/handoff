@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "oh-my-pi",
+  "role": "Fork of can1357's \"omp\" \u2014 a Bun/TypeScript + Rust terminal coding agent with IDE integration (packages: pi-coding-agent, pi-ai, pi-tui, mnemopi memory, swarm-extension; Rust crates: pi-shell, pi-natives, pi-ast). Functions as an alternative agent harness comparable to Claude Code, at upstream v15.8.3.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

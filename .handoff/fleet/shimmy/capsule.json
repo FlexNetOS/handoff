@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "shimmy",
+  "role": "Rust (axum) local LLM inference server exposing OpenAI-, Ollama-, and Anthropic-compatible APIs over an Airframe/WebGPU engine with SafeTensors model management and auto-discovery. In this workspace it is the FlexNetOS fork acting as the local model-serving backend, recently patched (workspace-aware binary paths, test serialization) to live as a Cargo workspace member.",
+  "plane": "swarm-inference",
+  "tier": "C",
+  "northstar": "Full-feature Rust MiroFish: teri is the engine skeleton, shimmy the local inference slot.",
+  "next_command": "W4: serve as the MiroFish-track local inference slot (OpenAI/Ollama/Anthropic APIs)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

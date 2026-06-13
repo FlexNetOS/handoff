@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0001",
   "title": "Finalize naming + register kernel (Continuity Ledger Kernel)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P0",
   "objective": "Kernel relocated to ~/Desktop/meta/handoff (own repo). Remaining: rename package/docs to Continuity Ledger Kernel + drop Ark/V2 in PRD; create+push FlexNetOS/handoff GitHub repo.",
   "path_scope": [

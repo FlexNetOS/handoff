@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "oh-my-claudecode",
+  "role": "Fork of Yeachan-Heo/oh-my-claudecode (npm: oh-my-claude-sisyphus v4.14.4), a TypeScript multi-agent orchestration layer for Claude Code \u2014 ~19 agent definitions, skills (autopilot/ralph/ultrawork/team), hooks, MCP bridge servers, and an omc CLI/installer. Local clone is an unmodified mirror of upstream main with zero FlexNetOS-authored commits.",
+  "plane": "harness",
+  "tier": "C",
+  "northstar": "Harnesses are upgrades on the foundation; Archon automates building them; never downgrade.",
+  "next_command": "Plan in kb first (git kb board); mint execution cards via hf (ADR-0003)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}

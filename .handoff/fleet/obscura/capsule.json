@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.context_capsule.v1",
+  "project_name": "obscura",
+  "role": "Headless browser engine in Rust \u2014 7-crate workspace (dom/net/browser/cdp/js/mcp/cli) running real JavaScript via V8 and speaking Chrome DevTools Protocol as a drop-in replacement for headless Chrome under Puppeteer/Playwright. Includes an obscura-mcp crate exposing browser automation to AI agents over MCP.",
+  "plane": "network",
+  "tier": "C",
+  "northstar": "lane owns network engineering/control; obscura upgrades it with stealth agent web access.",
+  "next_command": "W2: charter as lane-governed agent web-access capability (headless browser, V8/CDP)",
+  "source": "ARCHITECTURE-TRUTH.md census 2026-06-12"
+}
