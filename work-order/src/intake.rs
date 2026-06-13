@@ -76,15 +76,40 @@ impl Intent {
 /// `vibe.rs:153` detect_domain — keyword → domain. First match wins (deterministic order).
 fn detect_domain(lc: &str) -> String {
     const TABLE: &[(&[&str], &str)] = &[
-        (&["deploy", "release", "ci/cd", "pipeline", "docker", "kubernetes"], "devops"),
-        (&["security", "auth", "vulnerability", "exploit", "cve"], "security"),
+        (
+            &[
+                "deploy",
+                "release",
+                "ci/cd",
+                "pipeline",
+                "docker",
+                "kubernetes",
+            ],
+            "devops",
+        ),
+        (
+            &["security", "auth", "vulnerability", "exploit", "cve"],
+            "security",
+        ),
         (&["test", "coverage", "regression", "assert"], "testing"),
         (&["document", "docs", "readme", "comment"], "documentation"),
         (&["design", "ui", "ux", "mockup", "layout"], "design"),
         (&["data", "dataset", "model", "train", "ml"], "datascience"),
         (&["analy", "investigate", "audit", "report"], "analysis"),
         (&["write", "draft", "prose"], "writing"),
-        (&["code", "implement", "function", "bug", "fix", "refactor", "api", "build"], "coding"),
+        (
+            &[
+                "code",
+                "implement",
+                "function",
+                "bug",
+                "fix",
+                "refactor",
+                "api",
+                "build",
+            ],
+            "coding",
+        ),
     ];
     for (kws, domain) in TABLE {
         if kws.iter().any(|k| lc.contains(k)) {
@@ -104,7 +129,10 @@ fn detect_task_type(lc: &str) -> String {
         (&["review", "audit", "inspect"], "review"),
         (&["test", "verify", "validate"], "test"),
         (&["deploy", "release", "ship"], "deploy"),
-        (&["create", "add", "implement", "build", "write", "design"], "create"),
+        (
+            &["create", "add", "implement", "build", "write", "design"],
+            "create",
+        ),
     ];
     for (kws, tt) in TABLE {
         if kws.iter().any(|k| lc.contains(k)) {
@@ -287,7 +315,10 @@ mod tests {
     #[test]
     fn synth_never_emits_empty_test_commands() {
         let spec = synthesize_spec(&rust_fix_intent(), Some("coder"), None);
-        assert!(!spec.test_commands.is_empty(), "test_commands must be non-empty");
+        assert!(
+            !spec.test_commands.is_empty(),
+            "test_commands must be non-empty"
+        );
     }
 
     #[test]
