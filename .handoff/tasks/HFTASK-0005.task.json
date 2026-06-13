@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0005",
   "title": "hf drift audit gate",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Implement hf drift: recompute intent_lock, detect out-of-scope edits (git), hard-fail handoff on drift.",
   "path_scope": [
