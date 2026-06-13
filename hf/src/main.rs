@@ -1049,6 +1049,20 @@ fn main() {
             println!("hf sync-cards: synced {n} card(s) from ledger truth");
         }
         Some("sync") => {
+            // --help/-h MUST print usage and never execute: `hf sync` rolls per-repo
+            // ledgers up into the central FLEET ledger (a real fleet-wide side effect),
+            // so an unsafe help path could mutate state on a `--help` invocation.
+            if args.iter().any(|a| a == "--help" || a == "-h") {
+                println!(
+                    "usage: hf sync [--auto] [--dry-run]\n  \
+                     Repairs .meta.yaml/.gitignore, mirrors ledger->.kb, and rolls each member \
+                     repo's local .handoff/ledger.db up into the central FLEET ledger \
+                     (append-with-provenance; idempotent via the per-repo sync cursor).\n  \
+                     --dry-run  report what would roll up, write nothing.\n  \
+                     --auto     non-interactive."
+                );
+                return;
+            }
             let auto = args.iter().any(|a| a == "--auto");
             let dry = args.iter().any(|a| a == "--dry-run");
             sync::cmd_sync(auto, dry);
