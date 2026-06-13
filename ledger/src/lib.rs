@@ -37,9 +37,19 @@ fn hash_action(event_type: &str, work_order_id: &str, payload: &str) -> [u8; 32]
 
 impl Ledger {
     /// Open (or create) the ledger. `":memory:"` for ephemeral spike runs.
+    ///
+    /// HFTASK-0028: harden against concurrent `hf` writers (two sessions, or a session +
+    /// a PostEdit checkpoint hook) on the same ledger.db. `journal_mode=WAL` lets readers
+    /// and one writer proceed without blocking each other; `busy_timeout=5000` makes a
+    /// writer that hits a held lock block-and-retry for up to 5s instead of failing
+    /// immediately with "database is locked". The append path then takes a `BEGIN IMMEDIATE`
+    /// transaction and reads the latest prev_hash *inside* it, so two concurrent writers
+    /// serialize cleanly and can never both chain off the same prev (which would fork the
+    /// witness chain).
     pub fn open(path: &str) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?; // PRD: WAL
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?; // HFTASK-0028: block-and-retry
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS events (
                 seq            INTEGER PRIMARY KEY,
@@ -71,6 +81,13 @@ impl Ledger {
     }
 
     /// Append a witnessed event. ts_ns is passed in (deterministic in tests).
+    ///
+    /// HFTASK-0028: the seq + prev_hash are read from the DB tail *inside* a
+    /// `BEGIN IMMEDIATE` transaction (rather than trusting the values cached at `open()`),
+    /// so concurrent writers serialize: the second writer blocks on the IMMEDIATE write
+    /// lock until the first commits, then reads the now-current tail and chains off it.
+    /// Two writers can therefore never both chain off the same prev_hash (no forked
+    /// witness chain) and never hit "database is locked" (busy_timeout block-and-retry).
     pub fn append(
         &mut self,
         event_type: &str,
@@ -78,23 +95,43 @@ impl Ledger {
         payload_json: &str,
         ts_ns: u64,
     ) -> rusqlite::Result<u64> {
-        self.seq += 1;
         let action_hash = hash_action(event_type, work_order_id, payload_json);
-        self.conn.execute(
+        // Acquire the write lock up front so the tail read + insert are atomic vs. peers.
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        // Re-read the authoritative tail from the DB (not the cached open()-time values):
+        // a concurrent writer may have advanced it since this handle was opened.
+        let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
+            .query_row(
+                "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
+                [],
+                |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
+            )
+            .unwrap_or((0, vec![0u8; 32]));
+        let mut prev_hash = [0u8; 32];
+        if tail_prev.len() == 32 {
+            prev_hash.copy_from_slice(&tail_prev);
+        }
+        let next_seq = tail_seq + 1;
+        tx.execute(
             "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
-                self.seq as i64,
+                next_seq as i64,
                 ts_ns as i64,
                 event_type,
                 work_order_id,
                 payload_json,
                 action_hash.to_vec(),
-                self.prev_witness_hash.to_vec(),
+                prev_hash.to_vec(),
             ],
         )?;
+        tx.commit()?;
+        // Keep the in-memory cache consistent with what we just committed.
+        self.seq = next_seq;
         self.prev_witness_hash = action_hash;
-        Ok(self.seq)
+        Ok(next_seq)
     }
 
     /// Convenience: record a work-order state transition.
@@ -216,5 +253,117 @@ mod tests {
         // 4. tamper-evidence: the RVF witness chain over all events verifies
         let n = led.verify_witness_chain().unwrap();
         assert_eq!(n, 6); // 2 orders x 3 transitions
+    }
+
+    /// Isolated temp dir for a file-backed ledger (NEVER the real .handoff/ledger.db).
+    /// Avoids adding a `tempfile` dev-dep (card sets no dependency-addition allowance).
+    fn temp_db() -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        let uniq = format!(
+            "hf-ledger-test-{}-{:?}-{}",
+            std::process::id(),
+            std::thread::current().id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        p.push(uniq);
+        std::fs::create_dir_all(&p).unwrap();
+        p.push("ledger.db");
+        p
+    }
+
+    /// HFTASK-0028 AC3: WAL + busy_timeout are set on the connection at open().
+    #[test]
+    fn open_sets_wal_and_busy_timeout() {
+        let db = temp_db();
+        let led = Ledger::open(db.to_str().unwrap()).unwrap();
+        let mode: String = led
+            .conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode.to_lowercase(), "wal", "journal_mode must be WAL");
+        let busy: i64 = led
+            .conn
+            .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(busy, 5000, "busy_timeout must be 5000ms");
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    /// HFTASK-0028 AC1+AC2: many concurrent writers on the SAME file ledger all succeed
+    /// (no "database is locked") and the witness chain still verifies end-to-end with a
+    /// contiguous prev_hash chain (no fork).
+    #[test]
+    fn concurrent_writers_serialize_no_lock_no_fork() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let db = temp_db();
+        let path = Arc::new(db.to_string_lossy().into_owned());
+
+        // Ensure schema exists before the writers race (each writer opens its own handle).
+        Ledger::open(&path).unwrap();
+
+        const WRITERS: usize = 8;
+        const PER_WRITER: usize = 25;
+
+        let mut handles = vec![];
+        for w in 0..WRITERS {
+            let path = Arc::clone(&path);
+            handles.push(thread::spawn(move || {
+                // Each thread = a separate `hf` process: its own Ledger handle on the file.
+                let mut led = Ledger::open(&path).expect("open ledger");
+                for i in 0..PER_WRITER {
+                    let ts = (w as u64) * 1_000_000 + i as u64;
+                    led.append("checkpoint", &format!("HFTASK-W{w}"), "{}", ts)
+                        .expect("append must not fail under concurrency");
+                }
+            }));
+        }
+        for h in handles {
+            h.join().expect("writer thread panicked");
+        }
+
+        // AC1: every event landed (no lost writes, no errors).
+        let led = Ledger::open(&path).unwrap();
+        let events = led.all_events().unwrap();
+        assert_eq!(
+            events.len(),
+            WRITERS * PER_WRITER,
+            "all concurrent appends must land"
+        );
+
+        // seqs are a contiguous 1..=N with no gaps/dupes (serialized allocation).
+        for (idx, ev) in events.iter().enumerate() {
+            assert_eq!(ev.seq, idx as u64 + 1, "seq must be contiguous (no fork)");
+        }
+
+        // AC2: the witness chain verifies over the full count.
+        let verified = led.verify_witness_chain().unwrap();
+        assert_eq!(verified, WRITERS * PER_WRITER);
+
+        // AC2 (stronger): the stored prev_hash chain is contiguous — each row's prev_hash
+        // equals the previous row's action_hash, so no two writers chained off the same prev.
+        let mut stmt = led
+            .conn
+            .prepare("SELECT action_hash, prev_hash FROM events ORDER BY seq")
+            .unwrap();
+        let rows: Vec<(Vec<u8>, Vec<u8>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        let mut expected_prev = vec![0u8; 32];
+        for (action_hash, prev_hash) in &rows {
+            assert_eq!(
+                prev_hash, &expected_prev,
+                "prev_hash chain must be contiguous"
+            );
+            expected_prev = action_hash.clone();
+        }
+
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
 }

@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0026",
+  "title": "Anchor hf core ledger ops to meta-root + kernel/fleet routing (fix kb-mint contamination)",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "ADR-0004 §3 two-ledger residency: hf resolved .handoff/ledger.db + tasks/ CWD-relative with no anchoring, so `hf task mint --from-kb` + claim/checkpoint/done run from handoff/ wrote envctl-domain KBTASK cards into handoff's KERNEL ledger instead of the FLEET ledger (meta/.handoff). Add route_for_task(id) (LOCAL card -> KERNEL home; else FLEET card -> meta/.handoff; else FAIL CLOSED) and route every per-task ledger op (claim/checkpoint/done/review verdict/ship) through it; mint kb cards to the FLEET tasks dir via find_meta_root(). Global/self ops (status/resume/handoff/drift) stay LOCAL.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "kb-minted cards land in the FLEET tasks dir (meta/.handoff/tasks); per-task ops route to the home the card lives in; an unknown task id fails closed (no ledger created); KERNEL ops from handoff/ still hit the KERNEL ledger; cargo test + fmt + clippy green"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:9a7f9fad7751b310572e363a5ab1e107b48a398bb81ca1d4186b338a6e90fc7a",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:27996e97c33b0cb5161f3b2351fd30b6589fe3a261e385db0a5e17809253c9ef"
+  }
+}

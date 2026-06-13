@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0027",
+  "title": "hf resume recomputes live witnessed count (fix stale packet-cached display)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "CONFIRMED stale-read: `hf resume` (ResumeMode::Full) echoed packets/latest.md verbatim, freezing 'Tamper-evident events verified: N' + Done N/M at the last `hf handoff` (showed 336 while the live ledger had 371; witness chain INTACT — not corruption). Fix: render the packet LIVE on every `hf resume` from ledger_path() (verify_witness_chain for the count) + current_statuses()/load_tasks() (Done N/M), via the same renderer as `hf handoff`, instead of reading the frozen file. Do NOT change `hf handoff` rendering.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf resume witnessed count == live ledger count == hf handoff verified count; reflects new events without hf handoff"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b556f7d95908862e467595207bd380ee1be06c5cac5b7b8354d902ed227bc2ac",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:a9b1a88b11630a593789da6974d17865b0d2c285e98ced816897f46c030072d8"
+  }
+}

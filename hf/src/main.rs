@@ -15,6 +15,7 @@ mod intake;
 mod kb;
 mod lease;
 mod policy;
+mod route;
 mod session;
 mod sync;
 
@@ -73,11 +74,20 @@ fn load_tasks() -> Vec<WorkOrder> {
     v
 }
 fn save_task(wo: &WorkOrder) {
-    let _ = fs::create_dir_all(tasks_dir());
-    let _ = fs::write(
-        tasks_dir().join(format!("{}.task.json", wo.id)),
-        wo.to_json(),
-    );
+    save_task_in(&tasks_dir(), wo);
+}
+/// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
+/// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
+fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
+    let _ = fs::create_dir_all(tasks_dir);
+    let _ = fs::write(tasks_dir.join(format!("{}.task.json", wo.id)), wo.to_json());
+}
+/// Load the card for one id from an explicit tasks dir (routing-aware read for the
+/// resolved home, so per-task ops see the card that lives where the ledger lives).
+fn load_task_in(tasks_dir: &Path, id: &str) -> Option<WorkOrder> {
+    let p = tasks_dir.join(format!("{id}.task.json"));
+    let s = fs::read_to_string(p).ok()?;
+    serde_json::from_str::<WorkOrder>(&s).ok()
 }
 
 /// Replay the ledger to get the current status per task id (overrides the card's stored status).
@@ -143,10 +153,16 @@ fn cmd_claim(id: &str) {
 /// ledger transition, so two sessions can't claim the same task. Refuses the claim
 /// if another peer holds it; degrades to ledger-only when no weave mesh is present.
 fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
-    let tasks = load_tasks();
-    let Some(wo) = tasks.iter().find(|t| t.id == id) else {
+    let (ledger, tasks_dir) = match route::route_for_task(id) {
+        Ok(homes) => homes,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+    let Some(wo) = load_task_in(&tasks_dir, id) else {
         eprintln!("no such task {id}");
-        return;
+        std::process::exit(1);
     };
     let resource = lease::claim_resource(id);
     match lease::gate(leaser.reserve(&resource, CLAIM_TTL_SECS, &format!("hf claim {id}"))) {
@@ -163,8 +179,8 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
             println!("hf claim: reserved weave lease {resource} (ttl {CLAIM_TTL_SECS}s)");
         }
     }
-    let mut led = Ledger::open(&ledger_path()).unwrap();
-    led.record_transition(wo, Status::Claimed, now_ns())
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    led.record_transition(&wo, Status::Claimed, now_ns())
         .unwrap();
     println!("hf claim: {id} -> claimed");
 }
@@ -205,8 +221,18 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     } else {
         note
     };
+    // Route the checkpoint to the home its task lives in (KERNEL vs FLEET). The
+    // `--auto` path already resolved `id` from the LOCAL backlog, so it routes
+    // local; an explicit `checkpoint <ID>` for a FLEET-resident task routes FLEET.
+    let ledger = match route::route_for_task(&id) {
+        Ok((ledger, _tasks)) => ledger,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
     let payload = serde_json::json!({ "id": id, "note": note }).to_string();
-    let mut led = Ledger::open(&ledger_path()).unwrap();
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
     led.append("checkpoint", &id, &payload, now_ns()).unwrap();
     if !quiet {
         println!("hf checkpoint: {id} :: {note}");
@@ -221,13 +247,19 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         eprintln!("usage: hf done <task-id> [--pr N]");
         return;
     }
-    let tasks = load_tasks();
-    let Some(wo) = tasks.iter().find(|t| t.id == id) else {
-        eprintln!("hf done: no such task {id}");
-        return;
+    let (ledger, tasks_dir) = match route::route_for_task(id) {
+        Ok(homes) => homes,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
     };
-    let mut led = Ledger::open(&ledger_path()).unwrap();
-    led.record_transition(wo, Status::Done, now_ns()).unwrap();
+    let Some(wo) = load_task_in(&tasks_dir, id) else {
+        eprintln!("hf done: no such task {id}");
+        std::process::exit(1);
+    };
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    led.record_transition(&wo, Status::Done, now_ns()).unwrap();
     if let Some(p) = pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
         let _ = led.append("pr_merged", id, &payload, now_ns());
@@ -354,9 +386,16 @@ Implements [[tasks/{id}]]"
             eprintln!("hf ship: auto-merge not armed ({e}) — merge manually or via review flow")
         }
     }
+    let ledger = match route::route_for_task(id) {
+        Ok((ledger, _tasks)) => ledger,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
     let payload =
         serde_json::json!({ "id": id, "branch": branch, "pr": pr_url, "base": base }).to_string();
-    let mut led = Ledger::open(&ledger_path()).unwrap();
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
     led.append("pr_opened", id, &payload, now_ns()).unwrap();
     println!("hf ship: pr_opened recorded for {id}");
 }
@@ -369,9 +408,16 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
         eprintln!("usage: hf review verdict <task-id> <pr> <approve|deny> [--by WHO]");
         return;
     }
+    let ledger = match route::route_for_task(id) {
+        Ok((ledger, _tasks)) => ledger,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
     let payload =
         serde_json::json!({ "id": id, "pr": pr, "verdict": verdict, "by": by }).to_string();
-    let mut led = Ledger::open(&ledger_path()).unwrap();
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
     led.append("review_verdict", id, &payload, now_ns())
         .unwrap();
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
@@ -489,23 +535,23 @@ fn machine_summary(tasks: &[WorkOrder], replay: &[(String, Status)]) -> serde_js
     summary_json(tasks, replay, witness)
 }
 
-fn cmd_handoff() {
-    let tasks = load_tasks();
-    let replay = current_statuses();
+/// Render the handoff.packet.v2 markdown from already-known facts. Pure over its inputs
+/// (the witness count is computed by the caller) so both `hf handoff` (which persists it)
+/// and `hf resume` (which renders it LIVE, never reading the frozen file) share one
+/// renderer — guaranteeing resume's Done N/M + witness count agree with handoff
+/// (HFTASK-0027: resume previously echoed the last-written packet, freezing the count at
+/// the last `hf handoff`).
+fn render_packet_md(tasks: &[WorkOrder], replay: &[(String, Status)], witness: usize) -> String {
     let done: Vec<_> = tasks
         .iter()
-        .filter(|t| status_of(&t.id, &replay, t) == Status::Done)
+        .filter(|t| status_of(&t.id, replay, t) == Status::Done)
         .collect();
     let remaining: Vec<_> = tasks
         .iter()
-        .filter(|t| status_of(&t.id, &replay, t) != Status::Done)
+        .filter(|t| status_of(&t.id, replay, t) != Status::Done)
         .collect();
-    let next = next_safe(&tasks, &replay);
-    let witness = Ledger::open(&ledger_path())
-        .and_then(|l| l.verify_witness_chain())
-        .unwrap_or(0);
-
-    let summary = summary_json(&tasks, &replay, witness);
+    let next = next_safe(tasks, replay);
+    let summary = summary_json(tasks, replay, witness);
 
     let mut md = String::new();
     md.push_str("# Handoff Packet (latest) — handoff.packet.v2\n\n");
@@ -540,6 +586,22 @@ fn cmd_handoff() {
     md.push_str("\n## 7. Machine Summary\n```json\n");
     md.push_str(&serde_json::to_string_pretty(&summary).unwrap());
     md.push_str("\n```\n");
+    md
+}
+
+fn cmd_handoff() {
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    let done: Vec<_> = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, &replay, t) == Status::Done)
+        .collect();
+    let next = next_safe(&tasks, &replay);
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+
+    let md = render_packet_md(&tasks, &replay, witness);
 
     let _ = fs::create_dir_all(Path::new(HF).join("packets"));
     let _ = fs::write(packet_path(), &md);
@@ -593,12 +655,17 @@ fn cmd_resume(mode: ResumeMode) {
             );
         }
         ResumeMode::Full => {
-            let packet = fs::read_to_string(packet_path()).unwrap_or_default();
-            if packet.is_empty() {
-                println!("No packet yet. Run: hf handoff");
-            } else {
-                println!("{packet}");
-            }
+            // HFTASK-0027: render the packet LIVE from the ledger + cards instead of
+            // echoing the frozen packets/latest.md (which freezes Done N/M + the
+            // witnessed count at the last `hf handoff`). Same renderer as `hf handoff`,
+            // so resume's numbers always equal handoff's and reflect events appended
+            // since the last handoff.
+            let tasks = load_tasks();
+            let replay = current_statuses();
+            let witness = Ledger::open(&ledger_path())
+                .and_then(|l| l.verify_witness_chain())
+                .unwrap_or(0);
+            println!("{}", render_packet_md(&tasks, &replay, witness));
         }
     }
 }
@@ -692,6 +759,97 @@ fn cmd_seed() {
         mk("HFTASK-0022", "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated", Priority::P1,
            "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui) is the REAL chosen front door (an unmodified HuggingFace Chat-UI fork, SvelteKit, with an mcp-bridge/ subpackage; nothing consumes loop events yet). NOTE: the envctl/loop-forge zellij multi-pane dashboard was attempted and FAILED - do NOT revive it; RuVocal is the surface. Adopt-and-extend RuVocal: integrate prompt_hub (vibe request in -> dispatch via the seam HFTASK-0019/HFTASK-0003) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat via mcp-bridge.", &["HFTASK-0019","HFTASK-0020","HFTASK-0003"]),
     ];
+    // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
+    // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
+    // path_scope/acceptance template doesn't fit a kernel-internal CORRECTNESS fix).
+    let mut backlog = backlog;
+    {
+        let id = "HFTASK-0026";
+        let title =
+            "Anchor hf core ledger ops to meta-root + kernel/fleet routing (fix kb-mint contamination)";
+        let objective = "ADR-0004 §3 two-ledger residency: hf resolved .handoff/ledger.db + tasks/ CWD-relative with no anchoring, so `hf task mint --from-kb` + claim/checkpoint/done run from handoff/ wrote envctl-domain KBTASK cards into handoff's KERNEL ledger instead of the FLEET ledger (meta/.handoff). Add route_for_task(id) (LOCAL card -> KERNEL home; else FLEET card -> meta/.handoff; else FAIL CLOSED) and route every per-task ledger op (claim/checkpoint/done/review verdict/ship) through it; mint kb cards to the FLEET tasks dir via find_meta_root(). Global/self ops (status/resume/handoff/drift) stay LOCAL.";
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec![
+            "kb-minted cards land in the FLEET tasks dir (meta/.handoff/tasks); per-task ops route to the home the card lives in; an unknown task id fails closed (no ledger created); KERNEL ops from handoff/ still hit the KERNEL ledger; cargo test + fmt + clippy green"
+                .to_string(),
+        ];
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P0,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        });
+    }
+    // HFTASK-0027/0028: ledger-robustness hardening after the contamination + staleness
+    // investigation. Both carry precise handoff-scoped path_scope + targeted acceptance,
+    // so (like HFTASK-0026) they are built directly rather than via the `mk` template.
+    {
+        let id = "HFTASK-0027";
+        let title = "hf resume recomputes live witnessed count (fix stale packet-cached display)";
+        let objective = "CONFIRMED stale-read: `hf resume` (ResumeMode::Full) echoed packets/latest.md verbatim, freezing 'Tamper-evident events verified: N' + Done N/M at the last `hf handoff` (showed 336 while the live ledger had 371; witness chain INTACT — not corruption). Fix: render the packet LIVE on every `hf resume` from ledger_path() (verify_witness_chain for the count) + current_statuses()/load_tasks() (Done N/M), via the same renderer as `hf handoff`, instead of reading the frozen file. Do NOT change `hf handoff` rendering.";
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec![
+            "hf resume witnessed count == live ledger count == hf handoff verified count; reflects new events without hf handoff"
+                .to_string(),
+        ];
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P1,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        });
+    }
+    {
+        let id = "HFTASK-0028";
+        let title = "Serialize concurrent hf ledger writes (WAL + busy_timeout + BEGIN IMMEDIATE)";
+        let objective = "HAZARD: multiple concurrent `hf` processes (two handoff sessions, or a session + a PostEdit checkpoint hook) write the same .handoff/ledger.db; interleaving risks 'database is locked' or a forked/desynced witness chain. Fix in Ledger::open + the append path: set journal_mode=WAL + busy_timeout=5000, and wrap the event append in a BEGIN IMMEDIATE transaction that reads the latest prev_hash INSIDE the transaction and inserts atomically, so concurrent writers serialize (block-and-retry) and can never both chain off the same prev.";
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec![
+            "two concurrent hf checkpoint procs both succeed + witness chain verifies".to_string(),
+        ];
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P1,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        });
+    }
     for wo in &backlog {
         save_task(wo);
     }
@@ -890,6 +1048,40 @@ mod tests {
         // a different witness count must flow straight through (no caching/staleness)
         let s2 = summary_json(&tasks, &replay, 43);
         assert_eq!(s2["witnessed_events_verified"], 43);
+    }
+
+    /// HFTASK-0027: the packet renderer (now shared by `hf handoff` AND the live
+    /// `hf resume` Full path) reflects exactly the Done N/M + witness count it is given.
+    /// Because `ResumeMode::Full` calls this with values recomputed from the ledger on
+    /// every invocation — instead of echoing packets/latest.md — resume can never show a
+    /// stale count: feeding two different live counts yields two different "Progress" lines.
+    #[test]
+    fn packet_renderer_reflects_live_done_and_witness_count() {
+        let tasks = sample_tasks();
+        let replay = vec![(tasks[0].id.clone(), Status::Done)];
+
+        let md_336 = render_packet_md(&tasks, &replay, 336);
+        assert!(
+            md_336.contains("Done: 1/2.  Tamper-evident events verified: 336."),
+            "renderer must emit the given count; got:\n{md_336}"
+        );
+
+        // Simulate events appended since the last handoff (live recount -> 371):
+        // the rendered Progress line must change, proving no frozen/cached value.
+        let md_371 = render_packet_md(&tasks, &replay, 371);
+        assert!(
+            md_371.contains("Tamper-evident events verified: 371."),
+            "renderer must reflect the new live count; got:\n{md_371}"
+        );
+        assert!(!md_371.contains("verified: 336."));
+
+        // And Done N/M is live too: marking both Done flips the progress numerator.
+        let replay_both = vec![
+            (tasks[0].id.clone(), Status::Done),
+            (tasks[1].id.clone(), Status::Done),
+        ];
+        let md_both = render_packet_md(&tasks, &replay_both, 371);
+        assert!(md_both.contains("Done: 2/2."));
     }
 
     #[test]
