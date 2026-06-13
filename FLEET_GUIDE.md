@@ -152,8 +152,13 @@ hf checkpoint <TASK> "<note>"   # witness the landed work
   file lock (no `index.lock` races, no discarded work).
 - **Setup:** `grit init` (local SQLite backend, zero-config) — done for every repo by
   `scripts/fleet-rollout.sh`. `.grit/` is binary state and is **gitignored** (same
-  rule as the ledger). The cross-repo/team upgrade is a shared backend (S3/R2/Azure)
-  with creds from envctl: `envctl run -- grit …`.
+  rule as the ledger).
+- **Cross-repo coordination (shared backend, ADR-0010):** grit's S3/R2/Azure backend
+  with credentials injected by envctl (never exported) — run grit via
+  `scripts/grit-shared.sh <grit-args>`, which wraps `secretctl run --provider
+  grit-backend -- grit …`. **Status: ready but BLOCKED on envctl Phase 8** (the
+  `secretctl run` injection data-plane is unbuilt); until then the wrapper degrades to
+  local grit and fleet coordination is within-repo only.
 - `grit status` shows current locks; `grit symbols` lists what can be claimed.
 
 ---
