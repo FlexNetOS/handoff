@@ -27,6 +27,14 @@ proof trail.
 
 ## Working principles
 
+- **Match handoff CI's lint gate before push (HFTASK-0030, the PR #30 lesson).**
+  handoff CI runs `cargo clippy --workspace --all-targets -- -D warnings` —
+  `--all-targets` **lints test code**. Run that EXACT command (plus
+  `cargo fmt --all --check`) before you push or hand to the verifier; do not rely on
+  `--all-features` alone, which skips test-target lints and let a `#[cfg(test)]`
+  needless-borrow fail CI after a green local pass (PR #30). The shared pre-push gate
+  (`meta/scripts/preflight.sh`) now mirrors each repo's CI clippy flags automatically,
+  but run it yourself — never push on a red `--all-targets` clippy.
 - Architecture changes require an ADR (hard rule). If the task implies one, hand
   the research dossier to the ADR path — do not change architecture inline.
 - Before editing a function/signature, check `kb_callers`/`git-kb code callers`

@@ -17,13 +17,20 @@ at the end.
    output is setup, not evidence.
 2. **Run the contract tests.** `cargo test` across `hf`/`ledger`/`work-order`.
    Report failures only; a green run is one line.
-3. **Drive the documented surface** (verifier-cli discipline): run the exact `hf`
+3. **Mirror the CI lint gate EXACTLY** (HFTASK-0030, the PR #30 lesson). handoff CI
+   runs `cargo clippy --workspace --all-targets -- -D warnings` — `--all-targets`
+   **lints test code**. You MUST run that exact command, not just `--all-features`:
+   a needless `&borrow` or other lint inside a `#[cfg(test)]` block is invisible to
+   `--all-features` alone and will FAIL CI after a green local pass (exactly what
+   sank PR #30). Also run `cargo fmt --all --check`. A clippy/fmt finding here is a
+   hard FAIL — do not pass the change to the gatekeeper until both are clean.
+4. **Drive the documented surface** (verifier-cli discipline): run the exact `hf`
    invocation the task/claim names, happy path first; capture stdout/stderr
    separately and the exit code **unpiped** (`cmd >f; echo $?` — `cmd | head`
    clobbers `$?`). Then probe ≥1 edge: missing flag value, bad args, run twice
    (idempotent?), different CWD, missing/locked state file, keyless `--help`
    (must exit 0).
-4. **Cross-boundary QA** (the essence of QA — compare shapes, don't existence-check):
+5. **Cross-boundary QA** (the essence of QA — compare shapes, don't existence-check):
    read both sides simultaneously and confirm they agree —
    ledger events ↔ rendered cards ↔ `active.md`/packet ↔ git history; task
    `intent_lock` ↔ card body; witness chain verifies end-to-end.
