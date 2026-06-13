@@ -18,6 +18,8 @@ mod policy;
 mod route;
 mod session;
 mod sync;
+#[cfg(test)]
+mod test_support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -145,14 +147,24 @@ fn cmd_init() {
     println!("hf init: created {}/ (ledger, tasks, packets, context)", HF);
 }
 
+/// CLI entry for `hf claim <ID>`: exits nonzero when the claim is refused/blocked so
+/// callers (hooks, scripts, the loop) see the failure (HFTASK-0029 Defect C). The
+/// internal dispatch loop (intake.rs) calls `cmd_claim_with` directly and inspects the
+/// bool instead, so it can skip a blocked order without aborting the whole process.
 fn cmd_claim(id: &str) {
-    cmd_claim_with(id, &lease::WeaveCli::from_env());
+    if !cmd_claim_with(id, &lease::WeaveCli::from_env()) {
+        std::process::exit(1);
+    }
 }
 
 /// Mesh-coordinated claim: reserve a weave lease on the task *before* recording the
 /// ledger transition, so two sessions can't claim the same task. Refuses the claim
 /// if another peer holds it; degrades to ledger-only when no weave mesh is present.
-fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
+///
+/// Returns `true` when the task was claimed, `false` when the claim was refused/blocked
+/// (HFTASK-0029 Defect C) — the CLI path turns `false` into a nonzero exit; the dispatch
+/// loop uses the bool to skip-and-continue.
+fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
     let (ledger, tasks_dir) = match route::route_for_task(id) {
         Ok(homes) => homes,
         Err(e) => {
@@ -168,7 +180,7 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
     match lease::gate(leaser.reserve(&resource, CLAIM_TTL_SECS, &format!("hf claim {id}"))) {
         lease::ClaimGate::Refuse(reason) => {
             eprintln!("hf claim: {id} BLOCKED — {resource} is held by another peer ({reason}); not claiming");
-            return;
+            return false;
         }
         lease::ClaimGate::ProceedDegraded => {
             eprintln!(
@@ -183,6 +195,7 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) {
     led.record_transition(&wo, Status::Claimed, now_ns())
         .unwrap();
     println!("hf claim: {id} -> claimed");
+    true
 }
 
 /// Release the weave lease held on a task's claim (mesh hygiene after handoff/abort).
@@ -301,6 +314,25 @@ fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// The repo-relative path of a task card on disk (`.handoff/tasks/<ID>.task.json`).
+/// Pure (no I/O) so the staging decision is unit-testable (HFTASK-0029 Defect A).
+fn task_card_relpath(id: &str) -> String {
+    format!("{HF}/tasks/{id}.task.json")
+}
+
+/// The exact git pathspecs `hf ship` stages for a task — and ONLY these (HFTASK-0029
+/// Defect A). `git add -u` stages tracked modifications/deletions but NO untracked files;
+/// the task's own card is added explicitly (it may be newly created/seeded) when present.
+/// Untracked scratch (_workspace/, stray cards) is deliberately excluded.
+fn ship_stage_specs(id: &str) -> Vec<String> {
+    let mut specs = vec!["-u".to_string()];
+    let card = task_card_relpath(id);
+    if Path::new(&card).exists() {
+        specs.push(card);
+    }
+    specs
+}
+
 /// HFTASK-0009 core: one squash-style commit → push branch → PR → arm GitHub-native
 /// auto-merge (HFTASK-0010 merge model: GitHub merges when ALL required checks are
 /// green; hf never polls-and-merges and never overrides red). Emits `pr_opened`.
@@ -322,12 +354,18 @@ fn cmd_ship(id: &str, base: &str) {
         );
         return;
     }
-    // single squash-style commit of the working tree (if dirty)
+    // single squash-style commit of the working tree (if dirty).
+    // HFTASK-0029 Defect A: stage ONLY task scope — `git add -u` (tracked
+    // modifications/deletions, NO untracked files) plus the task's own card (which may be
+    // newly created/seeded). This stops untracked scratch (_workspace/, stray KBTASK cards)
+    // from being swept into the PR (PR #29 regression).
     let dirty = run_out("git", &["status", "--porcelain"]).unwrap_or_default();
     if !dirty.is_empty() {
-        if let Err(e) = run_out("git", &["add", "-A"]) {
-            eprintln!("hf ship: {e}");
-            return;
+        for spec in ship_stage_specs(id) {
+            if let Err(e) = run_out("git", &["add", &spec]) {
+                eprintln!("hf ship: {e}");
+                return;
+            }
         }
         let msg = format!(
             "feat: ship {id}
@@ -850,12 +888,50 @@ fn cmd_seed() {
             intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
         });
     }
+    {
+        let id = "HFTASK-0029";
+        let title = "hf hygiene: ship stages only task scope + seed idempotent + claim exits nonzero when blocked";
+        let objective = "Surgical hf hygiene bundle (3 located defects, all in hf/src/main.rs): (A) `hf ship` did `git add -A`, sweeping untracked KBTASK cards + _workspace/ scratch into PR #29 — stage ONLY tracked modifications (`git add -u`) plus the task's own card. (B) `hf seed` wrote every card with hardcoded Status::Backlog, overwriting existing cards so re-seed reset done cards (HFTASK-0001..0020) to backlog — make seed additive: only write MISSING cards, preserving existing status. (C) `hf claim` printed BLOCKED to stderr but `return`ed with exit 0 — a blocked claim must exit nonzero so hooks/scripts/the loop see the failure, while `hf dispatch`'s internal claim loop keeps its skip-and-continue semantics.";
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec![
+            "ship excludes untracked; seed preserves done status; claim exits nonzero when blocked"
+                .to_string(),
+        ];
+        backlog.push(WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: title.into(),
+            status: Status::Backlog,
+            priority: Priority::P1,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "handoff-buildout".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        });
+    }
+    // HFTASK-0029 Defect B: seed is IDEMPOTENT/ADDITIVE — only write cards that are
+    // MISSING on disk. Overwriting an existing card clobbered its live status (done →
+    // backlog) on re-seed; skipping existing cards preserves status and still creates
+    // newly-added seed cards.
+    let mut written = 0usize;
+    let mut skipped = 0usize;
     for wo in &backlog {
-        save_task(wo);
+        if tasks_dir().join(format!("{}.task.json", wo.id)).exists() {
+            skipped += 1;
+        } else {
+            save_task(wo);
+            written += 1;
+        }
     }
     println!(
-        "hf seed: wrote {} continuation task cards to {}/",
-        backlog.len(),
+        "hf seed: wrote {written} new task card(s) (skipped {skipped} existing) to {}/",
         tasks_dir().display()
     );
 }
@@ -1098,5 +1174,153 @@ mod tests {
             s["next_command"],
             serde_json::json!(format!("hf claim {}", tasks[1].id))
         );
+    }
+
+    // --- HFTASK-0029 hygiene bundle ---------------------------------------------------
+
+    use crate::test_support::cwd_lock;
+
+    /// Build a minimal valid card for a given id/status (test fixture).
+    fn card(id: &str, status: Status) -> WorkOrder {
+        let objective = format!("objective for {id}");
+        let path_scope = vec!["handoff/**".to_string()];
+        let acceptance = vec!["done".to_string()];
+        WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: format!("title {id}"),
+            status,
+            priority: Priority::P1,
+            objective: objective.clone(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec!["cargo test".into()],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "test".into(),
+            role: None,
+            intent_lock: WorkOrder::compute_intent_lock(&objective, &path_scope, &acceptance),
+        }
+    }
+
+    /// A leaser whose reservation outcome is fixed — drives the claim gate in tests.
+    struct StubLeaser(lease::Reserve);
+    impl lease::Leaser for StubLeaser {
+        fn reserve(&self, _resource: &str, _ttl: u64, _note: &str) -> lease::Reserve {
+            self.0.clone()
+        }
+        fn release(&self, _resource: &str) -> bool {
+            true
+        }
+    }
+
+    /// Make a temp dir + cd into it (cwd-locked); returns the dir and the previous cwd so
+    /// the caller restores it. `.handoff/tasks` is created (the LOCAL/KERNEL home).
+    fn temp_cwd(tag: &str) -> (PathBuf, PathBuf) {
+        let mut tmp = std::env::temp_dir();
+        tmp.push(format!("hf-0029-{tag}-{}-{}", std::process::id(), now_ns()));
+        fs::create_dir_all(tmp.join(HF).join("tasks")).unwrap();
+        let tmp = tmp.canonicalize().unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+        (tmp, prev)
+    }
+
+    /// AC-A: ship stages ONLY `git add -u` (no untracked) + the task's own card; an
+    /// untracked junk file is never in the stage set, so it can't be swept into the PR.
+    #[test]
+    fn ship_stage_specs_excludes_untracked_and_includes_card() {
+        let _g = cwd_lock();
+        let (tmp, prev) = temp_cwd("ship");
+        // task card present on disk; an untracked junk file also present.
+        save_task(&card("HFTASK-9101", Status::Claimed));
+        fs::write("junk-untracked.txt", "scratch").unwrap();
+
+        let specs = ship_stage_specs("HFTASK-9101");
+        std::env::set_current_dir(&prev).unwrap();
+
+        // -u = tracked modifications/deletions only (NO untracked).
+        assert!(specs.iter().any(|s| s == "-u"), "must stage tracked via -u");
+        // the task's own card is staged explicitly.
+        assert!(
+            specs.contains(&task_card_relpath("HFTASK-9101")),
+            "card must be staged; got {specs:?}"
+        );
+        // NOTHING ever stages the untracked junk file or `-A`/`.`.
+        assert!(!specs.iter().any(|s| s.contains("junk-untracked")));
+        assert!(!specs.iter().any(|s| s == "-A" || s == "."));
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    /// AC-A (corollary): with no card on disk, ship stages only `-u` — never a wildcard.
+    #[test]
+    fn ship_stage_specs_without_card_is_just_tracked() {
+        let _g = cwd_lock();
+        let (tmp, prev) = temp_cwd("ship-nocard");
+        let specs = ship_stage_specs("HFTASK-NOPE");
+        std::env::set_current_dir(&prev).unwrap();
+        assert_eq!(specs, vec!["-u".to_string()]);
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    /// AC-B: re-seeding must NOT clobber an existing card's status. We simulate seed's
+    /// additive write: a pre-existing `done` card is preserved (skipped), a missing card
+    /// is written.
+    #[test]
+    fn seed_is_additive_and_preserves_existing_status() {
+        let _g = cwd_lock();
+        let (tmp, prev) = temp_cwd("seed");
+        // Pre-existing card with status DONE.
+        save_task(&card("HFTASK-0001", Status::Done));
+        // A would-be seed value for the SAME id, but as Backlog (the clobbering value).
+        let reseed_existing = card("HFTASK-0001", Status::Backlog);
+        let new_card = card("HFTASK-9999", Status::Backlog);
+
+        // Replicate cmd_seed's additive loop: only write MISSING cards.
+        for wo in [&reseed_existing, &new_card] {
+            if !tasks_dir().join(format!("{}.task.json", wo.id)).exists() {
+                save_task(wo);
+            }
+        }
+
+        let kept = load_task_in(&tasks_dir(), "HFTASK-0001").unwrap();
+        let created = load_task_in(&tasks_dir(), "HFTASK-9999");
+        std::env::set_current_dir(&prev).unwrap();
+
+        assert_eq!(
+            kept.status,
+            Status::Done,
+            "existing done card must be preserved, not reset to backlog"
+        );
+        assert!(created.is_some(), "a missing seed card must be created");
+        assert_eq!(created.unwrap().status, Status::Backlog);
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    /// AC-C: a blocked/refused claim returns `false` (→ CLI exits nonzero); a successful
+    /// claim returns `true` (→ exit 0). Driven via a stub leaser so no real mesh/process.
+    #[test]
+    fn claim_returns_false_when_blocked_true_when_acquired() {
+        let _g = cwd_lock();
+        let (tmp, prev) = temp_cwd("claim");
+        save_task(&card("HFTASK-9201", Status::Backlog));
+
+        // Refused (peer holds the lease) → false.
+        let blocked = cmd_claim_with(
+            "HFTASK-9201",
+            &StubLeaser(lease::Reserve::Conflict("held by peer-x".into())),
+        );
+        // Acquired → true (records the ledger transition into the temp KERNEL home).
+        let ok = cmd_claim_with("HFTASK-9201", &StubLeaser(lease::Reserve::Acquired));
+        std::env::set_current_dir(&prev).unwrap();
+
+        assert!(
+            !blocked,
+            "a blocked claim must return false (CLI exits nonzero)"
+        );
+        assert!(ok, "a successful claim must return true (CLI exits 0)");
+        let _ = fs::remove_dir_all(tmp);
     }
 }

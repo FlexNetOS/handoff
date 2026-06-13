@@ -119,15 +119,7 @@ mod tests {
         }
     }
 
-    /// Routing reads the cwd; serialize cwd-mutating tests behind one mutex so the
-    /// global process cwd can't race between parallel test threads.
-    fn cwd_lock() -> std::sync::MutexGuard<'static, ()> {
-        use std::sync::{Mutex, OnceLock};
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-    }
+    use crate::test_support::cwd_lock;
 
     #[test]
     fn local_card_routes_to_kernel_home() {

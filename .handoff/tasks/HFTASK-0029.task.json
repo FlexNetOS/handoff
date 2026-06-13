@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0029",
+  "title": "hf hygiene: ship stages only task scope + seed idempotent + claim exits nonzero when blocked",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Surgical hf hygiene bundle (3 located defects, all in hf/src/main.rs): (A) `hf ship` did `git add -A`, sweeping untracked KBTASK cards + _workspace/ scratch into PR #29 — stage ONLY tracked modifications (`git add -u`) plus the task's own card. (B) `hf seed` wrote every card with hardcoded Status::Backlog, overwriting existing cards so re-seed reset done cards (HFTASK-0001..0020) to backlog — make seed additive: only write MISSING cards, preserving existing status. (C) `hf claim` printed BLOCKED to stderr but `return`ed with exit 0 — a blocked claim must exit nonzero so hooks/scripts/the loop see the failure, while `hf dispatch`'s internal claim loop keeps its skip-and-continue semantics.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ship excludes untracked; seed preserves done status; claim exits nonzero when blocked"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:0907893e1e8d9564f1b0d3d7a82c6843918defb6c04ef51d3737682ac08f00d0",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:36e6e4121620193e70403ee5dda25c5cdd2da9b29568cdab166f6013c466530c"
+  }
+}
