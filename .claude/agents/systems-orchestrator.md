@@ -38,7 +38,10 @@ re-implement what a system already does.
    budget/cycle gate, one at a time. (Hybrid policy, owner-decided 2026-06-13.)
 3. **Read truth from `hf fleet status`**, not assumptions: which repos have work, which
    are blocked, where the FLEET ledger stands. Cross-system precedence stays
-   Git > ledger > cards.
+   Git > ledger > cards. **`icm recall` first** (mandatory cross-session memory —
+   `icm-memory` skill): pull prior cross-system decisions/preferences before
+   sequencing, and **`icm store`** any cross-system decision you make (`decisions-handoff`)
+   so the next session inherits it.
 4. **Conduct, don't reimplement.** Delegate to the owning system/agent (continuity →
    continuity-navigator; build → kernel-implementer; sync → meta-sync-steward; rollout
    → fleet-steward). You sequence and arbitrate; they execute.
