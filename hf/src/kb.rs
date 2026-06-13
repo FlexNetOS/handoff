@@ -132,6 +132,17 @@ pub fn work_order_from_kb_doc(slug: &str, doc: &str) -> WorkOrder {
     }
 }
 
+/// Where a kb-minted card is written: the FLEET tasks dir (`<meta-root>/.handoff/tasks`)
+/// when a meta root exists, else the standalone cwd `.handoff/tasks`. Pure (testable
+/// without git-kb / without touching the real ledgers). The second tuple element is a
+/// human-readable plane label for the success message.
+fn mint_target(meta_root: Option<PathBuf>) -> (PathBuf, &'static str) {
+    match meta_root {
+        Some(root) => (root.join(crate::HF).join("tasks"), "FLEET"),
+        None => (crate::tasks_dir(), "standalone (no meta root)"),
+    }
+}
+
 /// `hf task mint --from-kb <slug>` — mint a handoff card from a kb task (planning → execution).
 pub fn cmd_mint_from_kb(slug: &str) {
     if slug.is_empty() {
@@ -152,8 +163,15 @@ pub fn cmd_mint_from_kb(slug: &str) {
     };
     let wo = work_order_from_kb_doc(slug, &doc);
     let id = wo.id.clone();
-    crate::save_task(&wo);
+    // ADR-0003/0004: a kb-minted card is fleet/pickup-able by definition — it belongs
+    // in the FLEET tasks dir (`<meta-root>/.handoff/tasks/`), NEVER the cwd `.handoff/`
+    // (writing it cwd-relative from `handoff/` is exactly the contamination bug:
+    // envctl-domain KBTASK cards landed in handoff's KERNEL ledger). Fail-soft to the
+    // standalone cwd only when there is no meta root at all.
+    let (where_dir, plane) = mint_target(crate::fleet::find_meta_root());
+    crate::save_task_in(&where_dir, &wo);
     println!("hf task mint: {id} minted from kb {slug} (correlation_id = kb_ref = {slug})");
+    println!("  wrote card to {} [{plane}]", where_dir.display());
     println!("  next: hf claim {id}");
 }
 
@@ -198,6 +216,47 @@ mod tests {
         assert_eq!(map_priority(Some("medium")), Priority::P2);
         assert_eq!(map_priority(None), Priority::P2);
         assert_eq!(map_priority(Some("low")), Priority::P3);
+    }
+
+    #[test]
+    fn mint_target_is_fleet_when_meta_root_exists() {
+        let root = PathBuf::from("/some/meta/root");
+        let (dir, plane) = super::mint_target(Some(root.clone()));
+        // FLEET tasks dir = <meta-root>/.handoff/tasks — NOT a cwd-relative path.
+        assert_eq!(dir, root.join(crate::HF).join("tasks"));
+        assert_eq!(plane, "FLEET");
+        assert!(dir.is_absolute());
+    }
+
+    #[test]
+    fn mint_target_falls_back_to_cwd_standalone() {
+        let (dir, plane) = super::mint_target(None);
+        // Standalone fallback = the cwd-relative local tasks dir (edge case only).
+        assert_eq!(dir, crate::tasks_dir());
+        assert!(plane.starts_with("standalone"));
+    }
+
+    #[test]
+    fn minted_card_is_written_into_the_fleet_tasks_dir() {
+        // End-to-end of the write step (no git-kb): build a card from a doc, resolve
+        // the FLEET target against a fixture meta root, save it, and assert it landed
+        // in <meta-root>/.handoff/tasks — never a cwd `.handoff/`.
+        let mut tmp = std::env::temp_dir();
+        tmp.push(format!("hf-mint-{}-fleet", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let wo = work_order_from_kb_doc("tasks/demo-fleet", DOC);
+        let (dir, plane) = super::mint_target(Some(tmp.clone()));
+        crate::save_task_in(&dir, &wo);
+
+        let expected = tmp
+            .join(crate::HF)
+            .join("tasks")
+            .join(format!("{}.task.json", wo.id));
+        assert!(expected.is_file(), "card not written to FLEET tasks dir");
+        assert_eq!(plane, "FLEET");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
