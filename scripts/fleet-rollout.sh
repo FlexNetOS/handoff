@@ -94,7 +94,10 @@ MD
   # SQLite backend, zero-setup). .grit/ is binary state — gitignored by grit init, so
   # it never enters git (same rule as the handoff ledger, ADR-0004 §3). Best-effort.
   if [ "$NO_GRIT" = 0 ] && command -v grit >/dev/null 2>&1 && [ ! -d "$dir/.grit" ]; then
-    if (cd "$dir" && grit config set-local >/dev/null 2>&1 && grit init >/dev/null 2>&1); then
+    # `grit init` first — it creates ./.grit. `grit config set-local` REQUIRES ./.grit
+    # to already exist (errors "Run grit init first"), so it must come AFTER init.
+    # local is grit's default backend, so set-local is just an explicit confirmation.
+    if (cd "$dir" && grit init >/dev/null 2>&1 && grit config set-local >/dev/null 2>&1); then
       echo "  grit initialized $repo"
     else
       echo "  grit init skipped $repo (non-fatal)"
