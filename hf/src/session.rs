@@ -96,7 +96,33 @@ fn meta_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Create the session worktree, preferring the meta engine. Returns its path.
+/// grit on PATH?
+fn grit_available() -> bool {
+    Command::new("grit")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Make a freshly-created session worktree grit-coordinated (ADR-0009): `grit init`
+/// indexes the symbols so the session's parallel agents `grit claim` AST symbols
+/// (each gets `.grit/worktrees/agent-N`) + `grit done` for conflict-free merge.
+/// Best-effort — never wall session creation on it. NOTE: we deliberately do NOT use
+/// `grit session start` here — it is broken in grit 0.3.0 (`git checkout -b grit/<n> --`
+/// with an empty base, fails in any repo). The working primitives are init/claim/done.
+fn grit_enable(worktree: &Path) {
+    if grit_available() && !worktree.join(".grit").is_dir() {
+        let _ = run_out_in(worktree, "grit", &["init"]);
+    }
+}
+
+/// Create the session worktree (ADR-0009). The worktree DIR gives real isolation +
+/// concurrency (`meta git worktree`, separate dir; or plain git when standalone); then
+/// `grit init` makes it grit-coordinated so the session's parallel agents lock AST
+/// symbols rather than colliding at the file level. Engines: `meta git worktree`
+/// (separate dir) when in a meta workspace, else plain `git worktree` standalone —
+/// both are then grit-enabled.
 fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<PathBuf, String> {
     if meta_available() {
         if let Some(root) = meta_root(repo_root) {
@@ -115,7 +141,9 @@ fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<Pat
                     from_ref,
                 ],
             )?;
-            return Ok(root.join(".worktrees").join(branch).join("handoff"));
+            let wt = root.join(".worktrees").join(branch).join("handoff");
+            grit_enable(&wt);
+            return Ok(wt);
         }
     }
     // Standalone fallback: sibling worktree dir next to the repo.
@@ -134,6 +162,7 @@ fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<Pat
             from_ref,
         ],
     )?;
+    grit_enable(&dest);
     Ok(dest)
 }
 
@@ -246,7 +275,8 @@ fn session_end(recycle: bool, base_override: Option<&str>, leaser: &dyn Leaser) 
     }
     let resource = session_resource(&branch);
 
-    // Remove the worktree (best-effort; never wall on cleanup).
+    // Remove the worktree (best-effort; never wall on cleanup). The worktree's `.grit`
+    // is inside the worktree dir, so it is torn down with it (ADR-0009).
     if meta_available() {
         if let Some(root) = meta_root(&repo_root) {
             let _ = run_out_in(&root, "meta", &["git", "worktree", "remove", &branch]);
