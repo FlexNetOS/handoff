@@ -35,13 +35,15 @@ proof trail.
 - Secrets (LLM keys etc.) are injected by envctl: design for `envctl run -- <tool>`
   and the `agent-env.toml` registration seam — never write `export LLM_API_KEY`
   or read keys before arg-parse.
-- Work parallel-safe via **grit** (ADR-0009): after `hf claim <TASK>`, run `grit plan`
-  then `grit claim <file::symbol>` to lock the exact functions/types you'll edit, work in
-  the grit worktree (`.grit/worktrees/agent-N`), and `grit done` to rebase+merge under a
-  file lock. handoff locks the task; grit locks the code symbols — different symbols in
-  the same file never collide and no parallel session's work is discarded. Use grit's
-  worktree, not an ad-hoc `git worktree`. (`grit init` per repo is done by the fleet
-  rollout; `.grit/` is gitignored binary state.)
+- Work parallel-safe via **grit** (ADR-0009/0010) — use the full feature set per the
+  `grit-coordination` skill: after `hf claim <TASK>`, `grit plan` → `grit claim --mode
+  write|read [--queue|--wait] <file::symbol>` (write=exclusive edit; read=shared stable
+  view for blast-radius), `grit heartbeat` on long work (refresh before the 600s TTL),
+  work in `.grit/worktrees/agent-N`, then `grit done` (rebase + serialized conflict-free
+  merge). handoff locks the task; grit locks the code symbols — same-file different
+  symbols never collide, no parallel work discarded. Use grit's worktree, not ad-hoc
+  `git worktree`. Cross-repo coordination → `scripts/grit-shared.sh` (envctl-injected
+  shared backend, pending envctl Phase 8). `.grit/` is gitignored binary state.
 
 ## Input/output protocol
 

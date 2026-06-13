@@ -15,8 +15,10 @@ is the source of truth; this loop never trusts chat history or a stale packet.
 | Phase | Mode | Reason |
 |-------|------|--------|
 | Phase 2 (orient + reconcile) | Sub-agent | Single navigator establishes truth; no team chatter needed |
+| Phase 2b (conduct + pull next-best task) | Sub-agent | systems-orchestrator sequences cross-system work + selects the task (hybrid) |
 | Phase 3 (research + implement + verify + gate) | Agent team | Tight feedback loop: researcher ↔ implementer ↔ verifier ↔ gatekeeper |
 | Phase 4 (cross-workspace coherence: fleet + meta-sync) | Sub-agent | fleet-steward + meta-sync-steward run independent sweeps |
+| Phase 4b (doc sync) | Sub-agent | doc-updater regenerates derived views + syncs prose to the change |
 
 ## Agent Composition
 
@@ -29,8 +31,15 @@ is the source of truth; this loop never trusts chat history or a stale packet.
 | code-omniscient-gatekeeper | code-omniscient-gatekeeper | witnessed verdict, scope law | gatekeeper-review | `_workspace/05_verdict_<ID>.md` |
 | fleet-steward | fleet-steward | repo-per-.handoff rollout/maintenance | fleet-handoff | `_workspace/06_fleet_<scope>.md` |
 | meta-sync-steward | meta-sync-steward | sync handoff ⟷ loop_lib/meta_git_lib, meta_cli/conventions, .kb seam | meta-kb-sync | `_workspace/07_metasync_<scope>.md` |
+| systems-orchestrator | systems-orchestrator | conduct the integrated systems; pull next-best task (hybrid) | systems-conduct, grit-coordination | `_workspace/08_systems_<scope>.md` |
+| doc-updater | doc-updater | sync docs to the change; regenerate derived views | doc-sync | `_workspace/09_docsync_<scope>.md` |
 
 All Agent/TeamCreate calls use `model: "opus"`.
+
+**Task selection (hybrid back-fill policy, owner-decided 2026-06-13):** a repo session
+ORIENTS to its next safe task but auto-claims ONLY tasks flagged `ready: true` in their
+capsule/card; everything else waits for `systems-orchestrator` to pull the highest-value
+task across the fleet under the cycle/budget gate. Never auto-backfill every repo.
 
 ## State precedence (settle every conflict)
 
@@ -72,6 +81,16 @@ precedence ladder, **re-renders any stale derived views**, and writes
 `_workspace/01_navigator_truth.md` with the ledger-verified backlog and the single
 next safe task (`hf claim <ID>`). If it emits a P0 finding (broken witness chain,
 ledger unreadable) → STOP and surface it; do not pick a task.
+
+### Phase 2b: Conduct + select  — **Execution mode: Sub-agent**
+
+Invoke `systems-orchestrator` (model: opus) when the task spans more than one system or
+when running autonomously across the fleet. It reads `hf fleet status`, sequences the
+cross-system steps (the `systems-conduct` canonical order), and **selects the task by
+the hybrid policy**: auto-take only `ready`-flagged tasks; otherwise pull the
+highest-value task across the fleet under the cycle/budget gate. Writes
+`_workspace/08_systems_<scope>.md`. For a single-repo, single-system cycle this phase
+is a no-op (the navigator's next-safe task stands).
 
 ### Phase 3: Advance one task  — **Execution mode: Agent team**
 
@@ -119,6 +138,14 @@ in parallel):
 
 Any change that modifies a sibling repo, `.meta.yaml`/`.gitignore`, or `.kb` goes
 back through the gatekeeper for a witnessed verdict before landing.
+
+### Phase 4b: Doc sync  — **Execution mode: Sub-agent**
+
+After the cycle's change lands (and before/with handoff), invoke `doc-updater` (opus):
+sync prose docs to the change (FLEET_GUIDE/AGENTS/READMEs verb tables, "planned"→done),
+add the CLAUDE.md change-history row, and **regenerate derived views** (`hf checkpoint
+--sync-cards`, `hf handoff`, `hf fleet render <repo>`) — never hand-edit them. Writes
+`_workspace/09_docsync_<scope>.md` with any doc↔code mismatch as a finding.
 
 ### Phase 5: Cycle close + loop
 
