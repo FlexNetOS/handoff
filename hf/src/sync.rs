@@ -10,9 +10,18 @@
 //!   **ONE-WAY:** kb is never read back as execution truth; immutable/extensible/tasks
 //!   slugs are never touched. Degrades (and says so) when `.kb`/`git-kb` is absent.
 //!
-//! `--dry-run` prints what Part B would write without creating/committing anything.
+//!   Part C — fleet rollup (HFTASK-0032, ADR-0004 §3.3 rev): roll each member repo's
+//!   per-repo `.handoff/ledger.db` (the gitignored SOURCE of record) into the CENTRAL
+//!   FLEET ledger at `<meta-root>/.handoff/ledger.db` via append-with-provenance
+//!   re-chaining (CT/RFC6962 model) — each new source event (past the central
+//!   `sync_cursor` for that repo) is re-appended onto the central tail with provenance
+//!   (`origin_repo`/`origin_seq`/`origin_action_hash`), idempotent and crash-safe.
+//!
+//! `--dry-run` prints what Part B would write and what Part C WOULD roll up, without
+//! creating/committing/appending anything.
 
 use crate::PrioStr;
+use ledger::Ledger;
 use std::path::Path;
 use std::process::Command;
 use work_order::{Status, WorkOrder};
@@ -37,6 +46,109 @@ pub fn cmd_sync(auto: bool, dry_run: bool) {
 
     part_a_registration(&root, &repo_name, dry_run);
     part_b_kb_mirror(&root, &repo_name, dry_run);
+    part_c_rollup(&root, dry_run);
+}
+
+// --- Part C: fleet rollup (HFTASK-0032) -------------------------------------
+
+/// Current wall-clock in nanoseconds (cursor `updated_ns` stamp; advisory only).
+fn now_ns() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+/// Roll every member's per-repo `.handoff/ledger.db` into the central FLEET ledger.
+///
+/// CENTRAL = `<meta-root>/.handoff/ledger.db`. SOURCES = each member repo (from
+/// `.meta.yaml`, including the handoff kernel repo itself) whose `.handoff/ledger.db`
+/// exists and is NOT the central db. For each source: pull events past the central
+/// `sync_cursor[member]` and roll them up in one transaction (idempotent + cursor-driven).
+/// `--dry-run` only REPORTS the would-roll counts and appends NOTHING.
+fn part_c_rollup(root: &Path, dry: bool) {
+    let central_path = root.join(".handoff").join("ledger.db");
+    let central_canon = central_path.canonicalize().ok();
+
+    let meta_yaml = std::fs::read_to_string(root.join(".meta.yaml")).unwrap_or_default();
+    let members = crate::fleet::parse_members(&meta_yaml);
+    if members.is_empty() {
+        println!("hf sync [C] rollup: no members in .meta.yaml — nothing to roll up");
+        return;
+    }
+
+    // Open the central ledger ONCE for the whole pass (creates it if absent, unless dry).
+    let central_lp = central_path.to_string_lossy().into_owned();
+    let mut central = if dry {
+        // In dry mode we only READ the central cursor; open read-only-ish (open() is fine,
+        // it makes no events). If central doesn't exist yet, cursors are all None → all
+        // source events would roll.
+        Ledger::open(&central_lp).ok()
+    } else {
+        if let Some(parent) = central_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match Ledger::open(&central_lp) {
+            Ok(l) => Some(l),
+            Err(e) => {
+                eprintln!("hf sync [C] rollup: cannot open central FLEET ledger {central_lp}: {e}");
+                return;
+            }
+        }
+    };
+
+    for member in &members {
+        let src_path = root.join(member).join(".handoff").join("ledger.db");
+        if !src_path.is_file() {
+            continue; // git-text-only member / no local ledger — nothing to roll
+        }
+        // Never roll the central ledger into itself.
+        if let (Ok(s), Some(c)) = (src_path.canonicalize(), central_canon.as_ref()) {
+            if &s == c {
+                continue;
+            }
+        }
+
+        let src_lp = src_path.to_string_lossy().into_owned();
+        let src = match Ledger::open(&src_lp) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("hf sync [C] {member}: cannot open source ledger: {e}");
+                continue;
+            }
+        };
+
+        let cursor = central
+            .as_ref()
+            .and_then(|c| c.sync_cursor_get(member).ok().flatten())
+            .unwrap_or(0);
+        let rows = match src.events_after(cursor) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("hf sync [C] {member}: cannot read events: {e}");
+                continue;
+            }
+        };
+
+        if dry {
+            println!(
+                "hf sync [C] DRY {member}: would roll up {} event(s) (past cursor {cursor})",
+                rows.len()
+            );
+            continue;
+        }
+
+        let Some(central) = central.as_mut() else {
+            continue;
+        };
+        match central.rollup_from(member, &rows, now_ns()) {
+            Ok(stat) => println!(
+                "hf sync [C] {member}: appended {}, skipped {} (past cursor {cursor})",
+                stat.appended, stat.skipped_existing
+            ),
+            Err(e) => eprintln!("hf sync [C] {member}: rollup failed: {e}"),
+        }
+    }
 }
 
 // --- Part A -----------------------------------------------------------------
@@ -285,5 +397,135 @@ mod tests {
         assert!(a.contains("generated by `hf sync`"));
         assert!(a.contains("HFTASK-0011 — hf sync"));
         assert!(p.contains("Done: 0/0"));
+    }
+
+    // ----- HFTASK-0032: Part C rollup wiring (isolated temp meta-roots) -----
+
+    /// Build an isolated temp meta-root with a `.meta.yaml` listing `members`. NEVER the
+    /// real workspace. Returns the root dir.
+    fn temp_meta_root(members: &[&str]) -> std::path::PathBuf {
+        let mut root = std::env::temp_dir();
+        root.push(format!(
+            "hf-sync-test-{}-{:?}-{}",
+            std::process::id(),
+            std::thread::current().id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut yaml = String::from("projects:\n");
+        for m in members {
+            yaml.push_str(&format!("  {m}:\n    repo: git@example/{m}.git\n"));
+        }
+        std::fs::write(root.join(".meta.yaml"), yaml).unwrap();
+        std::fs::create_dir_all(root.join(".handoff")).unwrap();
+        root
+    }
+
+    /// Seed a member repo's per-repo source ledger with `n` witnessed events.
+    fn seed_member_ledger(root: &Path, member: &str, n: usize, start_ts: u64) {
+        let dir = root.join(member).join(".handoff");
+        std::fs::create_dir_all(&dir).unwrap();
+        let lp = dir.join("ledger.db").to_string_lossy().into_owned();
+        let mut led = Ledger::open(&lp).unwrap();
+        for i in 0..n {
+            led.append(
+                "checkpoint",
+                &format!("{member}-WO"),
+                "{}",
+                start_ts + i as u64,
+            )
+            .unwrap();
+        }
+    }
+
+    fn central_count(root: &Path) -> usize {
+        let lp = root
+            .join(".handoff")
+            .join("ledger.db")
+            .to_string_lossy()
+            .into_owned();
+        Ledger::open(&lp)
+            .and_then(|l| l.all_events())
+            .map(|e| e.len())
+            .unwrap_or(0)
+    }
+
+    /// AC5: `--dry-run` reports would-roll counts and writes NOTHING to central.
+    #[test]
+    fn part_c_dry_run_writes_nothing() {
+        let root = temp_meta_root(&["repo_a", "repo_b"]);
+        seed_member_ledger(&root, "repo_a", 3, 100);
+        seed_member_ledger(&root, "repo_b", 2, 200);
+
+        part_c_rollup(&root, true); // dry
+                                    // Central ledger.db should not even be created by a dry pass (no append path).
+        assert!(
+            !root.join(".handoff").join("ledger.db").is_file() || central_count(&root) == 0,
+            "dry-run must not append to central"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AC1+AC2+AC3: real rollup → idempotent re-run → incremental.
+    #[test]
+    fn part_c_rollup_idempotent_and_incremental() {
+        let root = temp_meta_root(&["repo_a", "repo_b"]);
+        seed_member_ledger(&root, "repo_a", 3, 100);
+        seed_member_ledger(&root, "repo_b", 2, 200);
+
+        // First sync: 3 + 2 = 5 rolled into central, verified.
+        part_c_rollup(&root, false);
+        assert_eq!(central_count(&root), 5, "first rollup lands all 5");
+        let lp = root
+            .join(".handoff")
+            .join("ledger.db")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            Ledger::open(&lp).unwrap().verify_witness_chain().unwrap(),
+            5
+        );
+
+        // AC2 idempotent: re-run rolls up nothing new.
+        part_c_rollup(&root, false);
+        assert_eq!(central_count(&root), 5, "re-run is idempotent (0 new)");
+
+        // AC3 incremental: add 2 to repo_a, re-sync → exactly 2 more.
+        seed_member_ledger(&root, "repo_a", 2, 300); // appends onto repo_a's existing ledger
+        part_c_rollup(&root, false);
+        assert_eq!(
+            central_count(&root),
+            7,
+            "incremental rolls exactly the 2 new"
+        );
+        assert_eq!(
+            Ledger::open(&lp).unwrap().verify_witness_chain().unwrap(),
+            7
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The central ledger is never rolled into itself even though `handoff` (the kernel
+    /// repo) IS a valid source: a member whose ledger path canonicalizes to central is
+    /// skipped. Here we simulate by NOT giving central a self-referential member; instead
+    /// assert a member with no ledger is silently skipped (git-text-only).
+    #[test]
+    fn part_c_skips_members_without_ledger() {
+        let root = temp_meta_root(&["repo_a", "git_text_only"]);
+        seed_member_ledger(&root, "repo_a", 2, 100);
+        // git_text_only has a .handoff dir but NO ledger.db
+        std::fs::create_dir_all(root.join("git_text_only").join(".handoff")).unwrap();
+
+        part_c_rollup(&root, false);
+        assert_eq!(
+            central_count(&root),
+            2,
+            "only repo_a rolled; text-only skipped"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

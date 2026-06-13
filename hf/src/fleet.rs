@@ -32,7 +32,7 @@ pub fn find_meta_root() -> Option<PathBuf> {
 /// carries no YAML crate (and the pure-Rust/no-C trust-boundary gate discourages
 /// adding one for this), and we only need the member directory names. The format is
 /// controlled — members are 2-space-indented bare `name:` keys under `projects:`.
-fn parse_members(meta_yaml: &str) -> Vec<String> {
+pub(crate) fn parse_members(meta_yaml: &str) -> Vec<String> {
     let mut out = vec![];
     let mut in_projects = false;
     for line in meta_yaml.lines() {
