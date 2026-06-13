@@ -196,7 +196,10 @@ pub fn cmd_fleet_status(json: bool) {
         rows.len(),
         with_handoff
     );
-    println!("  {:<26} {:<8} {:<6} capsule (role/plane)", "member", ".handoff", "cards");
+    println!(
+        "  {:<26} {:<8} {:<6} capsule (role/plane)",
+        "member", ".handoff", "cards"
+    );
     for r in &rows {
         let hand = if !r.present {
             "MISSING"
@@ -215,7 +218,11 @@ pub fn cmd_fleet_status(json: bool) {
             (Some(role), None) => role.clone(),
             _ => r.project_name.clone().unwrap_or_default(),
         };
-        let flag = if r.forbidden_ledger { "  ⚠ stray ledger.db (P7)" } else { "" };
+        let flag = if r.forbidden_ledger {
+            "  ⚠ stray ledger.db (P7)"
+        } else {
+            ""
+        };
         println!("  {:<26} {:<8} {:<6} {}{}", r.name, hand, cards, id, flag);
     }
     if !warnings.is_empty() {
@@ -260,9 +267,13 @@ fn load_member_tasks(repo: &Path) -> Vec<WorkOrder> {
 pub fn render_member_packet(root: &Path, member: &str) -> Result<PathBuf, String> {
     let repo = root.join(member);
     if !repo.is_dir() {
-        return Err(format!("member '{member}' not present at {}", repo.display()));
+        return Err(format!(
+            "member '{member}' not present at {}",
+            repo.display()
+        ));
     }
-    let capsule_project = capsule_field(&repo, "project_name").unwrap_or_else(|| member.to_string());
+    let capsule_project =
+        capsule_field(&repo, "project_name").unwrap_or_else(|| member.to_string());
     let northstar = capsule_field(&repo, "northstar")
         .unwrap_or_else(|| "(no northstar in capsule — seed context/capsule.json)".into());
 
@@ -284,7 +295,14 @@ pub fn render_member_packet(root: &Path, member: &str) -> Result<PathBuf, String
         (vec![], 0)
     };
 
-    let md = compose_member_packet(member, &capsule_project, &northstar, &tasks, &replay, witness);
+    let md = compose_member_packet(
+        member,
+        &capsule_project,
+        &northstar,
+        &tasks,
+        &replay,
+        witness,
+    );
     let packets = repo.join(".handoff").join("packets");
     std::fs::create_dir_all(&packets).map_err(|e| e.to_string())?;
     let out = packets.join("latest.md");
@@ -333,7 +351,12 @@ fn compose_member_packet(
         md.push_str("- (no open cards)\n");
     }
     for t in &remaining {
-        md.push_str(&format!("- [{}] **{}** — {}\n", t.priority_str(), t.id, t.title));
+        md.push_str(&format!(
+            "- [{}] **{}** — {}\n",
+            t.priority_str(),
+            t.id,
+            t.title
+        ));
     }
     md.push('\n');
     md

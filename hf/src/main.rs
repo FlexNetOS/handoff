@@ -797,7 +797,9 @@ fn main() {
                     }
                 },
                 None => {
-                    eprintln!("hf fleet render: no .meta.yaml found from the current directory upward");
+                    eprintln!(
+                        "hf fleet render: no .meta.yaml found from the current directory upward"
+                    );
                     std::process::exit(1);
                 }
             }
