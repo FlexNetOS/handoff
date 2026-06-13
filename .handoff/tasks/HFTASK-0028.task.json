@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0028",
+  "title": "Serialize concurrent hf ledger writes (WAL + busy_timeout + BEGIN IMMEDIATE)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "HAZARD: multiple concurrent `hf` processes (two handoff sessions, or a session + a PostEdit checkpoint hook) write the same .handoff/ledger.db; interleaving risks 'database is locked' or a forked/desynced witness chain. Fix in Ledger::open + the append path: set journal_mode=WAL + busy_timeout=5000, and wrap the event append in a BEGIN IMMEDIATE transaction that reads the latest prev_hash INSIDE the transaction and inserts atomically, so concurrent writers serialize (block-and-retry) and can never both chain off the same prev.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "two concurrent hf checkpoint procs both succeed + witness chain verifies"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:6371935463c2942b5a7e20de02c1ae76d0d1ce936eca5a56b2e647e02693dadb",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:1a2875b91ebb959d32182beb89bdd95006036d22a9528ead7465230044a8e4c5"
+  }
+}
