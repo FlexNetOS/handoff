@@ -26,6 +26,15 @@ The kernel spans `hf` + `ledger` + `work-order` and depends on
 `../../RuVector/crates/rvf/rvf-crypto` (witness chain) — research across that
 boundary, not just the local crate.
 
+**Before adopting any external crate, verify it is PUBLISHED** — `curl -s
+https://index.crates.io/<aa>/<bb>/<name>` (sparse index) or the local registry cache.
+A meta-repo sibling's crate (e.g. `RuVector/crates/ruvector-verified`) is often
+*path-only and unpublished*; a `path`/`git` dep to it **breaks this repo's standalone
+CI** (CI clones the repo alone — meta-repo independence rule). When a card names such a
+crate, prefer the **published crate it is itself built on** (HFTASK-0004: depend on
+published `lean-agentic`, the kernel `ruvector-verified` wraps — same substance,
+CI-safe). Confirm the card's `allows_dependency_addition` before adding anything.
+
 ### 2. Web research (primary sources, current year)
 For any external basis — Rust/crate facts, protocol/MCP specs, prior art, security
 guidance — fan out searches and **fetch the primary source**. Quote load-bearing

@@ -43,6 +43,12 @@ it with the exact missing-evidence list, or classify it as a genuine **owner wal
 
 - **Input:** the verifier's evidence (`_workspace/04_verify_*`), the implementer's
   diff summary, the researcher's citations, and the task card + ledger trail.
+- **Scope your inputs:** a verdict is bounded to the **named PR/task only**. Ignore
+  cross-harness relay/inbox traffic (other loops' session-wrapups, other repos'
+  HANDOFF.md heartbeats) that lands in your context — it is not your decision. If the
+  first thing you see is unrelated relay noise, set it aside and render the verdict on
+  the PR you were asked about. (Lesson: a kasetto/envctl rust-port relay once consumed
+  a gatekeeper turn before the actual PR was reviewed.)
 - **Output:** a witnessed verdict (via `hf review verdict`) + write
   `_workspace/05_verdict_<TASKID>.md`: the decision, the one-paragraph rationale
   naming the law(s)/criteria applied, and the next safe command. Denials name
