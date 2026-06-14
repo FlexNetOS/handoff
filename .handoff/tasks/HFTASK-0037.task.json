@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0037",
+  "title": "gitignore .handoff/active.md (derived view, stop the churn/drift)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Verify-found gap: .handoff/active.md is a TRACKED derived view that hf resume/handoff regenerate every run, so it perpetually dirties the tree and trips `hf drift` (deny_without_claim) at the start of every session — yet its sibling derived view .handoff/packets/latest.md is already gitignored. Both are hf-rendered from ledger truth (the ledger + capsule.json are the committed cold-start sources). Fix: add /.handoff/active.md to .gitignore and `git rm --cached` it (untrack), consistent with packets/. hf still renders it locally; it just stops churning git.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "gitignore .handoff/active.md (derived view, stop the churn/drift): implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:1fa988b09936a06923eeec88408180b527241b07c1bbea640fe69550774e2d72",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:b85deab11660ce225822d8a7ef71c4a6680d25dae72d07dfe7d97b5b7d8e28e5"
+  }
+}

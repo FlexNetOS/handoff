@@ -9,3 +9,6 @@
 .grit
 /_workspace/
 /_workspace_prev/
+
+# HFTASK-0037: active.md is a derived view (hf renders it); like packets/, never committed.
+/.handoff/active.md
