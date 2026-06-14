@@ -18,6 +18,7 @@ mod kb;
 mod lease;
 mod policy;
 mod route;
+mod routing;
 mod session;
 mod sync;
 #[cfg(test)]
@@ -156,6 +157,58 @@ fn cmd_init() {
 fn cmd_claim(id: &str) {
     if !cmd_claim_with(id, &lease::WeaveCli::from_env()) {
         std::process::exit(1);
+    }
+}
+
+/// `hf claim --batch`: claim the HIGHEST-VALUE safe task via the domain-expansion Thompson
+/// router (HFTASK-0018, ADR-0012) instead of the topologically-first `next_safe`. Resumes an
+/// in-progress task if one exists (same precedence as `next_safe`); otherwise routes over the
+/// ready backlog candidates (deps all Done) and claims the winner.
+fn cmd_claim_batch() {
+    use rand::SeedableRng;
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    // 1) an in-progress task takes precedence — resume it (mirrors next_safe step 1).
+    if let Some(t) = tasks.iter().find(|t| {
+        matches!(
+            status_of(&t.id, &replay, t),
+            Status::Claimed | Status::Checkpointed | Status::Active | Status::Review
+        )
+    }) {
+        cmd_claim(&t.id);
+        return;
+    }
+    // 2) route over the ready backlog candidates (deps all Done).
+    let done = |id: &str| replay.iter().any(|(k, s)| k == id && *s == Status::Done);
+    let candidates: Vec<&WorkOrder> = tasks
+        .iter()
+        .filter(|t| {
+            status_of(&t.id, &replay, t) == Status::Backlog
+                && t.dependencies.iter().all(|d| done(d))
+        })
+        .collect();
+    if candidates.is_empty() {
+        eprintln!("hf claim --batch: no ready safe task to route");
+        std::process::exit(1);
+    }
+    // Seed from the witnessed count so the draw is reproducible for a given ledger state
+    // and re-explores as history grows.
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(witness as u64);
+    match routing::route(&candidates, &mut rng) {
+        Some((t, d)) => {
+            println!(
+                "hf claim --batch: routed to arm {} (context {}/{}, value {:.3}) [ADR-0012]",
+                d.arm.0, d.bucket.difficulty_tier, d.bucket.category, d.value
+            );
+            cmd_claim(&t.id);
+        }
+        None => {
+            eprintln!("hf claim --batch: no ready safe task to route");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -1129,7 +1182,13 @@ fn main() {
         Some("init") => cmd_init(),
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
-        Some("claim") => cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("claim") => {
+            if args.get(1).map(|s| s.as_str()) == Some("--batch") {
+                cmd_claim_batch();
+            } else {
+                cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or(""));
+            }
+        }
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("checkpoint") => {
             let auto = args.iter().any(|a| a == "--auto");
