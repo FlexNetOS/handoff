@@ -253,13 +253,48 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
     true
 }
 
-/// Release the weave lease held on a task's claim (mesh hygiene after handoff/abort).
+/// True iff a task in this status should be reverted to `Backlog` on release — i.e. it is an
+/// active claim being relinquished. Terminal/post-work states (`Review`/`Done`) and already-
+/// `Backlog` are left untouched: a release must never un-finish completed work (HFTASK-0038).
+fn should_unclaim(status: Option<Status>) -> bool {
+    matches!(
+        status,
+        Some(Status::Claimed) | Some(Status::Checkpointed) | Some(Status::Active)
+    )
+}
+
+/// Release the claim on a task: free the weave lease AND **un-claim** it — revert an
+/// in-progress task's ledger status back to `Backlog` (HFTASK-0038). A lease-only release
+/// left the task stuck `Claimed`, so the claim was never truly relinquished and
+/// `hf claim --batch` would resume the phantom.
 fn cmd_release(id: &str) {
     let resource = lease::claim_resource(id);
     if lease::WeaveCli::from_env().release(&resource) {
         println!("hf release: freed weave lease {resource}");
     } else {
         eprintln!("hf release: no active lease {resource} held by you (or weave unavailable)");
+    }
+    // Un-claim: only revert an in-progress claim (never Review/Done/Backlog).
+    let status = current_statuses()
+        .into_iter()
+        .find(|(k, _)| k == id)
+        .map(|(_, s)| s);
+    if !should_unclaim(status) {
+        return;
+    }
+    let Ok((ledger, tasks_dir)) = route::route_for_task(id) else {
+        return;
+    };
+    let Some(wo) = load_task_in(&tasks_dir, id) else {
+        return;
+    };
+    if let Ok(mut led) = Ledger::open(&ledger.to_string_lossy()) {
+        if led
+            .record_transition(&wo, Status::Backlog, now_ns())
+            .is_ok()
+        {
+            println!("hf release: {id} -> backlog (un-claimed)");
+        }
     }
 }
 
@@ -1132,6 +1167,10 @@ fn cmd_seed() {
          "gitignore .handoff/active.md (derived view, stop the churn/drift)",
          "Verify-found gap: .handoff/active.md is a TRACKED derived view that hf resume/handoff regenerate every run, so it perpetually dirties the tree and trips `hf drift` (deny_without_claim) at the start of every session — yet its sibling derived view .handoff/packets/latest.md is already gitignored. Both are hf-rendered from ledger truth (the ledger + capsule.json are the committed cold-start sources). Fix: add /.handoff/active.md to .gitignore and `git rm --cached` it (untrack), consistent with packets/. hf still renders it locally; it just stops churning git.",
          Vec::<String>::new()),
+        ("HFTASK-0038",
+         "hf release un-claims: revert ledger status to Backlog (not lease-only)",
+         "Verify-found gap (HFTASK-0018 cycle): cmd_release (hf/src/main.rs) is lease-only — it frees the weave lease but never records a ledger transition, so a released in-progress task stays Claimed in the ledger (HFTASK-0006 got stuck Claimed, and `hf claim --batch` then resumed the phantom). Fix: after freeing the lease, if the task's replayed status is in-progress (Claimed/Checkpointed/Active), record_transition(&wo, Status::Backlog, now_ns()) via the routed per-task ledger (mirror cmd_claim_with), so a release TRULY un-claims. Leave terminal/post-work states (Review/Done) and already-Backlog untouched. Unit-test the un-claim decision; runtime-verify by reverting the stuck HFTASK-0006 to Backlog.",
+         Vec::<String>::new()),
     ] {
         backlog.push(WorkOrder {
             schema: "handoff.task.v1".into(),
@@ -1360,6 +1399,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_unclaims_only_in_progress() {
+        // HFTASK-0038: release reverts an active claim to Backlog, but must never un-finish
+        // post-work/terminal states or touch an already-Backlog task.
+        assert!(should_unclaim(Some(Status::Claimed)));
+        assert!(should_unclaim(Some(Status::Checkpointed)));
+        assert!(should_unclaim(Some(Status::Active)));
+        assert!(!should_unclaim(Some(Status::Review)));
+        assert!(!should_unclaim(Some(Status::Done)));
+        assert!(!should_unclaim(Some(Status::Backlog)));
+        assert!(!should_unclaim(None));
+    }
     use work_order::{work_orders_from_bundle, SwarmBundle};
 
     fn sample_tasks() -> Vec<WorkOrder> {

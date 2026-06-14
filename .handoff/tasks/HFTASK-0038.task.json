@@ -1,0 +1,28 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0038",
+  "title": "hf release un-claims: revert ledger status to Backlog (not lease-only)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Verify-found gap (HFTASK-0018 cycle): cmd_release (hf/src/main.rs) is lease-only — it frees the weave lease but never records a ledger transition, so a released in-progress task stays Claimed in the ledger (HFTASK-0006 got stuck Claimed, and `hf claim --batch` then resumed the phantom). Fix: after freeing the lease, if the task's replayed status is in-progress (Claimed/Checkpointed/Active), record_transition(&wo, Status::Backlog, now_ns()) via the routed per-task ledger (mirror cmd_claim_with), so a release TRULY un-claims. Leave terminal/post-work states (Review/Done) and already-Backlog untouched. Unit-test the un-claim decision; runtime-verify by reverting the stuck HFTASK-0006 to Backlog.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf release un-claims: revert ledger status to Backlog (not lease-only): implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:0e249b64bc1eaddcab1a9971cf61379a7036c8f5cf37b3349d6478365219e5bd",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:1ffd3c74414f4c77c0c90bdb8fb565f216879e25703bf573985d6433e36cabf4"
+  }
+}
