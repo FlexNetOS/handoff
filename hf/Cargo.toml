@@ -21,3 +21,8 @@ toml = "0.8"
 # CI clones FlexNetOS/meta-ruvector as the sibling `RuVector/` (.github/workflows/ci.yml), so
 # the standalone build resolves it. default-features off → no ruvector-core/napi pulled in.
 ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-features = false }
+# HFTASK-0018 (ADR-0012): RuVector's contextual Thompson bandit for highest-value next-task
+# routing. default-features off (its default is empty; RVF integration stays optional) → only
+# serde/thiserror/rand. Path dep, crates-only, CI-safe (same as the other RuVector crates).
+ruvector-domain-expansion = { path = "../../RuVector/crates/ruvector-domain-expansion", default-features = false }
+rand = "0.8"
