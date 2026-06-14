@@ -25,46 +25,65 @@ is that proof.
 ## Decision
 
 At `hf handoff`, construct and machine-check an **AgentContract proof** for the active
-claimed task using the **`lean-agentic`** dependent-type kernel, and **fail closed** — block
-the handoff (no packet render, exit 1) when the contract cannot be proven.
+claimed task using the **`ruvector-verified`** formal-verification crate, and **fail closed**
+— block the handoff (no packet render, exit 1) when the contract cannot be proven.
 
-### Why `lean-agentic`, not `ruvector-verified` (the dependency decision)
+### The dependency decision — use the real `ruvector-verified` crate (path dep)
 
-The card names `ruvector-verified`. That crate is **not publishable into handoff**:
+> **Correction (2026-06-14).** The first cut of this ADR depended on raw `lean-agentic`
+> because I believed a path dep to `ruvector-verified` "breaks handoff's standalone CI — CI
+> clones handoff alone." **That premise was false**, and building a thin proof layer on the
+> bare kernel duplicated what `ruvector-verified` already provides (the *never-downgrade*
+> rule). The corrected decision below uses the real crate.
 
-| Option | Verdict |
-|--------|---------|
-| `ruvector-verified` as a **path dep** to `../RuVector/crates/ruvector-verified` | ❌ Breaks handoff's **standalone CI** — CI clones handoff alone; RuVector is a *separate meta repo* (meta-repo independence rule, root `CLAUDE.md`). |
-| `ruvector-verified` as a **registry dep** | ❌ Not published — `index.crates.io` returns `NoSuchKey`. It is a path-only member of RuVector's own workspace. |
-| `ruvector-verified` as a **git dep** on `ruvnet/ruvector` | ❌ Couples handoff CI to an external upstream at an unpinned ref; diverges from the local RuVector. |
-| **`lean-agentic = "0.1.0"`** (registry) | ✅ **Published** (checksum `d3b6dcd…`, cached locally) and dependency-free. It is the dependent-type Lean kernel **`ruvector-verified` is itself built on** ("Formal verification layer for RuVector … using lean-agentic dependent types"). |
+The card names `ruvector-verified` and the kernel already establishes the pattern:
 
-So we depend on the **same Lean kernel** `ruvector-verified` wraps, and build the
-handoff-side contract proof directly on it. This is `ruvector-verified` *in substance* (the
-machine-checked Lean conversion check) without importing an unpublishable crate. The task card
-sets `allows_dependency_addition: true`; `lean-agentic` has zero transitive deps.
+- **`ledger` already path-deps a RuVector crate** — `rvf-crypto = { path =
+  "../../RuVector/crates/rvf/rvf-crypto" }` (the witness chain). So handoff is **not**
+  RuVector-independent; the meta layout (RuVector as a sibling checkout) is assumed.
+- **Handoff CI already clones it.** `.github/workflows/ci.yml` runs *“Clone rvf-crypto
+  provider (meta-ruvector)” — `git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git
+  RuVector`* in **all three** jobs (test / clippy / format). A path dep to
+  `../../RuVector/crates/ruvector-verified` resolves in CI exactly like `rvf-crypto`.
+- RuVector's correct remote after the account transfer is **`FlexNetOS/meta-ruvector`**
+  (origin), tracking `ruvnet/RuVector` (upstream); the local checkout is synced up to upstream.
+
+So we depend on the **real crate**:
+
+```toml
+ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-features = false }
+```
+
+`default-features = false` keeps it minimal (its default feature set is empty — only
+`lean-agentic` + `thiserror`, no `ruvector-core`/NAPI). The card sets
+`allows_dependency_addition: true`.
 
 ### What the proof proves
 
 The intent-lock **is** the AgentContract. For the active claimed task (status ∈
-`Claimed | Checkpointed | Active | Review`) the proof discharges these obligations against the
-**`lean-agentic` definitional-equality checker** (`Converter::is_def_eq` over terms interned
-in a `lean_agentic::Arena`) — a refl proof term is constructible **iff** the equality holds,
-mirroring `ruvector-verified::prove_dim_eq`:
+`Claimed | Checkpointed | Active | Review`) the proof discharges these obligations through the
+**`ruvector_verified::ProofEnvironment`** (pre-loaded with RuVector's type declarations incl.
+the `Eq.refl` reflexivity rule). Mirroring `ruvector_verified::prove_dim_eq`, the equality is
+decided in Rust and an `Eq.refl` proof term is minted only when it holds — but on a
+**collision-free full-string comparison** of the recorded vs re-derived hash (strictly sounder
+than reducing the hash to a `u32` dimension, which a `prove_dim_eq` shortcut would force):
 
-1. **objective integrity** — `recorded.objective_hash ≡ rederive(objective)`
-2. **path_scope integrity** — `recorded.path_scope_hash ≡ rederive(path_scope)`
-3. **acceptance integrity** — `recorded.acceptance_hash ≡ rederive(acceptance)`
+1. **objective integrity** — `recorded.objective_hash == rederive(objective)`
+2. **path_scope integrity** — `recorded.path_scope_hash == rederive(path_scope)`
+3. **acceptance integrity** — `recorded.acceptance_hash == rederive(acceptance)`
 4. **completion** *(only when the task is handed off as complete — status `Review`/`Done`)* —
-   completion evidence exists: at least one witnessed checkpoint **and** a terminal status.
-   Encoded as `is_def_eq(completion_flag, TRUE)`.
+   completion evidence exists: at least one witnessed checkpoint. Decided on the flag, then
+   witnessed with an `Eq.refl` term.
 
 Re-derivation reuses `WorkOrder::compute_intent_lock` **exactly** (same blake3 canonicalization
 the kernel mints with) so the proof is faithful to the live contract, not a parallel hash.
 
-The successful proof yields a **`ContractProof` attestation** — proof-term count, a content
-hash over the proof + environment state, and the `lean-agentic` verifier version — rendered
-into the packet (witnessed, tamper-evident), following `ruvector-verified::ProofAttestation`.
+The successful proof yields the real **`ruvector_verified::ProofAttestation`** (via
+`proof_store::create_attestation`) — a tamper-evident SipHash-2-4 receipt over the proof-term
+and environment state, stamped with the lean-agentic verifier version, **serializable into an
+RVF `WITNESS_SEG` (82 bytes)** for the witness chain. `ContractProof` additionally carries a
+`content_hash` binding the receipt to the specific recorded intent-lock hashes. The attestation
+is rendered into the packet (witnessed).
 
 ### Fail-closed semantics
 
@@ -82,12 +101,16 @@ handoff leaves the rendered views untouched (no half-written packet).
 
 ## Consequences
 
-- **+** Integrity pillar gains a *formal* (Lean-kernel-checked) artifact at the continuity
-  boundary, not just a string compare; completion is now a proof obligation.
-- **+** Standalone-CI-safe: one published, dep-free crate; no cross-meta-repo coupling.
-- **+** Forward path to the full `ruvector-verified` AgentContract substrate (RUVECTOR-RUNBOOK
-  §S1) — when `ruvector-verified` is published, `hf/src/contract.rs` swaps its proof backend
-  without changing the gate.
+- **+** Integrity pillar gains a *formal* (lean-agentic-kernel-backed) verification receipt at
+  the continuity boundary, not just a string compare; completion is now a proof obligation.
+- **+** Uses the **real** RuVector formal layer — the `ProofAttestation` is RVF-`WITNESS_SEG`-
+  serializable, so the contract proof can flow into the witness chain (RUVECTOR-RUNBOOK §S1)
+  with no rework. No duplication of the proof crate.
+- **+** Consistent with the kernel's existing RuVector coupling (`ledger`/`rvf-crypto`); CI
+  already provisions the sibling checkout, so no new CI surface.
+- **−** Adds a path dep on a sibling meta repo (`RuVector/crates/ruvector-verified`). Mitigated:
+  `ledger` already does the same; CI clones `meta-ruvector` in every job; `default-features
+  = false` keeps the dep tree minimal (`lean-agentic` + `thiserror`).
 - **−** `hf handoff` now does bounded proof work each cycle (sub-millisecond; proof terms are
   tiny). Acceptable for a per-cycle continuity verb.
 - **−** A genuinely complete task that lacks a witnessed checkpoint will be blocked until it is
@@ -96,8 +119,12 @@ handoff leaves the rendered views untouched (no half-written packet).
 ## Alternatives considered
 
 - **Keep only `hf drift`** — rejected: a string compare is not a proof and ignores completion.
-- **Vendor `ruvector-verified` source into handoff** — rejected: duplicates an actively-developed
-  sibling crate (no-downgrade/no-fork discipline); `lean-agentic` gives the same kernel cleanly.
+- **Build on bare `lean-agentic`** *(the first cut — superseded)* — rejected: it reimplemented a
+  thin proof layer the `ruvector-verified` crate already provides (`ProofEnvironment`,
+  `ProofAttestation`, the RuVector symbol environment), on the false premise that a path dep
+  breaks CI. Duplication = downgrade. The real crate is used instead.
+- **Vendor / git-pin `ruvector-verified`** — rejected: the path dep already works (CI clones the
+  sibling), so vendoring would only fork an actively-developed crate.
 - **Gate at `hf done`/`hf ship` instead of `hf handoff`** — rejected: the card specifies *at
   handoff*; handoff is the continuity-render boundary every cycle crosses, and `hf done` already
   feeds status that the handoff proof reads.

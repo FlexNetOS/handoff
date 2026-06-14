@@ -756,11 +756,11 @@ fn cmd_handoff() {
     );
     if let Some(p) = &proof {
         println!(
-            "hf handoff: AgentContract PROVEN for {} — {} obligation(s), {} lean proof-term(s), attestation {:#018x} (ADR-0011)",
+            "hf handoff: AgentContract PROVEN for {} — {} obligation(s), {} ruvector-verified proof-term(s), binding {:#018x} (ADR-0011)",
             p.task,
             p.obligations.len(),
             p.proof_terms,
-            p.attestation
+            p.content_hash
         );
     }
 }
