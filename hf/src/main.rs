@@ -9,6 +9,7 @@
 //!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
+mod branch;
 mod fleet;
 mod gates;
 mod intake;
@@ -341,6 +342,27 @@ fn cmd_ship(id: &str, base: &str) {
         eprintln!("usage: hf ship <task-id> [--base BRANCH]");
         return;
     }
+    // HFTASK-0008: resolve the branch/remote policy (clone/fork model + base/trunk) once,
+    // so ship decides the same way everything else does instead of hardcoding "master".
+    let policy = policy::Policy::load(Path::new(HF));
+    let bp = match branch::BranchPolicy::resolve(&policy.remote) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("hf ship: {e}");
+            return;
+        }
+    };
+    // Fork model is deferred (ADR-0001 §3) — fail closed before any remote operation.
+    if let Err(e) = bp.ensure_supported() {
+        eprintln!("hf ship: {e}");
+        return;
+    }
+    // PR target: an explicit `--base` wins; otherwise the policy trunk (was hardcoded "master").
+    let base = if base.is_empty() {
+        bp.trunk.as_str()
+    } else {
+        base
+    };
     let branch = match run_out("git", &["branch", "--show-current"]) {
         Ok(b) if !b.is_empty() => b,
         _ => {
@@ -348,11 +370,23 @@ fn cmd_ship(id: &str, base: &str) {
             return;
         }
     };
-    if branch == base || branch == "master" || branch == "main" {
+    // HFTASK-0008: never ship FROM the trunk or the integration base — work lands via PR
+    // off a session branch. The trunk guard is centralized in the policy engine.
+    if branch == base {
         eprintln!(
-            "hf ship: refusing to ship from trunk '{branch}' — work happens on session branches"
+            "hf ship: refusing to ship from the base branch '{branch}' — use a session branch"
         );
         return;
+    }
+    if let Err(e) = bp.guard_direct_trunk_push(&branch) {
+        eprintln!("hf ship: {e}");
+        return;
+    }
+    if bp.should_sync_develop_trunk() {
+        println!(
+            "hf ship: note — develop_mirrors_trunk; sync '{}' to '{}' after merge",
+            bp.base, bp.trunk
+        );
     }
     // single squash-style commit of the working tree (if dirty).
     // HFTASK-0029 Defect A: stage ONLY task scope — `git add -u` (tracked
@@ -1115,12 +1149,14 @@ fn main() {
         }
         Some("ship") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            // HFTASK-0008: empty default → cmd_ship resolves the base from the branch
+            // policy (trunk_branch), instead of hardcoding "master" at the call site.
             let base = args
                 .iter()
                 .position(|a| a == "--base")
                 .and_then(|i| args.get(i + 1))
                 .map(|s| s.as_str())
-                .unwrap_or("master");
+                .unwrap_or("");
             cmd_ship(id, base);
         }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("verdict") => {
