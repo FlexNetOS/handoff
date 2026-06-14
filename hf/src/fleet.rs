@@ -5,14 +5,18 @@
 //! **Git is the sync transport** — no daemons. State precedence stays Git > ledger >
 //! cards.
 //!
-//! Residency (ADR-0004 §3, settled): there is one witnessed ledger per orchestration
-//! home — the FLEET ledger lives at `<meta-root>/.handoff/ledger.db`. A per-repo
-//! `.handoff/` carries **no `ledger.db` / no binary state** (git text only); a stray
-//! per-repo ledger is a policy-P7 violation, surfaced here as a warning.
+//! Residency (ADR-0004 §3.3/§6, REVISED 2026-06-13): continuity is per-repo-first with a
+//! central rollup. A repo's **gitignored** local `.handoff/ledger.db` is LEGITIMATE (its own
+//! source of record); its events roll up into the FLEET ledger at `<meta-root>/.handoff/
+//! ledger.db`. The P7 violations `hf fleet status` surfaces (HFTASK-0034) are: (a) a
+//! git-**TRACKED** `.db` under `.handoff` (committed binary ledger state is banned), and
+//! (b) a continuity member missing the `.handoff/**/ledger.db` `.gitignore` guard. A `.db`
+//! merely present on disk is NOT a violation.
 
 use crate::PrioStr;
 use ledger::{Ledger, RollupProvenance};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use work_order::{Status, WorkOrder};
 
 /// Walk up from the current directory to the meta root (the dir holding `.meta.yaml`).
@@ -81,7 +85,12 @@ struct Row {
     project_name: Option<String>,
     role: Option<String>,
     plane: Option<String>,
-    forbidden_ledger: bool,
+    /// HFTASK-0034 (ADR-0004 §6 rev): a git-TRACKED ledger DB under `.handoff` — the banned
+    /// committed-binary-ledger violation (NOT "a ledger present on disk").
+    tracked_ledger: bool,
+    /// HFTASK-0034: a continuity member (has `.handoff`) whose `.gitignore` lacks the
+    /// `.handoff/**/ledger.db` residency guard — its local ledger could be committed.
+    ledger_guard_missing: bool,
     /// HFTASK-0033: this member's own per-repo ledger chain, verified independently of the
     /// central rollup. `Some((events, witnessed))` when `<member>/.handoff/ledger.db` exists
     /// and its witness chain was checked; `None` when the member carries no local ledger.
@@ -116,12 +125,42 @@ fn per_repo_chain_stats(repo: &Path) -> Option<PerRepoChain> {
     Some(PerRepoChain { events, witnessed })
 }
 
-/// Orchestration homes legitimately carry a ledger (ADR-0004 §3 / envctl ADR-0001
-/// §23): the FLEET home is the meta root itself (not a member, so never in this list)
-/// and the KERNEL home is `handoff/`. Every OTHER member must be git-text-only, so a
-/// `ledger.db` there is a policy-P7 violation.
-fn is_orchestration_home(name: &str) -> bool {
-    name == "handoff"
+/// HFTASK-0034 (ADR-0004 §6 rev): a *git-tracked* ledger DB under `.handoff` is the P7
+/// violation — committing binary ledger state is BANNED (merge conflicts, bloat, the beads
+/// lesson). A `.db` merely *present on disk* (gitignored) is LEGITIMATE — it's the repo's
+/// local source of record (the rollup model). So we ask Git, not the filesystem: does any
+/// `*.db` / `*.db-wal` / `*.db-shm` under `.handoff` appear in `git ls-files`?
+fn git_tracks_handoff_db(repo: &Path) -> bool {
+    Command::new("git")
+        .args(["-C", &repo.to_string_lossy(), "ls-files", "--", ".handoff"])
+        .output()
+        .ok()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout).lines().any(|l| {
+                let l = l.trim();
+                l.ends_with(".db") || l.ends_with(".db-wal") || l.ends_with(".db-shm")
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// HFTASK-0034 (ADR-0004 §6 rev): the `.gitignore` residency guard must exist so a local
+/// ledger can never be committed. `git check-ignore -q .handoff/ledger.db` exits 0 iff the
+/// path is ignored — true for both `/.handoff/ledger.db` and `.handoff/**/ledger.db`
+/// (gitignore `**` matches zero segments, so it covers the top-level path too). Returns
+/// false when the repo isn't a git repo or the guard is absent.
+fn ledger_guard_present(repo: &Path) -> bool {
+    Command::new("git")
+        .args([
+            "-C",
+            &repo.to_string_lossy(),
+            "check-ignore",
+            "-q",
+            ".handoff/ledger.db",
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
@@ -131,7 +170,11 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
             let repo = root.join(name);
             let present = repo.is_dir();
             let has_handoff = repo.join(".handoff").is_dir();
-            let has_ledger = repo.join(".handoff/ledger.db").is_file();
+            // HFTASK-0034: ask Git, not the filesystem. A tracked .db is the violation; a
+            // present-but-gitignored .db is legitimate. The guard is required for any repo
+            // that carries a .handoff continuity layer.
+            let tracked_ledger = present && git_tracks_handoff_db(&repo);
+            let ledger_guard_missing = present && has_handoff && !ledger_guard_present(&repo);
             Row {
                 name: name.clone(),
                 present,
@@ -140,7 +183,8 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 project_name: capsule_field(&repo, "project_name"),
                 role: capsule_field(&repo, "role"),
                 plane: capsule_field(&repo, "plane"),
-                forbidden_ledger: has_ledger && !is_orchestration_home(name),
+                tracked_ledger,
+                ledger_guard_missing,
                 per_repo_chain: per_repo_chain_stats(&repo),
             }
         })
@@ -193,16 +237,20 @@ pub fn cmd_fleet_status(json: bool) {
     let per_repo_verified = rows.iter().filter(|r| r.per_repo_chain.is_some()).count();
 
     let with_handoff = rows.iter().filter(|r| r.has_handoff).count();
-    let mut warnings: Vec<String> = rows
-        .iter()
-        .filter(|r| r.forbidden_ledger)
-        .map(|r| {
-            format!(
-                "{}: carries a per-repo .handoff/ledger.db — policy-P7 violation (ADR-0004 §3); events belong in the FLEET ledger",
-                r.name
-            )
-        })
-        .collect();
+    // HFTASK-0034 (ADR-0004 §6 rev): two distinct P7 conditions.
+    let mut warnings: Vec<String> = Vec::new();
+    for r in rows.iter().filter(|r| r.tracked_ledger) {
+        warnings.push(format!(
+            "{}: a ledger DB under .handoff is git-TRACKED — policy-P7 violation (ADR-0004 §6); committed binary ledger state is banned (gitignore it)",
+            r.name
+        ));
+    }
+    for r in rows.iter().filter(|r| r.ledger_guard_missing) {
+        warnings.push(format!(
+            "{}: missing the `.handoff/**/ledger.db` .gitignore guard (ADR-0004 §6); a local ledger could be committed",
+            r.name
+        ));
+    }
     // HFTASK-0033: a broken provenance bridge is an integrity alarm, not a style nit —
     // surface it as a warning so the loop's drift/gate sees it.
     if let Some(p) = &provenance {
@@ -247,7 +295,8 @@ pub fn cmd_fleet_status(json: bool) {
                 "project_name": r.project_name,
                 "role": r.role,
                 "plane": r.plane,
-                "forbidden_ledger": r.forbidden_ledger,
+                "tracked_ledger": r.tracked_ledger,
+                "ledger_guard_missing": r.ledger_guard_missing,
                 // HFTASK-0033 (ii): this member's own ledger chain, verified standalone.
                 "per_repo_chain": r.per_repo_chain.as_ref().map(|c| serde_json::json!({
                     "events": c.events,
@@ -316,10 +365,11 @@ pub fn cmd_fleet_status(json: bool) {
             (Some(role), None) => role.clone(),
             _ => r.project_name.clone().unwrap_or_default(),
         };
-        let flag = if r.forbidden_ledger {
-            "  ⚠ stray ledger.db (P7)"
-        } else {
-            ""
+        // HFTASK-0034 (ADR-0004 §6 rev): flag a git-TRACKED ledger and/or a missing guard.
+        let flag = match (r.tracked_ledger, r.ledger_guard_missing) {
+            (true, _) => "  ⚠ tracked ledger.db (P7)",
+            (false, true) => "  ⚠ no ledger .gitignore guard (P7)",
+            (false, false) => "",
         };
         // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
         let chain = match &r.per_repo_chain {
@@ -570,5 +620,66 @@ other:
         assert_eq!(prov.per_repo, vec![("memberx".to_string(), 3)]);
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// HFTASK-0034 (ADR-0004 §6 rev): the P7 flip — only a git-TRACKED ledger DB is a
+    /// violation; a gitignored one is legitimate; the `.gitignore` guard must exist.
+    #[test]
+    fn p7_flip_tracked_ledger_and_guard_detection() {
+        use std::process::Command;
+        let repo = std::env::temp_dir().join(format!(
+            "hf-p7-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(repo.join(".handoff")).unwrap();
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .args(["-C", repo.to_str().unwrap()])
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@example.com"]);
+        git(&["config", "user.name", "t"]);
+
+        // Before any guard: no tracked db, and the guard is absent.
+        assert!(!super::git_tracks_handoff_db(&repo));
+        assert!(
+            !super::ledger_guard_present(&repo),
+            "no .gitignore yet → guard absent"
+        );
+
+        // Add the residency guard; the `**` pattern also covers the top-level path.
+        std::fs::write(
+            repo.join(".gitignore"),
+            ".handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n",
+        )
+        .unwrap();
+        assert!(
+            super::ledger_guard_present(&repo),
+            "guard present after writing .gitignore"
+        );
+
+        // A gitignored ledger present on disk is LEGITIMATE — not tracked.
+        std::fs::write(repo.join(".handoff/ledger.db"), b"x").unwrap();
+        git(&["add", "-A"]);
+        assert!(
+            !super::git_tracks_handoff_db(&repo),
+            "a gitignored ledger on disk must NOT count as tracked (legitimate)"
+        );
+
+        // Force-tracking the ledger is the actual P7 violation.
+        git(&["add", "-f", ".handoff/ledger.db"]);
+        assert!(
+            super::git_tracks_handoff_db(&repo),
+            "a git-TRACKED ledger.db IS the P7 violation"
+        );
+
+        std::fs::remove_dir_all(&repo).ok();
     }
 }
