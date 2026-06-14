@@ -42,6 +42,37 @@ pub struct RollupStat {
     pub skipped_existing: usize,
 }
 
+/// HFTASK-0033 (ADR-0004 §3.3 rev): outcome of verifying the rollup *provenance bridge* —
+/// that each rolled-up central row faithfully reproduces the source event it claims to
+/// mirror. Computed by [`Ledger::verify_rollup_provenance`]. `mismatched == 0` is the
+/// faithfulness gate: every rolled row's recomputed action hash equals its stored
+/// `origin_action_hash`, so any central event traces back to its origin repo.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RollupProvenance {
+    /// Rolled-up rows whose recomputed `hash_action(event_type, work_order_id, payload_json)`
+    /// byte-matched the stored `origin_action_hash` (the proof bridge holds).
+    pub verified: usize,
+    /// Rolled-up rows whose recomputed hash did NOT match `origin_action_hash` (or whose
+    /// `origin_action_hash` was NULL/malformed) — provenance broken; the gate must fail.
+    pub mismatched: usize,
+    /// Per-origin breakdown of verified rows: `(origin_repo, verified_count)`, sorted by repo.
+    pub per_repo: Vec<(String, usize)>,
+}
+
+impl RollupProvenance {
+    /// True iff every rolled-up row's provenance held (no mismatches). Native (NULL-origin)
+    /// rows are not rolled-up rows and are out of scope, so a ledger with zero rollups is
+    /// vacuously faithful.
+    pub fn is_faithful(&self) -> bool {
+        self.mismatched == 0
+    }
+
+    /// Total rolled-up rows examined (verified + mismatched).
+    pub fn total(&self) -> usize {
+        self.verified + self.mismatched
+    }
+}
+
 fn hash_action(event_type: &str, work_order_id: &str, payload: &str) -> [u8; 32] {
     let mut h = Sha3_256::new();
     h.update(event_type.as_bytes());
@@ -453,6 +484,49 @@ impl Ledger {
         let chain = create_witness_chain(&entries);
         let verified = verify_witness_chain(&chain).expect("witness chain must verify");
         Ok(verified.len())
+    }
+
+    /// HFTASK-0033 (ADR-0004 §3.3 rev): verify the rollup *provenance bridge*. For every
+    /// rolled-up central row (`origin_repo IS NOT NULL`), re-derive the action hash from the
+    /// stored content via the SAME [`hash_action`] used on append/rollup, and byte-compare it
+    /// to the persisted `origin_action_hash`. A match proves the central row IS the source
+    /// event it claims to mirror (CT/RFC6962 model: self-contained events re-chained, never
+    /// merged) — so any central event traces faithfully back to its origin repo.
+    ///
+    /// Pure read: SQL `SELECT` + the existing hash, no mutation, no new dependency. Native
+    /// (NULL-origin) local events are out of scope and ignored. The witness chain
+    /// ([`verify_witness_chain`]) proves the central chain is intact (tamper-evidence over
+    /// `action_hash`); this proves the *provenance* claim (the `origin_action_hash` bridge)
+    /// — the two are independent and complementary.
+    pub fn verify_rollup_provenance(&self) -> rusqlite::Result<RollupProvenance> {
+        let mut stmt = self.conn.prepare(
+            "SELECT origin_repo, event_type, work_order_id, payload_json, origin_action_hash
+             FROM events WHERE origin_repo IS NOT NULL ORDER BY origin_repo, origin_seq",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,          // origin_repo
+                r.get::<_, String>(1)?,          // event_type
+                r.get::<_, String>(2)?,          // work_order_id
+                r.get::<_, String>(3)?,          // payload_json
+                r.get::<_, Option<Vec<u8>>>(4)?, // origin_action_hash (NULL ⇒ malformed)
+            ))
+        })?;
+        let mut prov = RollupProvenance::default();
+        let mut per: std::collections::BTreeMap<String, usize> = Default::default();
+        for row in rows {
+            let (origin_repo, event_type, work_order_id, payload_json, stored) = row?;
+            let recomputed = hash_action(&event_type, &work_order_id, &payload_json);
+            // Faithful iff the stored origin hash is present AND byte-equals the recomputation.
+            if stored.as_deref() == Some(&recomputed[..]) {
+                prov.verified += 1;
+                *per.entry(origin_repo).or_default() += 1;
+            } else {
+                prov.mismatched += 1;
+            }
+        }
+        prov.per_repo = per.into_iter().collect();
+        Ok(prov)
     }
 }
 
@@ -1075,5 +1149,97 @@ mod tests {
         assert_eq!(central.all_events().unwrap().len(), 0);
         assert_eq!(central.sync_cursor_get("repo").unwrap(), None);
         let _ = std::fs::remove_dir_all(central_dir.parent().unwrap());
+    }
+
+    // ----- HFTASK-0033: verify_rollup_provenance (the provenance bridge) ----
+
+    /// HFTASK-0033 AC: after rolling two sources up, `verify_rollup_provenance` confirms
+    /// every rolled row's recomputed hash matches its stored `origin_action_hash`; the
+    /// per-repo breakdown counts each source; native rows are out of scope.
+    #[test]
+    fn verify_rollup_provenance_is_faithful_and_per_repo() {
+        let central_dir = temp_db();
+        let central_path = central_dir.to_string_lossy().into_owned();
+        let (src_a_dir, src_a) = source_ledger_with(3, "A");
+        let (src_b_dir, src_b) = source_ledger_with(2, "B");
+        let rows_a = Ledger::open(&src_a).unwrap().events_after(0).unwrap();
+        let rows_b = Ledger::open(&src_b).unwrap().events_after(0).unwrap();
+
+        let mut central = Ledger::open(&central_path).unwrap();
+        // A native local event on the central ledger too — must be IGNORED by the verifier.
+        central
+            .append("checkpoint", "CENTRAL-NATIVE", "{}", 1)
+            .unwrap();
+        central.rollup_from("repo-a", &rows_a, 1).unwrap();
+        central.rollup_from("repo-b", &rows_b, 2).unwrap();
+
+        let prov = central.verify_rollup_provenance().unwrap();
+        assert!(prov.is_faithful(), "all rolled rows must verify: {prov:?}");
+        assert_eq!(prov.verified, 5, "3 (repo-a) + 2 (repo-b) rolled rows");
+        assert_eq!(prov.mismatched, 0);
+        assert_eq!(prov.total(), 5, "native CENTRAL-NATIVE row is out of scope");
+        assert_eq!(
+            prov.per_repo,
+            vec![("repo-a".to_string(), 3), ("repo-b".to_string(), 2)],
+            "per-repo breakdown sorted by origin_repo"
+        );
+
+        for d in [central_dir, src_a_dir, src_b_dir] {
+            let _ = std::fs::remove_dir_all(d.parent().unwrap());
+        }
+    }
+
+    /// HFTASK-0033 AC (the failure direction): if a rolled row's content is tampered so it
+    /// no longer reproduces its `origin_action_hash`, the verifier flags the mismatch and
+    /// `is_faithful()` is false — the provenance bridge is broken.
+    #[test]
+    fn verify_rollup_provenance_detects_tampered_row() {
+        let central_dir = temp_db();
+        let central_path = central_dir.to_string_lossy().into_owned();
+        let (src_dir, src) = source_ledger_with(3, "T");
+        let rows = Ledger::open(&src).unwrap().events_after(0).unwrap();
+
+        let mut central = Ledger::open(&central_path).unwrap();
+        central.rollup_from("repo-t", &rows, 1).unwrap();
+        assert!(central.verify_rollup_provenance().unwrap().is_faithful());
+
+        // Tamper ONE rolled row's payload_json without touching origin_action_hash: the
+        // recomputed hash now diverges from the stored provenance hash.
+        central
+            .conn
+            .execute(
+                "UPDATE events SET payload_json = '{\"tampered\":true}'
+                 WHERE origin_repo = 'repo-t' AND origin_seq = 2",
+                [],
+            )
+            .unwrap();
+
+        let prov = central.verify_rollup_provenance().unwrap();
+        assert!(
+            !prov.is_faithful(),
+            "tampered provenance must NOT be faithful"
+        );
+        assert_eq!(prov.mismatched, 1, "exactly the tampered row mismatches");
+        assert_eq!(prov.verified, 2, "the other two rolled rows still verify");
+
+        for d in [central_dir, src_dir] {
+            let _ = std::fs::remove_dir_all(d.parent().unwrap());
+        }
+    }
+
+    /// A ledger with only native (NULL-origin) events has no rollup rows, so provenance is
+    /// vacuously faithful (`total() == 0`, `is_faithful()` true).
+    #[test]
+    fn verify_rollup_provenance_vacuous_when_no_rollups() {
+        let db = temp_db();
+        let mut led = Ledger::open(db.to_str().unwrap()).unwrap();
+        led.append("checkpoint", "NATIVE", "{}", 1).unwrap();
+        led.append("task_transition", "NATIVE", "{\"status\":\"Done\"}", 2)
+            .unwrap();
+        let prov = led.verify_rollup_provenance().unwrap();
+        assert!(prov.is_faithful());
+        assert_eq!(prov.total(), 0, "no origin_repo rows to verify");
+        assert!(prov.per_repo.is_empty());
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
 }
