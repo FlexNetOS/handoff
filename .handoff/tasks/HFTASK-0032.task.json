@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0032",
   "title": "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0004 §3.3 (rev): hf/src/sync.rs + a ledger rollup API. For each member repo, read its gitignored .handoff/ledger.db events with seq > sync_cursor.last_seq, RE-APPEND each through the central ledger's witnessed append() path (re-chained onto the central tail), tagging provenance (origin_repo, origin_seq, origin_action_hash = the source action_hash, byte-identical since hash_action inputs match). Advance the cursor in the SAME central transaction. UNIQUE(origin_repo,origin_seq) makes re-runs no-ops (at-least-once -> exactly-once). Chains are never merged; self-contained events are re-appended (CT/RFC6962 model).",
   "path_scope": [
