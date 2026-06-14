@@ -10,6 +10,7 @@
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod branch;
+mod contract;
 mod fleet;
 mod gates;
 mod intake;
@@ -670,9 +671,58 @@ fn render_packet_md(tasks: &[WorkOrder], replay: &[(String, Status)], witness: u
     md
 }
 
+/// The active claimed task whose AgentContract a handoff proves: the in-progress task
+/// (same statuses `next_safe` resumes). `None` when nothing is claimed.
+fn active_task<'a>(tasks: &'a [WorkOrder], replay: &[(String, Status)]) -> Option<&'a WorkOrder> {
+    tasks.iter().find(|t| {
+        matches!(
+            status_of(&t.id, replay, t),
+            Status::Claimed | Status::Checkpointed | Status::Active | Status::Review
+        )
+    })
+}
+
+/// Count witnessed checkpoint transitions for `id` in the ledger (completion evidence for
+/// the AgentContract proof — HFTASK-0004 obligation 4).
+fn checkpoint_count(id: &str) -> usize {
+    let evs = match Ledger::open(&ledger_path()).and_then(|l| l.all_events()) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    evs.iter()
+        .filter(|e| e.work_order_id == id && e.event_type == "task_transition")
+        .filter(|e| {
+            serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                .ok()
+                .and_then(|v| v.get("status").cloned())
+                .and_then(|s| serde_json::from_value::<Status>(s).ok())
+                == Some(Status::Checkpointed)
+        })
+        .count()
+}
+
 fn cmd_handoff() {
     let tasks = load_tasks();
     let replay = current_statuses();
+
+    // HFTASK-0004 (ADR-0011): prove the active task's AgentContract via the lean-agentic
+    // kernel BEFORE rendering. Fail closed — an unprovable contract (intent drift, or an
+    // as-complete task with no witnessed checkpoint) blocks the handoff: exit before any
+    // packet/active.md is written, so the rendered views are never left half-updated.
+    let proof = active_task(&tasks, &replay).map(|active| {
+        let evidence = contract::CompletionEvidence {
+            status: status_of(&active.id, &replay, active),
+            checkpoints: checkpoint_count(&active.id),
+        };
+        match contract::prove_contract(active, &evidence) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("hf handoff: BLOCKED (fail-closed, ADR-0011) — {e}");
+                std::process::exit(1);
+            }
+        }
+    });
+
     let done: Vec<_> = tasks
         .iter()
         .filter(|t| status_of(&t.id, &replay, t) == Status::Done)
@@ -682,7 +732,10 @@ fn cmd_handoff() {
         .and_then(|l| l.verify_witness_chain())
         .unwrap_or(0);
 
-    let md = render_packet_md(&tasks, &replay, witness);
+    let mut md = render_packet_md(&tasks, &replay, witness);
+    if let Some(p) = &proof {
+        md.push_str(&contract::render_proof_section(p));
+    }
 
     let _ = fs::create_dir_all(Path::new(HF).join("packets"));
     let _ = fs::write(packet_path(), &md);
@@ -701,6 +754,15 @@ fn cmd_handoff() {
         packet_path().display(),
         witness
     );
+    if let Some(p) = &proof {
+        println!(
+            "hf handoff: AgentContract PROVEN for {} — {} obligation(s), {} lean proof-term(s), attestation {:#018x} (ADR-0011)",
+            p.task,
+            p.obligations.len(),
+            p.proof_terms,
+            p.attestation
+        );
+    }
 }
 
 enum ResumeMode {
