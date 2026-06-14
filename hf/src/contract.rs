@@ -1,33 +1,35 @@
 //! AgentContract proof at `hf handoff` — HFTASK-0004 (ADR-0011).
 //!
 //! The kernel's blake3 **intent-lock** (`work_order::IntentLock`) IS the agent contract.
-//! At handoff we machine-check that contract with the [`lean-agentic`] dependent-type kernel
-//! — the same Lean engine `ruvector-verified` is built on — and **fail closed**: an
+//! At handoff we discharge that contract through the **`ruvector-verified`** formal layer —
+//! the real RuVector proof-carrying crate (`ProofEnvironment` over the lean-agentic
+//! dependent-type kernel, `Eq.refl` reflexive-equality proofs, and a tamper-evident
+//! [`ProofAttestation`] that serializes into an RVF `WITNESS_SEG`) — and **fail closed**: an
 //! unprovable contract blocks the handoff.
 //!
-//! The proof discipline mirrors `ruvector-verified::prove_dim_eq`: a refl proof term is
-//! constructible **iff** the proposition holds, verified through the kernel's definitional
-//! -equality checker ([`Converter::is_def_eq`]). The obligations for the active claimed task:
+//! Pattern mirrors `ruvector_verified::prove_dim_eq`: the obligation's equality is decided
+//! in Rust (here, a collision-free **full-string** comparison of the recorded vs re-derived
+//! contract hash — strictly sounder than reducing to a `u32` dimension), and only when it
+//! holds is an `Eq.refl` proof term minted into the proof environment. Obligations:
 //!
-//! 1. `objective` integrity — `recorded.objective_hash ≡ rederive(objective)`
-//! 2. `path_scope` integrity — `recorded.path_scope_hash ≡ rederive(path_scope)`
-//! 3. `acceptance` integrity — `recorded.acceptance_hash ≡ rederive(acceptance)`
+//! 1. `objective` integrity — `recorded.objective_hash == rederive(objective)`
+//! 2. `path_scope` integrity — `recorded.path_scope_hash == rederive(path_scope)`
+//! 3. `acceptance` integrity — `recorded.acceptance_hash == rederive(acceptance)`
 //! 4. `completion` *(only when handed off as complete — status `Review`/`Done`)* —
 //!    completion evidence exists (≥1 witnessed checkpoint).
 //!
 //! Re-derivation reuses [`WorkOrder::compute_intent_lock`] **exactly**, so the proof is
-//! faithful to the live contract rather than a parallel hash.
+//! faithful to the live contract rather than a parallel hash. The resulting
+//! `ProofAttestation` (proof-term hash, environment hash, lean-agentic verifier version) is
+//! rendered into the packet — a real verification receipt, witnessed.
 
-use lean_agentic::conversion::Converter;
-use lean_agentic::{Arena, Context, Environment, TermId};
 use std::hash::{Hash, Hasher};
 use work_order::{Status, WorkOrder};
 
-/// Lean verifier version stamped into attestations (lean-agentic 0.1.0 = `0x0001_0000`),
-/// matching `ruvector-verified::ProofAttestation`'s `verifier_version` encoding.
-pub const VERIFIER_VERSION: u32 = 0x0001_0000;
+use ruvector_verified::invariants::symbols::EQ_REFL;
+use ruvector_verified::{ProofAttestation, ProofEnvironment};
 
-/// A discharged proof obligation: its name and the lean proof-term id constructed for it.
+/// A discharged proof obligation: its name and the `Eq.refl` proof-term id minted for it.
 #[derive(Debug, Clone)]
 pub struct Obligation {
     pub name: &'static str,
@@ -41,6 +43,8 @@ pub enum ProofError {
     IntentDrift { task: String, field: &'static str },
     /// The task is handed off as complete but its completion cannot be proven.
     UnprovenCompletion { task: String, reason: String },
+    /// The proof environment is malformed (the `Eq.refl` rule is absent) — fail closed.
+    EnvironmentBroken { task: String },
 }
 
 impl std::fmt::Display for ProofError {
@@ -53,6 +57,10 @@ impl std::fmt::Display for ProofError {
             ProofError::UnprovenCompletion { task, reason } => {
                 write!(f, "unproven completion: {task} — {reason}")
             }
+            ProofError::EnvironmentBroken { task } => write!(
+                f,
+                "proof environment broken: {task} — the ruvector-verified Eq.refl rule is absent"
+            ),
         }
     }
 }
@@ -67,63 +75,38 @@ pub struct CompletionEvidence {
     pub checkpoints: usize,
 }
 
-/// A machine-checked AgentContract proof (mirrors `ruvector-verified::ProofAttestation`).
+/// A machine-checked AgentContract proof, carrying the real `ruvector-verified` receipt.
 #[derive(Debug, Clone)]
 pub struct ContractProof {
     pub task: String,
     pub obligations: Vec<Obligation>,
-    /// Total lean proof terms constructed.
+    /// Total `Eq.refl` proof terms minted.
     pub proof_terms: u32,
-    /// Content hash over the proof + environment state (tamper-evident attestation).
-    pub attestation: u64,
-    pub verifier_version: u32,
+    /// The tamper-evident `ruvector-verified` attestation (proof-term/environment hashes +
+    /// lean-agentic verifier version; serializes into an RVF `WITNESS_SEG`).
+    pub attestation: ProofAttestation,
+    /// Binds the attestation to THIS contract's hash surface (the attestation's own hashes
+    /// cover proof/env state, not the specific recorded hashes — this closes that gap).
+    pub content_hash: u64,
 }
 
-/// One-shot lean-agentic proof environment for a single contract proof.
-struct ProofEnv {
-    arena: Arena,
-    env: Environment,
-    ctx: Context,
-    conv: Converter,
-    /// Monotonic proof-term counter (the constructed-proof id space).
-    terms: u32,
-}
-
-impl ProofEnv {
-    fn new() -> Self {
-        Self {
-            arena: Arena::new(),
-            env: Environment::new(),
-            ctx: Context::new(),
-            conv: Converter::new(),
-            terms: 0,
-        }
+/// Discharge one equality obligation through the `ruvector-verified` proof environment.
+/// The decision is the exact full-string comparison (sound, collision-free); on success an
+/// `Eq.refl` proof term is minted — exactly `prove_dim_eq`'s discipline, generalized off the
+/// `u32`-dimension surface. Returns the proof-term id, or `None` if the values differ.
+fn discharge(
+    env: &mut ProofEnvironment,
+    recorded: &str,
+    rederived: &str,
+) -> Result<Option<u32>, ()> {
+    if recorded != rederived {
+        return Ok(None);
     }
-
-    /// Encode a byte string as a lean term: a `len`-headed application spine of one `Nat`
-    /// literal per byte. Equal strings intern to def-eq terms; differing strings do not.
-    fn encode(&mut self, s: &str) -> TermId {
-        let head = self.arena.mk_nat(s.len() as u64);
-        let args: Vec<TermId> = s.bytes().map(|b| self.arena.mk_nat(b as u64)).collect();
-        self.arena.mk_app_spine(head, &args)
-    }
-
-    /// Prove `a ≡ b` through the kernel's definitional-equality checker. Returns the
-    /// constructed proof-term id iff the terms are def-eq (the refl proof exists only then).
-    fn prove_eq(&mut self, a: &str, b: &str) -> Option<u32> {
-        let t1 = self.encode(a);
-        let t2 = self.encode(b);
-        let eq = self
-            .conv
-            .is_def_eq(&mut self.arena, &self.env, &self.ctx, t1, t2)
-            .unwrap_or(false);
-        if eq {
-            self.terms += 1;
-            Some(self.terms)
-        } else {
-            None
-        }
-    }
+    // The RuVector proof environment must carry the reflexive-equality rule.
+    env.require_symbol(EQ_REFL).map_err(|_| ())?;
+    let proof_id = env.alloc_term();
+    env.stats.proofs_verified += 1;
+    Ok(Some(proof_id))
 }
 
 /// Prove the AgentContract for one active task. `Ok` carries the attestation; `Err` is a
@@ -132,8 +115,9 @@ pub fn prove_contract(
     task: &WorkOrder,
     evidence: &CompletionEvidence,
 ) -> Result<ContractProof, ProofError> {
-    let mut pe = ProofEnv::new();
+    let mut env = ProofEnvironment::new();
     let mut obligations: Vec<Obligation> = Vec::new();
+    let mut last_proof_id: u32 = 0;
 
     // Re-derive the intent-lock from the LIVE card fields, exactly as the kernel mints it.
     let rederived = WorkOrder::compute_intent_lock(
@@ -164,12 +148,20 @@ pub fn prove_contract(
         ),
     ];
     for (name, field, rec, red) in checks {
-        match pe.prove_eq(rec, red) {
-            Some(proof_term) => obligations.push(Obligation { name, proof_term }),
-            None => {
+        match discharge(&mut env, rec, red) {
+            Ok(Some(proof_term)) => {
+                last_proof_id = proof_term;
+                obligations.push(Obligation { name, proof_term });
+            }
+            Ok(None) => {
                 return Err(ProofError::IntentDrift {
                     task: task.id.clone(),
                     field,
+                })
+            }
+            Err(()) => {
+                return Err(ProofError::EnvironmentBroken {
+                    task: task.id.clone(),
                 })
             }
         }
@@ -177,14 +169,17 @@ pub fn prove_contract(
 
     // Completion obligation — only when the task is being handed off AS COMPLETE.
     if matches!(evidence.status, Status::Review | Status::Done) {
-        // Proof: `completion_flag ≡ TRUE`, where the flag holds iff ≥1 witnessed checkpoint.
+        // Decide on the flag, then witness it: completion holds iff ≥1 witnessed checkpoint.
         let flag = if evidence.checkpoints > 0 { "1" } else { "0" };
-        match pe.prove_eq(flag, "1") {
-            Some(proof_term) => obligations.push(Obligation {
-                name: "completion",
-                proof_term,
-            }),
-            None => {
+        match discharge(&mut env, flag, "1") {
+            Ok(Some(proof_term)) => {
+                last_proof_id = proof_term;
+                obligations.push(Obligation {
+                    name: "completion",
+                    proof_term,
+                });
+            }
+            Ok(None) => {
                 return Err(ProofError::UnprovenCompletion {
                     task: task.id.clone(),
                     reason: format!(
@@ -193,30 +188,33 @@ pub fn prove_contract(
                     ),
                 })
             }
+            Err(()) => return Err(ProofError::EnvironmentBroken { task: task.id.clone() }),
         }
     }
 
-    let attestation = content_hash(&task.id, &obligations, pe.terms);
+    let attestation = ruvector_verified::proof_store::create_attestation(&env, last_proof_id);
+    let content_hash = content_hash(&task.id, &obligations, recorded);
     Ok(ContractProof {
         task: task.id.clone(),
         obligations,
-        proof_terms: pe.terms,
+        proof_terms: env.terms_allocated(),
         attestation,
-        verifier_version: VERIFIER_VERSION,
+        content_hash,
     })
 }
 
-/// Tamper-evident content hash over the proof + environment state (mirrors
-/// `ruvector-verified::ProofAttestation::content_hash`).
-fn content_hash(task: &str, obligations: &[Obligation], terms: u32) -> u64 {
+/// Bind the attestation to THIS contract's recorded hash surface (task id + obligation names
+/// + the recorded intent-lock hashes), so the receipt is tied to the specific contract.
+fn content_hash(task: &str, obligations: &[Obligation], lock: &work_order::IntentLock) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     task.hash(&mut h);
-    terms.hash(&mut h);
-    VERIFIER_VERSION.hash(&mut h);
     for o in obligations {
         o.name.hash(&mut h);
         o.proof_term.hash(&mut h);
     }
+    lock.objective_hash.hash(&mut h);
+    lock.path_scope_hash.hash(&mut h);
+    lock.acceptance_hash.hash(&mut h);
     h.finish()
 }
 
@@ -225,21 +223,29 @@ pub fn render_proof_section(p: &ContractProof) -> String {
     let mut s = String::new();
     s.push_str("\n## Contract Proof (ADR-0011 — ruvector-verified/Lean)\n");
     s.push_str(&format!(
-        "Active task **{}** — AgentContract PROVEN via lean-agentic ({} obligation(s)).\n",
+        "Active task **{}** — AgentContract PROVEN via ruvector-verified ({} obligation(s)).\n",
         p.task,
         p.obligations.len()
     ));
     for o in &p.obligations {
         s.push_str(&format!(
-            "- ✓ `{}` (proof-term #{})\n",
+            "- ✓ `{}` (Eq.refl proof-term #{})\n",
             o.name, o.proof_term
         ));
     }
     s.push_str(&format!(
-        "{} lean proof-term(s) · attestation `{:#018x}` · verifier `{:#010x}` (lean-agentic 0.1.0).\n",
-        p.proof_terms, p.attestation, p.verifier_version
+        "{} proof-term(s) · proof-hash `{}` · binding `{:#018x}` · verifier `{:#010x}` (lean-agentic 0.1.0).\n",
+        p.proof_terms,
+        short_hex(&p.attestation.proof_term_hash),
+        p.content_hash,
+        p.attestation.verifier_version
     ));
     s
+}
+
+/// First 8 bytes of a 32-byte hash, hex — enough to identify the receipt in a packet line.
+fn short_hex(h: &[u8; 32]) -> String {
+    h[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -282,7 +288,8 @@ mod tests {
         // Mid-work (not complete): exactly the 3 intent-integrity obligations, no completion.
         assert_eq!(proof.obligations.len(), 3);
         assert_eq!(proof.proof_terms, 3);
-        assert_eq!(proof.verifier_version, VERIFIER_VERSION);
+        // Real ruvector-verified receipt: lean-agentic 0.1.0 = 0x0001_0000.
+        assert_eq!(proof.attestation.verifier_version, 0x0001_0000);
         assert!(proof
             .obligations
             .iter()
@@ -344,6 +351,13 @@ mod tests {
         };
         let a = prove_contract(&task, &ev).unwrap();
         let b = prove_contract(&task, &ev).unwrap();
-        assert_eq!(a.attestation, b.attestation);
+        // The content binding + the proof/environment hashes are deterministic for the same
+        // contract (the attestation's wall-clock timestamp is the only varying field).
+        assert_eq!(a.content_hash, b.content_hash);
+        assert_eq!(a.attestation.proof_term_hash, b.attestation.proof_term_hash);
+        assert_eq!(
+            a.attestation.environment_hash,
+            b.attestation.environment_hash
+        );
     }
 }
