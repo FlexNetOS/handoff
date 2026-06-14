@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0033",
   "title": "verify_rollup_provenance() + hf fleet status verifies both chains + provenance",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0004 §3.3 (rev): add verify_rollup_provenance() (pure SQL + existing hash_action) that, for each rolled-up central row, re-derives SHA3-256(event_type||work_order_id||payload_json) and byte-compares to origin_action_hash (the proof bridge). Extend hf fleet status to verify (i) the central chain via verify_witness_chain (unchanged), (ii) each per-repo chain independently, (iii) provenance faithfulness. Both chains verify independently; any central event traces to its repo.",
   "path_scope": [

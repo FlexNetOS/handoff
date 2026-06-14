@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0027",
   "title": "hf resume recomputes live witnessed count (fix stale packet-cached display)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "CONFIRMED stale-read: `hf resume` (ResumeMode::Full) echoed packets/latest.md verbatim, freezing 'Tamper-evident events verified: N' + Done N/M at the last `hf handoff` (showed 336 while the live ledger had 371; witness chain INTACT — not corruption). Fix: render the packet LIVE on every `hf resume` from ledger_path() (verify_witness_chain for the count) + current_statuses()/load_tasks() (Done N/M), via the same renderer as `hf handoff`, instead of reading the frozen file. Do NOT change `hf handoff` rendering.",
   "path_scope": [
