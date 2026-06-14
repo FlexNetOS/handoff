@@ -64,11 +64,16 @@ host `.handoff` under meta policy; item 13 asks how per-repo dirs coordinate wit
    model mirrors Certificate Transparency (RFC 6962): N self-verifying append-only logs, an aggregator
    re-appends self-contained entries into its own log; ordering = leaf index, not wall-clock. Session
    events adopt the **`handoff.session_event.v1`** vocabulary (HFTASK-0007, `hf session start|end`).
-4. **Aggregation = `hf fleet status`.** Enumerate members from `../.meta.yaml`, read each repo's
-   `.handoff` (capsule + cards), join with fleet-ledger events → one board. **Git is the sync
+4. **Aggregation + integrity gate = `hf fleet status`.** Enumerate members from `../.meta.yaml`, read
+   each repo's `.handoff` (capsule + cards), join with fleet-ledger events → one board. **Git is the sync
    transport** — no daemons, no new services; `meta git update` pulls fleet state naturally; precedence
    stays Git > ledger > cards. (Beads cross-validation: same transport choice, same derived-view
-   discipline, plus our witness chain on top.)
+   discipline, plus our witness chain on top.) Per the §3.3 dual-store, `hf fleet status` verifies the
+   three integrity layers (HFTASK-0033): **(i)** the central chain (`verify_witness_chain`), **(ii)** each
+   member's per-repo chain standalone, and **(iii)** rollup-provenance faithfulness
+   (`verify_rollup_provenance` re-derives each rolled-up row's action hash and byte-compares it to the
+   stored `origin_action_hash`) — so both chains verify independently and any central event traces to its
+   origin repo; a broken bridge surfaces as a warning.
 5. **Card-sync rule** (fixes defect D3 permanently): cards are derived snapshots;
    `hf checkpoint --sync-cards` rewrites card status from ledger truth (ADR-0003 rule 4). First
    implementation pass refreshes the kernel's 22 stale cards and replaces dead `spike/**` path-scopes.

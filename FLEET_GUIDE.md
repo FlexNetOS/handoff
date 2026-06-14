@@ -110,7 +110,7 @@ FLEET ledger when you run from `meta/`.
 | `hf sync [--auto] [--dry-run]` | repair `.meta.yaml`/`.gitignore` registration + one-way `ledger→.kb` mirror |
 | `hf drift [--json]` | detect intent-lock drift + out-of-scope edits — **hard-fails on drift** |
 | `hf policy check-claim\|check-edit\|check-handoff [--json]` | enforce the lifecycle gates (deny-without-claim, scope, protected files) |
-| `hf fleet status [--json]` | the fleet board: every member's capsule/cards joined with the FLEET ledger |
+| `hf fleet status [--json]` | the fleet board **+ integrity gate**: members' capsule/cards joined with the FLEET ledger, and verifies (i) the central chain, (ii) each member's per-repo chain standalone, (iii) rollup provenance — every central event traces to its origin repo (HFTASK-0033) |
 | `hf fleet render <member>` | compile a member's packet from the FLEET ledger + its capsule/cards |
 | `hf ship <ID> [--base BR]` | open the PR (auto-merge gated on green CI + review) |
 | `hf review verdict <ID> <PR> approve\|deny [--by WHO]` | record the witnessed gate verdict (NOT a GitHub merge) |
