@@ -21,17 +21,22 @@ Work crosses the seam **one way**: mint a card from a kb task (`hf task mint
 --from-kb`), then write progress back (`hf sync`). kb is **never** read back into
 the ledger as execution truth (ADR-0003).
 
-### Two ledgers, one per orchestration home (ADR-0004 §3 — settled)
+### Per-repo ledger + central rollup (ADR-0004 §3.3/§6 — REVISED 2026-06-13)
 | Ledger | Path | Purpose |
 |--------|------|---------|
-| **FLEET** | `meta/.handoff/ledger.db` | every member repo's witnessed events (run `hf` from `meta/`) |
-| **KERNEL** | `meta/handoff/.handoff/ledger.db` | the handoff kernel's own self-development |
+| **per-repo (local)** | `<repo>/.handoff/ledger.db` | that repo's own witnessed source of record — **gitignored**, never committed |
+| **FLEET (central)** | `meta/.handoff/ledger.db` | the rollup of every member's events + the cross-repo board (run `hf` from `meta/`) |
+| **KERNEL** | `meta/handoff/.handoff/ledger.db` | the handoff kernel's own per-repo ledger (also gitignored) |
 
-**A per-repo `.handoff/` is git-committed TEXT ONLY — never a `ledger.db`, never
-binary state.** Your repo's events live in the FLEET ledger; your repo's packet is
-compiled centrally by `hf fleet render`. The beads lesson: binary DB never in git,
-text is the git-visible state. `hf fleet status` flags any stray per-repo ledger as
-a policy-P7 violation.
+**Committed `.handoff/` content is git-text only** (capsule, cards, packets). A repo's
+local `ledger.db` is **gitignored and legitimate** — it is that repo's source of record
+and rolls up into the FLEET ledger via `hf sync` (cursor-driven, provenance-stamped).
+The beads lesson, precisely: a *committed* binary DB is banned, **not** a present-on-disk
+one. `hf fleet status` therefore flags (a) a git-**TRACKED** `.db` under `.handoff`
+(HFTASK-0034) and (b) a member missing the `.handoff/**/ledger.db` `.gitignore` guard
+(HFTASK-0035) — never a merely-present gitignored ledger. Provenance is verified end-to-end
+(HFTASK-0033): both the per-repo and central chains verify independently, and every central
+event traces to its origin repo.
 
 ### State precedence (settle every conflict with this)
 ```
@@ -60,8 +65,10 @@ landing in your repo learn its place in one read.
 ## 3. Set up `.handoff` in your repo (rollout)
 
 Done for you by the fleet steward, but here is what it does (and how to do it by
-hand). **Do not run `hf init`/`hf seed` in a member repo** — those create a
-forbidden per-repo `ledger.db` and seed the kernel's own backlog.
+hand). **Do not run `hf init`/`hf seed` in a member repo** — `hf seed` would seed
+the kernel's own backlog into your repo. (A local `ledger.db` is fine — it must be
+gitignored via the `.handoff/**/ledger.db` guard, HFTASK-0035; a *committed* one is
+the violation.)
 
 ```bash
 cd <your-repo>
@@ -110,7 +117,7 @@ FLEET ledger when you run from `meta/`.
 | `hf sync [--auto] [--dry-run]` | repair `.meta.yaml`/`.gitignore` registration + one-way `ledger→.kb` mirror |
 | `hf drift [--json]` | detect intent-lock drift + out-of-scope edits — **hard-fails on drift** |
 | `hf policy check-claim\|check-edit\|check-handoff [--json]` | enforce the lifecycle gates (deny-without-claim, scope, protected files) |
-| `hf fleet status [--json]` | the fleet board **+ integrity gate**: members' capsule/cards joined with the FLEET ledger, and verifies (i) the central chain, (ii) each member's per-repo chain standalone, (iii) rollup provenance — every central event traces to its origin repo (HFTASK-0033) |
+| `hf fleet status [--json]` | the fleet board **+ integrity gate**: members' capsule/cards joined with the FLEET ledger; verifies (i) the central chain, (ii) each member's per-repo chain standalone, (iii) rollup provenance — every central event traces to its origin repo (HFTASK-0033); and flags P7 violations — a git-**tracked** `.db` under `.handoff` or a missing `.handoff/**/ledger.db` `.gitignore` guard (HFTASK-0034) |
 | `hf fleet render <member>` | compile a member's packet from the FLEET ledger + its capsule/cards |
 | `hf ship <ID> [--base BR]` | open the PR (auto-merge gated on green CI + review) |
 | `hf review verdict <ID> <PR> approve\|deny [--by WHO]` | record the witnessed gate verdict (NOT a GitHub merge) |
