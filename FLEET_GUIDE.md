@@ -121,7 +121,7 @@ FLEET ledger when you run from `meta/`.
 | `hf fleet render <member>` | compile a member's packet from the FLEET ledger + its capsule/cards |
 | `hf ship <ID> [--base BR]` | open the PR (auto-merge gated on green CI + review) |
 | `hf review verdict <ID> <PR> approve\|deny [--by WHO]` | record the witnessed gate verdict (NOT a GitHub merge) |
-| `hf handoff` | render the packet — the next-session prompt. **Fail-closed (ADR-0011):** first proves the active task's AgentContract via the lean-agentic kernel (intent-lock integrity + completion evidence); an unproven contract blocks the render |
+| `hf handoff` | render the packet — the next-session prompt. **Fail-closed (ADR-0011):** first proves the active task's AgentContract via the `ruvector-verified` crate (intent-lock integrity + completion evidence; tamper-evident `ProofAttestation`); an unproven contract blocks the render |
 | `hf session start\|end [--recycle]` | worktree-isolated loop session (uses the meta worktree engine) |
 
 ### The rhythm
