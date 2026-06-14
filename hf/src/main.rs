@@ -1013,6 +1013,10 @@ fn cmd_seed() {
          "hf ship fail-closed exit codes (L2 hf-verb-safety)",
          "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
          vec!["HFTASK-0008".to_string()]),
+        ("HFTASK-0037",
+         "gitignore .handoff/active.md (derived view, stop the churn/drift)",
+         "Verify-found gap: .handoff/active.md is a TRACKED derived view that hf resume/handoff regenerate every run, so it perpetually dirties the tree and trips `hf drift` (deny_without_claim) at the start of every session — yet its sibling derived view .handoff/packets/latest.md is already gitignored. Both are hf-rendered from ledger truth (the ledger + capsule.json are the committed cold-start sources). Fix: add /.handoff/active.md to .gitignore and `git rm --cached` it (untrack), consistent with packets/. hf still renders it locally; it just stops churning git.",
+         Vec::<String>::new()),
     ] {
         backlog.push(WorkOrder {
             schema: "handoff.task.v1".into(),
