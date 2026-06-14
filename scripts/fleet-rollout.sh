@@ -54,7 +54,27 @@ role_for() {
   tags="${tags#*tags:}"; tags="${tags//[\[\] ]/}"; tags="${tags%%,*}"; echo "${tags:-tool}"
 }
 
-GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0
+# HFTASK-0035 (ADR-0004 §3.3/§6 rev): ensure the repo's .gitignore guards the local ledger
+# so the per-repo `.handoff/**/ledger.db` (+ wal/shm sidecars, incl. grit worktrees) is never
+# committed — the one good half of the old rule, kept while the gitignored local ledger is now
+# legitimate. Idempotent: returns 0 if it ADDED the guard, 1 if git already ignores the ledger
+# (any rule). `hf fleet status` (HFTASK-0034) gates on exactly this guard's presence.
+ensure_ledger_guard() {
+  local dir="$1"
+  if git -C "$dir" check-ignore -q .handoff/ledger.db 2>/dev/null; then
+    return 1   # already guarded (idempotent no-op)
+  fi
+  {
+    echo ""
+    echo "# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)"
+    echo ".handoff/**/ledger.db"
+    echo ".handoff/**/*.db-wal"
+    echo ".handoff/**/*.db-shm"
+  } >> "$dir/.gitignore"
+  return 0   # guard added
+}
+
+GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0
 if [ ${#ONLY[@]} -gt 0 ]; then
   TARGETS=("${ONLY[@]}")
 else
@@ -65,7 +85,24 @@ for repo in "${TARGETS[@]}"; do
   [ -z "$repo" ] && continue
   dir="$META_ROOT/$repo"
   [ -d "$dir/.git" ] || { echo "skip $repo (not cloned)"; continue; }
-  if [ -d "$dir/.handoff" ]; then echo "skip $repo (.handoff exists)"; SKIPPED=$((SKIPPED+1)); continue; fi
+  # HFTASK-0035: a repo that already has .handoff still needs the ledger .gitignore guard
+  # (back-fill). Ensure it (idempotent), commit just the .gitignore if requested, then skip
+  # the rest of generation.
+  if [ -d "$dir/.handoff" ]; then
+    if ensure_ledger_guard "$dir"; then
+      GUARDED=$((GUARDED+1)); echo "guard added $repo (existing .handoff)"
+      if [ "$DO_COMMIT" = 1 ]; then
+        if git -C "$dir" add .gitignore && \
+           git -C "$dir" commit -q -m "chore: gitignore the local .handoff ledger (ADR-0004 §6, HFTASK-0035)"; then
+          COMMITTED=$((COMMITTED+1))
+          [ "$DO_PUSH" = 1 ] && { git -C "$dir" push -q 2>/dev/null && PUSHED=$((PUSHED+1)) || { echo "  push FAILED $repo"; FAILED=$((FAILED+1)); }; }
+        else echo "  guard commit FAILED $repo"; FAILED=$((FAILED+1)); fi
+      fi
+    else
+      echo "skip $repo (.handoff exists, guard present)"; SKIPPED=$((SKIPPED+1))
+    fi
+    continue
+  fi
 
   plane="$(plane_for "$repo")"; role="$(role_for "$repo")"; [ -z "$role" ] && role="tool"
   mkdir -p "$dir/.handoff/context" "$dir/.handoff/tasks" "$dir/.handoff/packets"
@@ -80,14 +117,18 @@ for repo in "${TARGETS[@]}"; do
 }
 JSON
   cat > "$dir/.handoff/README.md" <<MD
-# .handoff (git-text-only, ADR-0004 §3)
+# .handoff (ADR-0004 §3.3/§6 rev)
 
-Continuity layer for \`${repo}\`. **Text only — no \`ledger.db\`, no binary state.**
-Witnessed events live in the FLEET ledger (\`meta/.handoff/ledger.db\`); this repo's
-packet is compiled centrally by \`hf fleet render ${repo}\`. See \`meta/handoff/FLEET_GUIDE.md\`.
+Continuity layer for \`${repo}\`. **Committed content is git-text only** (capsule, cards,
+packets). A local \`ledger.db\` is **gitignored** (legitimate per-repo source of record — it
+rolls up into the FLEET ledger at \`meta/.handoff/ledger.db\`); a *committed* binary ledger is
+banned. This repo's packet compiles centrally via \`hf fleet render ${repo}\`. See
+\`meta/handoff/FLEET_GUIDE.md\`.
 
 Cold start: read \`context/capsule.json\`, then run \`hf resume\`.
 MD
+  # HFTASK-0035: newly-seeded repos get the ledger .gitignore guard too.
+  ensure_ledger_guard "$dir" && GUARDED=$((GUARDED+1))
   GENERATED=$((GENERATED+1)); echo "generated $repo (role=$role plane=$plane)"
 
   # grit (ADR-0009): initialize the parallel-agent coordination layer per repo (local
@@ -105,8 +146,8 @@ MD
   fi
 
   if [ "$DO_COMMIT" = 1 ]; then
-    if git -C "$dir" add .handoff && \
-       git -C "$dir" commit -q -m "chore: add Tier .handoff (git-text-only, ADR-0004 §3)" ; then
+    if git -C "$dir" add .handoff .gitignore && \
+       git -C "$dir" commit -q -m "chore: add Tier .handoff + gitignore local ledger (ADR-0004 §3/§6)" ; then
       COMMITTED=$((COMMITTED+1))
       if [ "$DO_PUSH" = 1 ]; then
         if git -C "$dir" push -q 2>/dev/null; then PUSHED=$((PUSHED+1)); else echo "  push FAILED $repo"; FAILED=$((FAILED+1)); fi
@@ -116,4 +157,4 @@ MD
 done
 
 echo "---"
-echo "generated=$GENERATED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"
+echo "generated=$GENERATED guarded(ledger .gitignore)=$GUARDED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"
