@@ -11,7 +11,7 @@
 //! per-repo ledger is a policy-P7 violation, surfaced here as a warning.
 
 use crate::PrioStr;
-use ledger::Ledger;
+use ledger::{Ledger, RollupProvenance};
 use std::path::{Path, PathBuf};
 use work_order::{Status, WorkOrder};
 
@@ -82,6 +82,38 @@ struct Row {
     role: Option<String>,
     plane: Option<String>,
     forbidden_ledger: bool,
+    /// HFTASK-0033: this member's own per-repo ledger chain, verified independently of the
+    /// central rollup. `Some((events, witnessed))` when `<member>/.handoff/ledger.db` exists
+    /// and its witness chain was checked; `None` when the member carries no local ledger.
+    /// (The rollup model — ADR-0004 §3.3 rev — keeps each member's gitignored local ledger
+    /// as the *source* the central FLEET ledger rolls up; this proves that source stands
+    /// alone.)
+    per_repo_chain: Option<PerRepoChain>,
+}
+
+/// HFTASK-0033: a member's independently-verified per-repo ledger chain.
+struct PerRepoChain {
+    events: usize,
+    witnessed: usize,
+}
+
+/// HFTASK-0033: open `<repo>/.handoff/ledger.db` (if present) and verify its witness chain
+/// standalone — proving the per-repo (source) chain is intact independent of the central
+/// rollup. `None` when the member has no local ledger (git-text-only / not yet seeded).
+fn per_repo_chain_stats(repo: &Path) -> Option<PerRepoChain> {
+    let p = repo.join(".handoff").join("ledger.db");
+    if !p.is_file() {
+        return None;
+    }
+    let lp = p.to_string_lossy().into_owned();
+    let events = Ledger::open(&lp)
+        .and_then(|l| l.all_events())
+        .map(|e| e.len())
+        .unwrap_or(0);
+    let witnessed = Ledger::open(&lp)
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    Some(PerRepoChain { events, witnessed })
 }
 
 /// Orchestration homes legitimately carry a ledger (ADR-0004 §3 / envctl ADR-0001
@@ -109,6 +141,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 role: capsule_field(&repo, "role"),
                 plane: capsule_field(&repo, "plane"),
                 forbidden_ledger: has_ledger && !is_orchestration_home(name),
+                per_repo_chain: per_repo_chain_stats(&repo),
             }
         })
         .collect()
@@ -131,6 +164,20 @@ fn fleet_ledger_stats(root: &Path) -> (usize, usize, bool) {
     (events, witness, true)
 }
 
+/// HFTASK-0033: verify the FLEET ledger's rollup provenance bridge — every rolled-up
+/// central row reproduces its stored `origin_action_hash`. `None` when the central ledger
+/// is absent (nothing to verify).
+fn fleet_provenance(root: &Path) -> Option<RollupProvenance> {
+    let p = root.join(".handoff").join("ledger.db");
+    if !p.is_file() {
+        return None;
+    }
+    let lp = p.to_string_lossy().into_owned();
+    Ledger::open(&lp)
+        .and_then(|l| l.verify_rollup_provenance())
+        .ok()
+}
+
 pub fn cmd_fleet_status(json: bool) {
     let Some(root) = find_meta_root() else {
         eprintln!("hf fleet status: no .meta.yaml found from the current directory upward");
@@ -140,9 +187,13 @@ pub fn cmd_fleet_status(json: bool) {
     let members = parse_members(&meta_yaml);
     let rows = collect_rows(&root, &members);
     let (events, witness, ledger_present) = fleet_ledger_stats(&root);
+    // HFTASK-0033: (iii) provenance faithfulness over the central ledger, and (ii) the count
+    // of members whose own per-repo chain we verified independently.
+    let provenance = fleet_provenance(&root);
+    let per_repo_verified = rows.iter().filter(|r| r.per_repo_chain.is_some()).count();
 
     let with_handoff = rows.iter().filter(|r| r.has_handoff).count();
-    let warnings: Vec<String> = rows
+    let mut warnings: Vec<String> = rows
         .iter()
         .filter(|r| r.forbidden_ledger)
         .map(|r| {
@@ -152,6 +203,17 @@ pub fn cmd_fleet_status(json: bool) {
             )
         })
         .collect();
+    // HFTASK-0033: a broken provenance bridge is an integrity alarm, not a style nit —
+    // surface it as a warning so the loop's drift/gate sees it.
+    if let Some(p) = &provenance {
+        if !p.is_faithful() {
+            warnings.push(format!(
+                "FLEET ledger: rollup provenance BROKEN — {} of {} rolled-up row(s) do not reproduce their origin_action_hash (ADR-0004 §3.3)",
+                p.mismatched,
+                p.total()
+            ));
+        }
+    }
 
     if json {
         let out = serde_json::json!({
@@ -162,7 +224,19 @@ pub fn cmd_fleet_status(json: bool) {
                 "present": ledger_present,
                 "events": events,
                 "witnessed_verified": witness,
+                // HFTASK-0033 (iii): the provenance bridge over rolled-up rows.
+                "rollup_provenance": provenance.as_ref().map(|p| serde_json::json!({
+                    "faithful": p.is_faithful(),
+                    "verified": p.verified,
+                    "mismatched": p.mismatched,
+                    "rolled_up_total": p.total(),
+                    "per_repo": p.per_repo.iter()
+                        .map(|(repo, n)| serde_json::json!({ "origin_repo": repo, "verified": n }))
+                        .collect::<Vec<_>>(),
+                })),
             },
+            // HFTASK-0033 (ii): how many members' own per-repo chains verified independently.
+            "per_repo_chains_verified": per_repo_verified,
             "members_total": rows.len(),
             "members_with_handoff": with_handoff,
             "members": rows.iter().map(|r| serde_json::json!({
@@ -174,6 +248,11 @@ pub fn cmd_fleet_status(json: bool) {
                 "role": r.role,
                 "plane": r.plane,
                 "forbidden_ledger": r.forbidden_ledger,
+                // HFTASK-0033 (ii): this member's own ledger chain, verified standalone.
+                "per_repo_chain": r.per_repo_chain.as_ref().map(|c| serde_json::json!({
+                    "events": c.events,
+                    "witnessed_verified": c.witnessed,
+                })),
             })).collect::<Vec<_>>(),
             "warnings": warnings,
         });
@@ -191,10 +270,29 @@ pub fn cmd_fleet_status(json: bool) {
         events,
         witness
     );
+    // HFTASK-0033 (iii): provenance faithfulness of the central rollup.
+    match &provenance {
+        Some(p) if p.total() == 0 => {
+            println!("  rollup provenance: n/a (no rolled-up rows)")
+        }
+        Some(p) => println!(
+            "  rollup provenance: {} ({}/{} rolled-up rows trace to origin across {} repo(s))",
+            if p.is_faithful() {
+                "FAITHFUL ✓"
+            } else {
+                "BROKEN ✗"
+            },
+            p.verified,
+            p.total(),
+            p.per_repo.len()
+        ),
+        None => {}
+    }
     println!(
-        "members: {} total · {} with .handoff\n",
+        "members: {} total · {} with .handoff · {} per-repo chain(s) verified\n",
         rows.len(),
-        with_handoff
+        with_handoff,
+        per_repo_verified
     );
     println!(
         "  {:<26} {:<8} {:<6} capsule (role/plane)",
@@ -223,7 +321,15 @@ pub fn cmd_fleet_status(json: bool) {
         } else {
             ""
         };
-        println!("  {:<26} {:<8} {:<6} {}{}", r.name, hand, cards, id, flag);
+        // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
+        let chain = match &r.per_repo_chain {
+            Some(c) => format!("  · chain {}✓/{}ev", c.witnessed, c.events),
+            None => String::new(),
+        };
+        println!(
+            "  {:<26} {:<8} {:<6} {}{}{}",
+            r.name, hand, cards, id, flag, chain
+        );
     }
     if !warnings.is_empty() {
         println!("\nwarnings:");
@@ -406,5 +512,63 @@ other:
         assert!(!md.contains("Adopt RuVector"));
         assert!(md.contains("FLEET ledger"));
         assert!(md.contains("events verified: 7"));
+    }
+
+    /// HFTASK-0033: a temp meta-root with a central FLEET ledger and one member's per-repo
+    /// ledger rolled into it — `per_repo_chain_stats` verifies the member's chain (ii)
+    /// standalone and `fleet_provenance` verifies the rollup bridge (iii); tampering breaks it.
+    #[test]
+    fn fleet_status_verifies_per_repo_chain_and_provenance() {
+        use ledger::Ledger;
+
+        // Isolated temp meta-root (never the real workspace).
+        let root = std::env::temp_dir().join(format!(
+            "hf-fleet-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let central_path = root.join(".handoff").join("ledger.db");
+        let member_repo = root.join("memberx");
+        let member_path = member_repo.join(".handoff").join("ledger.db");
+        std::fs::create_dir_all(central_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(member_path.parent().unwrap()).unwrap();
+
+        // Seed the member's own ledger with 3 native events.
+        {
+            let mut m = Ledger::open(member_path.to_str().unwrap()).unwrap();
+            for i in 0..3 {
+                m.append("checkpoint", &format!("WO-{i}"), "{}", 1_000 + i)
+                    .unwrap();
+            }
+        }
+        // Roll the member up into the central FLEET ledger.
+        {
+            let rows = Ledger::open(member_path.to_str().unwrap())
+                .unwrap()
+                .events_after(0)
+                .unwrap();
+            let mut c = Ledger::open(central_path.to_str().unwrap()).unwrap();
+            c.rollup_from("memberx", &rows, 1).unwrap();
+        }
+
+        // (ii) the member's per-repo chain verifies standalone.
+        let chain = super::per_repo_chain_stats(&member_repo).expect("member has a local ledger");
+        assert_eq!(chain.events, 3);
+        assert_eq!(chain.witnessed, 3);
+        // A member with no ledger → None.
+        assert!(super::per_repo_chain_stats(&root.join("absent")).is_none());
+
+        // (iii) provenance is faithful over the central rollup. (The failure direction —
+        // tampering breaks faithfulness — is proven in the `ledger` crate's own
+        // `verify_rollup_provenance_detects_tampered_row`, which can reach the private conn.)
+        let prov = super::fleet_provenance(&root).expect("central ledger present");
+        assert!(prov.is_faithful());
+        assert_eq!(prov.verified, 3);
+        assert_eq!(prov.per_repo, vec![("memberx".to_string(), 3)]);
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }
