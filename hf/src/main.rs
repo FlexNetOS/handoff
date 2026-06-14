@@ -340,7 +340,7 @@ fn ship_stage_specs(id: &str) -> Vec<String> {
 fn cmd_ship(id: &str, base: &str) {
     if id.is_empty() {
         eprintln!("usage: hf ship <task-id> [--base BRANCH]");
-        return;
+        std::process::exit(2); // HFTASK-0036: usage error (matches the dispatch convention)
     }
     // HFTASK-0008: resolve the branch/remote policy (clone/fork model + base/trunk) once,
     // so ship decides the same way everything else does instead of hardcoding "master".
@@ -348,14 +348,15 @@ fn cmd_ship(id: &str, base: &str) {
     let bp = match branch::BranchPolicy::resolve(&policy.remote) {
         Ok(b) => b,
         Err(e) => {
+            // HFTASK-0036: a refused/failed ship MUST exit nonzero (L2 hf-verb-safety).
             eprintln!("hf ship: {e}");
-            return;
+            std::process::exit(1);
         }
     };
     // Fork model is deferred (ADR-0001 §3) — fail closed before any remote operation.
     if let Err(e) = bp.ensure_supported() {
         eprintln!("hf ship: {e}");
-        return;
+        std::process::exit(1);
     }
     // PR target: an explicit `--base` wins; otherwise the policy trunk (was hardcoded "master").
     let base = if base.is_empty() {
@@ -367,7 +368,7 @@ fn cmd_ship(id: &str, base: &str) {
         Ok(b) if !b.is_empty() => b,
         _ => {
             eprintln!("hf ship: not on a branch (detached HEAD?) — refusing");
-            return;
+            std::process::exit(1);
         }
     };
     // HFTASK-0008: never ship FROM the trunk or the integration base — work lands via PR
@@ -376,11 +377,11 @@ fn cmd_ship(id: &str, base: &str) {
         eprintln!(
             "hf ship: refusing to ship from the base branch '{branch}' — use a session branch"
         );
-        return;
+        std::process::exit(1);
     }
     if let Err(e) = bp.guard_direct_trunk_push(&branch) {
         eprintln!("hf ship: {e}");
-        return;
+        std::process::exit(1);
     }
     if bp.should_sync_develop_trunk() {
         println!(
@@ -398,7 +399,7 @@ fn cmd_ship(id: &str, base: &str) {
         for spec in ship_stage_specs(id) {
             if let Err(e) = run_out("git", &["add", &spec]) {
                 eprintln!("hf ship: {e}");
-                return;
+                std::process::exit(1);
             }
         }
         let msg = format!(
@@ -410,13 +411,13 @@ Implements [[tasks/{id}]]"
         );
         if let Err(e) = run_out("git", &["commit", "-m", &msg]) {
             eprintln!("hf ship: {e}");
-            return;
+            std::process::exit(1);
         }
         println!("hf ship: committed working tree on {branch}");
     }
     if let Err(e) = run_out("git", &["push", "-u", "origin", &branch]) {
         eprintln!("hf ship: push failed — {e}");
-        return;
+        std::process::exit(1);
     }
     println!("hf ship: pushed {branch}");
     // PR create (idempotent: reuse an existing open PR for this branch)
@@ -443,7 +444,7 @@ Implements [[tasks/{id}]]"
                 Ok(u) => u.lines().last().unwrap_or_default().to_string(),
                 Err(e) => {
                     eprintln!("hf ship: PR creation failed — {e}");
-                    return;
+                    std::process::exit(1);
                 }
             }
         }
@@ -1008,6 +1009,10 @@ fn cmd_seed() {
          "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide",
          "ADR-0004 §3.3/§6 (rev): ensure every continuity member's .gitignore ignores .handoff/**/ledger.db (and *.db-wal/*.db-shm) so the per-repo local ledger is never committed (keeps the one good half of the old rule). Update the handoff repo + the fleet rollout generator so seeded repos get the guard. Idempotent.",
          Vec::<String>::new()),
+        ("HFTASK-0036",
+         "hf ship fail-closed exit codes (L2 hf-verb-safety)",
+         "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
+         vec!["HFTASK-0008".to_string()]),
     ] {
         backlog.push(WorkOrder {
             schema: "handoff.task.v1".into(),

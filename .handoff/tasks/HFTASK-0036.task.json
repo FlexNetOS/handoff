@@ -1,0 +1,30 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0036",
+  "title": "hf ship fail-closed exit codes (L2 hf-verb-safety)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
+  "path_scope": [
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf ship fail-closed exit codes (L2 hf-verb-safety): implemented + cargo test green + drift-audited"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0008"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:9c7e65d9a18f9645927010175fd2a82527ea8d25e5c1d388cab537e9ebcf1059",
+    "path_scope_hash": "blake3:f486c0fd907e4e6174bb43bce0e63f54d2581935ab87774c2f1f781c642003fe",
+    "acceptance_hash": "blake3:deb4018f1519e83e5eb90034b8f4f5bde6ebd263ebadf0a981efc582da7f39ab"
+  }
+}
