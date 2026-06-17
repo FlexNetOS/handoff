@@ -76,4 +76,9 @@ jobs:
           components: rustfmt
       - name: Check formatting
         working-directory: handoff
-        run: cargo fmt --all -- --check
+        # Scope to handoff's OWN workspace members, not path-dependency crates.
+        # `cargo fmt --all` formats every package in `cargo metadata` — which since
+        # the ruvector-verified path-dep (PR #54) includes RuVector's own crates
+        # (e.g. ruvector-graph). Upstream fmt drift there would otherwise red-light
+        # every handoff PR. Mirrors HFTASK-0030's per-repo scoping for clippy.
+        run: cargo fmt -p hf -p ledger -p work-order -- --check

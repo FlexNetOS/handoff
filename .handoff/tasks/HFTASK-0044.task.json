@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0044",
+  "title": "ADR-0001-B: hf ship performs the real develop->trunk fast-forward",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0001-B (develop_mirrors_trunk=true) requires ff develop->trunk after each merge so develop==trunk. Today hf ship only println!s a note (main.rs ~475-480); should_sync_develop_trunk() is consulted but NO git ff is performed. Implement the actual fast-forward (fetch + ff-only push of develop to trunk, fail-closed, permission-gated, never force) so the branch model the policy claims is real.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0001-B: hf ship performs the real develop->trunk fast-forward: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0008"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:4977126e477f26c82bb35e8f37787ae1373ec81a5a737178365ed495dc268578",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:47f141e492c2965d2d8e38684416224326f2083a399ad3aaeea66b3bdd098a09"
+  }
+}

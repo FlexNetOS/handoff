@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0052",
+  "title": "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "PRD §18: hooks are shell scripts, not the typed handoff.hook_event.v1 / handoff.hook_result.v1 gate contract (payload + severity + required_actions). And 6 of 12 required hook events are absent from hooks.toml: SessionResume, PreCommand, PostCommand, PreTest, PostTest, PostHandoff. Build the typed hook runner + add the missing events so lifecycle gating is a typed contract, not stringly-typed shell.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0015"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:6d16981d63ba9c3b4e659fcf149e227a9785ff9f65182a9a410c37d6f1f7a7fe",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:8183725a4b366ed7e453c190bcb129d24a78a03eff2d3011cfdca8a3933acae2"
+  }
+}

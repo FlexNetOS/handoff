@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0048",
+  "title": "PRD atomic in-ledger lease state machine + .handoff/locks/*.lock (no-downgrade superset of weave)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "PRD §11.2-11.3: the self-contained kernel lease design — BEGIN IMMEDIATE; read leases; detect overlap; insert lease_requested/lease_active/heartbeat events; .handoff/locks/{ledger,merge,index}.lock; stale-lease reclaim event — was replaced by external weave with silent ledger-only fallback (lease.rs). Build the atomic in-ledger lease state machine as the local source of truth so the kernel self-coordinates WITHOUT requiring weave present; weave remains the mesh overlay. No-downgrade: a strict superset, not a swap.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PRD atomic in-ledger lease state machine + .handoff/locks/*.lock (no-downgrade superset of weave): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0002"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:87c355bc2980bcd7fd3e61c83208a3722027bf862ba45e7cc649c2a7d9084c59",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:edf765f6bf12f25ff1ea7e78a29e0774afc9dba284e9008b4bb62046a29dd03c"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0041",
+  "title": "ADR-0002 surface 5: verdict rides a weave permission-ask answer body",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0002 §5 / ADR-0005 §4: a review verdict must ride a weave PERMISSION-ASK answer body (approve/deny) IN ADDITION TO the review_verdict ledger event. Today cmd_review_verdict (main.rs) emits only the ledger half — the cross-peer weave permission-ask channel is missing, so the autonomous gatekeeper has no mesh-visible approval path. Build the permission-ask answer body and bind it to the verdict event (no-downgrade: the ledger event stays).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0002 surface 5: verdict rides a weave permission-ask answer body: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0040",
+    "HFTASK-0010"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:6d5529a5ab99c6edc18b583416c599c44707779ddabf9f582790bc29875f76f3",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:569706851204c4aea0c86b4684faedfdb157641cfa503ca043dd173ef562caac"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0045",
+  "title": "PRD hf test: execute stored test_commands as completion evidence",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "PRD §4.7/§9/§12.3: evidence-backed completion REQUIRES executing the task's test_commands and mapping results to acceptance_criteria. The field is stored (work-order/src/lib.rs:46) but NEVER run — completion evidence is unenforced at the kernel level. Build `hf test [ID]`: run the work order's test_commands, capture pass/fail + output, append a witnessed test_result event, and gate handoff/done on green. This is the kernel's central completion guarantee.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PRD hf test: execute stored test_commands as completion evidence: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0001"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e6baa15072bd3728a4f7c77ba32c8216ec47ebf3b2404bc1ca920a98fab5da5b",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:6bb77b52614ecfd0135c83a4298158fe6a360d0bd3e598cae9fd383166f1e40e"
+  }
+}

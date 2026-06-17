@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0047",
+  "title": "PRD IntentLock 3->5 fields (constraint_hash, northstar_revision) + task_intent_changed",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "PRD §12.2: IntentLock specifies 5 fields but the struct (work-order/src/lib.rs:68-72) has only 3 — constraint_hash and northstar_revision are absent, so policy/constraint drift (§12.1) cannot be hash-detected. Add both fields to compute_intent_lock, emit a task_intent_changed event on mutation, and extend the ruvector-verified proof (contract.rs) + drift checks to cover the two new obligations. No-downgrade: existing 3-hash proof stays.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PRD IntentLock 3->5 fields (constraint_hash, northstar_revision) + task_intent_changed: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0004"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:64184a67464a7c29de324f5899a98a5d4fa0ae323b0276f6982a24dbae9aad18",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:d9881de03a7298bd2d51f9f401b3dd64ce8007dd96e04d2bb0eb9f0446d31090"
+  }
+}

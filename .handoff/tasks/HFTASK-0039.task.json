@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0039",
+  "title": "ADR-0002 weave A2A surface 3: jobs (job_create/job_claim/job_update)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0002 froze a five-surface weave A2A contract; only surfaces 1 (identity) + 2 (leases) are built (hf/src/lease.rs). Build surface 3 — the poll-only job channel (job_create/job_claim/job_update) — reusing WeaveCli, so cross-agent work items have a real mesh transport instead of only the local ledger. No-downgrade: this is an accepted-ADR commitment, not optional.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0002 weave A2A surface 3: jobs (job_create/job_claim/job_update): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0002"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:da37112dfd4635d9c4fbfc1866394386f5eb0b0e16227f6831e3559f261ec17d",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:892af2f82a663281b63e0118d619bae1360c97aa29aa85fc27cee4ef230f298d"
+  }
+}
