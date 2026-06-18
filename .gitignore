@@ -4,7 +4,9 @@
 .handoff/**/ledger.db
 .handoff/**/*.db-wal
 .handoff/**/*.db-shm
+.handoff/**/*.rvf
 /.handoff/packets/
+/.handoff/workspaces/
 
 .grit
 /_workspace/

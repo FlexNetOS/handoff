@@ -4,4 +4,5 @@ members = ["work-order", "ledger", "hf"]
 
 [workspace.package]
 edition = "2021"
+version = "0.1.0"
 license = "Apache-2.0 OR MIT"
