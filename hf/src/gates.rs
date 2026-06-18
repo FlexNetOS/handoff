@@ -4,6 +4,8 @@
 //! block so `fail_mode = block` hooks actually stop the loop. Fail-closed.
 
 use crate::{current_statuses, load_tasks, status_of};
+use ledger::Ledger;
+use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
 use work_order::{Status, WorkOrder};
@@ -90,63 +92,261 @@ fn claimed_scopes(tasks: &[WorkOrder], replay: &[(String, Status)]) -> (Vec<Stri
     (ids, scopes)
 }
 
-// --- hf drift (HFTASK-0005) -------------------------------------------------
+// --- hf drift (HFTASK-0005, expanded to the §12.3 sentinel by HFTASK-0046) -------
 
-/// Returns (drift_items, clean). Pure-ish over git + ledger.
-fn detect_drift() -> (Vec<String>, bool) {
-    let tasks = load_tasks();
-    let replay = current_statuses();
-    let mut items = vec![];
+/// Per-component intent_lock match for a card: (objective, path_scope, acceptance).
+/// Pure: recompute each hash from the body and compare to the stored lock (HFTASK-0046,
+/// the granular form of `intent_unchanged` so drift can name WHICH component moved).
+fn intent_component_match(t: &WorkOrder) -> (bool, bool, bool) {
+    let fresh = WorkOrder::compute_intent_lock(&t.objective, &t.path_scope, &t.acceptance_criteria);
+    (
+        fresh.objective_hash == t.intent_lock.objective_hash,
+        fresh.path_scope_hash == t.intent_lock.path_scope_hash,
+        fresh.acceptance_hash == t.intent_lock.acceptance_hash,
+    )
+}
 
-    // 1) intent drift: a card whose body no longer hashes to its stored intent_lock
-    //    (objective/path_scope/acceptance changed without re-lock).
-    for t in &tasks {
-        if !t.intent_unchanged() {
-            items.push(format!(
-                "intent drift: {} — body no longer matches its intent_lock (re-mint or reclaim)",
-                t.id
-            ));
-        }
-    }
+/// A decision/architecture surface: changing it should be accompanied by an ADR/decision
+/// record. Pure (HFTASK-0046, the §12.3 "undocumented architecture change" sentinel).
+fn is_decision_surface(path: &str) -> bool {
+    const PATHS: [&str; 4] = [
+        ".handoff/policy",
+        ".handoff/policies/",
+        ".handoff/hooks/",
+        ".github/",
+    ];
+    PATHS.iter().any(|p| path.contains(p))
+}
 
-    // 2) out-of-scope edits: changed files not covered by any claimed task's path_scope.
-    let (claimed, scopes) = claimed_scopes(&tasks, &replay);
-    let changed = changed_files();
-    if !changed.is_empty() {
-        if claimed.is_empty() {
-            items.push(format!(
-                "out-of-scope: {} changed file(s) with no task claimed (deny_without_claim)",
-                changed.len()
-            ));
-        } else {
-            for f in &changed {
-                if !in_any_scope(f, &scopes) {
-                    items.push(format!(
-                        "out-of-scope write: {f} not in claimed scope {claimed:?}"
-                    ));
+/// Tasks (by id) whose LATEST witnessed `test_result` is green (HFTASK-0045/0046).
+fn tasks_with_green_tests() -> HashSet<String> {
+    let mut green = HashSet::new();
+    let path = Path::new(HF).join("ledger.db");
+    if let Ok(led) = Ledger::open(&path.to_string_lossy()) {
+        if let Ok(events) = led.all_events() {
+            for e in events {
+                if e.event_type != "test_result" {
+                    continue;
+                }
+                match serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                    .ok()
+                    .and_then(|v| v["passed"].as_bool())
+                {
+                    Some(true) => {
+                        green.insert(e.work_order_id);
+                    }
+                    Some(false) => {
+                        green.remove(&e.work_order_id); // latest-wins: a later failure un-greens
+                    }
+                    None => {}
                 }
             }
         }
     }
-    let clean = items.is_empty();
-    (items, clean)
+    green
+}
+
+/// The full drift sentinel result (HFTASK-0046, schema `handoff.drift_report.v1`).
+/// `drift` is the BLOCKING human-readable union; `undocumented_decisions` is advisory
+/// (surfaced for the gatekeeper, not hard-blocking, so the loop's own ADR'd policy work
+/// isn't deadlocked). `clean()` ⇔ no blocking items.
+struct DriftReport {
+    objective_hash_match: bool,
+    path_scope_match: bool,
+    acceptance_hash_match: bool,
+    out_of_scope_files: Vec<String>,
+    missing_evidence: Vec<String>,
+    acceptance_without_tests: Vec<String>,
+    dependency_unsatisfied: Vec<String>,
+    undocumented_decisions: Vec<String>,
+    drift: Vec<String>,
+    required_actions: Vec<String>,
+}
+
+impl DriftReport {
+    fn clean(&self) -> bool {
+        self.drift.is_empty()
+    }
+}
+
+fn detect() -> DriftReport {
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    let in_progress = |t: &WorkOrder| {
+        matches!(
+            status_of(&t.id, &replay, t),
+            Status::Claimed | Status::Active | Status::Checkpointed | Status::Review
+        )
+    };
+    let mut r = DriftReport {
+        objective_hash_match: true,
+        path_scope_match: true,
+        acceptance_hash_match: true,
+        out_of_scope_files: vec![],
+        missing_evidence: vec![],
+        acceptance_without_tests: vec![],
+        dependency_unsatisfied: vec![],
+        undocumented_decisions: vec![],
+        drift: vec![],
+        required_actions: vec![],
+    };
+
+    // 1–3) per-component intent_lock drift (body edited without re-locking).
+    for t in &tasks {
+        let (obj, scope, acc) = intent_component_match(t);
+        if !obj {
+            r.objective_hash_match = false;
+            r.drift
+                .push(format!("objective drift: {} (re-mint/reclaim)", t.id));
+            r.required_actions
+                .push(format!("re-lock {} objective", t.id));
+        }
+        if !scope {
+            r.path_scope_match = false;
+            r.drift
+                .push(format!("path_scope drift: {} (re-lock)", t.id));
+            r.required_actions
+                .push(format!("re-lock {} path_scope", t.id));
+        }
+        if !acc {
+            r.acceptance_hash_match = false;
+            r.drift
+                .push(format!("acceptance drift: {} (re-lock)", t.id));
+            r.required_actions
+                .push(format!("re-lock {} acceptance", t.id));
+        }
+    }
+
+    // 4) out-of-scope edits: changed files outside any claimed task's path_scope.
+    let (claimed, scopes) = claimed_scopes(&tasks, &replay);
+    let changed = changed_files();
+    if !changed.is_empty() {
+        if claimed.is_empty() {
+            r.out_of_scope_files = changed.clone();
+            r.drift.push(format!(
+                "out-of-scope: {} changed file(s) with no task claimed (deny_without_claim)",
+                changed.len()
+            ));
+            r.required_actions
+                .push("claim a task before editing".into());
+        } else {
+            for f in &changed {
+                if !in_any_scope(f, &scopes) {
+                    r.out_of_scope_files.push(f.clone());
+                    r.drift.push(format!(
+                        "out-of-scope write: {f} not in claimed scope {claimed:?}"
+                    ));
+                }
+            }
+            if !r.out_of_scope_files.is_empty() {
+                r.required_actions
+                    .push("widen path_scope or revert out-of-scope edits".into());
+            }
+        }
+    }
+
+    // 5–6) evidence & acceptance↔test mapping for in-progress tasks.
+    let green = tasks_with_green_tests();
+    for t in tasks.iter().filter(|t| in_progress(t)) {
+        if t.acceptance_criteria.iter().any(|a| !a.trim().is_empty()) && t.test_commands.is_empty()
+        {
+            r.acceptance_without_tests.push(t.id.clone());
+            r.drift.push(format!(
+                "acceptance↔test gap: {} has acceptance criteria but no test_commands",
+                t.id
+            ));
+            r.required_actions
+                .push(format!("add test_commands to {}", t.id));
+        }
+        if !t.test_commands.is_empty() && !green.contains(&t.id) {
+            r.missing_evidence.push(t.id.clone());
+            r.drift.push(format!(
+                "missing test evidence: {} has no green witnessed test_result",
+                t.id
+            ));
+            r.required_actions.push(format!("run `hf test {}`", t.id));
+        }
+    }
+
+    // 7) dependency satisfaction: an in-progress task must not depend on an unfinished task.
+    let done = |id: &str| replay.iter().any(|(k, s)| k == id && *s == Status::Done);
+    for t in tasks.iter().filter(|t| in_progress(t)) {
+        for dep in &t.dependencies {
+            if !done(dep) {
+                r.dependency_unsatisfied.push(format!("{} → {}", t.id, dep));
+                r.drift.push(format!(
+                    "dependency unsatisfied: {} depends on {} which is not Done",
+                    t.id, dep
+                ));
+                r.required_actions
+                    .push(format!("finish {dep} before {}", t.id));
+            }
+        }
+    }
+
+    // 8) undocumented architecture/decision change (ADVISORY — surfaced, not blocking): a
+    //    decision-surface file changed without an accompanying ADR/decision in the same edit.
+    let touches_adr = changed
+        .iter()
+        .any(|f| f.contains("docs/adr-") || f.contains(".handoff/decisions/"));
+    if !touches_adr {
+        for f in &changed {
+            if is_decision_surface(f) {
+                r.undocumented_decisions.push(f.clone());
+            }
+        }
+        if !r.undocumented_decisions.is_empty() {
+            r.required_actions
+                .push("record an ADR/decision for the policy/CI change".into());
+        }
+    }
+
+    r
+}
+
+/// Kept for `hf policy check-handoff` (HFTASK-0015): the blocking drift items + clean flag.
+fn detect_drift() -> (Vec<String>, bool) {
+    let r = detect();
+    (r.drift.clone(), r.clean())
 }
 
 pub fn cmd_drift(json: bool) {
-    let (items, clean) = detect_drift();
+    let r = detect();
+    let clean = r.clean();
     if json {
         let out = serde_json::json!({
-            "schema": "handoff.drift.v1",
+            "schema": "handoff.drift_report.v1",
             "clean": clean,
-            "drift": items,
+            "objective_hash_match": r.objective_hash_match,
+            "path_scope_match": r.path_scope_match,
+            "acceptance_hash_match": r.acceptance_hash_match,
+            "out_of_scope_files": r.out_of_scope_files,
+            "missing_evidence": r.missing_evidence,
+            "acceptance_without_tests": r.acceptance_without_tests,
+            "dependency_unsatisfied": r.dependency_unsatisfied,
+            "undocumented_decisions": r.undocumented_decisions,
+            "drift": r.drift,
+            "required_actions": r.required_actions,
         });
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else if clean {
-        println!("hf drift: clean — no intent or scope drift");
+        println!("hf drift: clean — no intent, scope, evidence, or dependency drift");
+        if !r.undocumented_decisions.is_empty() {
+            println!(
+                "  ⓘ advisory: {} decision-surface file(s) changed without an ADR — confirm a decision record",
+                r.undocumented_decisions.len()
+            );
+        }
     } else {
-        println!("hf drift: {} drift item(s):", items.len());
-        for i in &items {
+        println!("hf drift: {} drift item(s):", r.drift.len());
+        for i in &r.drift {
             println!("  ⚠ {i}");
+        }
+        if !r.required_actions.is_empty() {
+            println!("required actions:");
+            for a in &r.required_actions {
+                println!("  → {a}");
+            }
         }
     }
     if !clean {
@@ -273,7 +473,56 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::glob_match;
+    use super::{glob_match, intent_component_match, is_decision_surface};
+    use work_order::WorkOrder;
+
+    #[test]
+    fn decision_surface_classification() {
+        // HFTASK-0046: policy/hooks/CI are decision surfaces; ordinary source is not.
+        assert!(is_decision_surface(".handoff/policy.toml"));
+        assert!(is_decision_surface(".handoff/policies/rules.toml"));
+        assert!(is_decision_surface(".handoff/hooks/hooks.toml"));
+        assert!(is_decision_surface(".github/workflows/ci.yml"));
+        assert!(!is_decision_surface("hf/src/main.rs"));
+        assert!(!is_decision_surface("ledger/src/lib.rs"));
+    }
+
+    #[test]
+    fn intent_components_detect_each_edit() {
+        // A freshly-locked card matches on all three components; mutating the objective trips
+        // only objective; mutating acceptance trips only acceptance (HFTASK-0046 granularity).
+        let mk = |obj: &str, scope: &[&str], acc: &[&str]| {
+            let path_scope: Vec<String> = scope.iter().map(|s| s.to_string()).collect();
+            let acceptance: Vec<String> = acc.iter().map(|s| s.to_string()).collect();
+            let intent_lock = WorkOrder::compute_intent_lock(obj, &path_scope, &acceptance);
+            WorkOrder {
+                schema: "handoff.task.v1".into(),
+                id: "T".into(),
+                title: "t".into(),
+                status: work_order::Status::Claimed,
+                priority: work_order::Priority::P1,
+                objective: obj.into(),
+                path_scope,
+                acceptance_criteria: acceptance,
+                test_commands: vec![],
+                dependencies: vec![],
+                blocked_by: vec![],
+                allows_network: false,
+                allows_dependency_addition: false,
+                correlation_id: String::new(),
+                role: None,
+                intent_lock,
+            }
+        };
+        let good = mk("obj", &["handoff/**"], &["ok"]);
+        assert_eq!(intent_component_match(&good), (true, true, true));
+        let mut tampered = good.clone();
+        tampered.objective = "changed".into();
+        assert_eq!(intent_component_match(&tampered), (false, true, true));
+        let mut acc_tampered = good.clone();
+        acc_tampered.acceptance_criteria = vec!["different".into()];
+        assert_eq!(intent_component_match(&acc_tampered), (true, true, false));
+    }
 
     #[test]
     fn glob_forms() {
