@@ -660,6 +660,14 @@ fn cmd_release(id: &str) {
             .is_ok()
         {
             println!("hf release: {id} -> backlog (un-claimed)");
+            // ADR-0003 rule 3 (HFTASK-0042) gap-hunt: a released kb-minted card should also
+            // revert its planning-plane status to backlog (mirrors claim → active).
+            if kb::write_back(&wo.correlation_id, &kb::KbTransition::Released) {
+                println!(
+                    "hf release: kb {} → backlog (write-back)",
+                    wo.correlation_id
+                );
+            }
         }
     }
 }
