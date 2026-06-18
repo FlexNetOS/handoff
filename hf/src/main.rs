@@ -362,6 +362,16 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         std::process::exit(1);
     };
     let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    // HFTASK-0045 (PRD §4.7 evidence-backed completion): a task that declares
+    // test_commands may only reach Done once a witnessed `test_result` shows green.
+    // Fail-closed — unproven completion never lands. Tasks with no test_commands are
+    // exempt (nothing to run). Run `hf test <id>` to produce the evidence.
+    if !wo.test_commands.is_empty() && latest_test_passed(&led, id) != Some(true) {
+        eprintln!(
+            "hf done: {id} blocked — no green witnessed test_result (PRD §4.7 completion evidence). Run `hf test {id}` first."
+        );
+        std::process::exit(1);
+    }
     led.record_transition(&wo, Status::Done, now_ns()).unwrap();
     if let Some(p) = pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
@@ -371,6 +381,92 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         "hf done: {id} -> done{}",
         pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
     );
+}
+
+/// HFTASK-0045: the most recent `test_result` verdict for `id`, or `None` if the task has
+/// never been tested. Latest-wins (a re-run after a fix supersedes the earlier failure).
+fn latest_test_passed(led: &Ledger, id: &str) -> Option<bool> {
+    led.all_events()
+        .ok()?
+        .iter()
+        .rev()
+        .find(|e| e.event_type == "test_result" && e.work_order_id == id)
+        .and_then(|e| {
+            serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                .ok()
+                .and_then(|v| v["passed"].as_bool())
+        })
+}
+
+/// `hf test [ID]` — PRD §4.7 evidence-backed completion. Execute the work order's
+/// `test_commands` and witness the outcome as a `test_result` ledger event so `hf done`
+/// can gate on green tests. With no id, targets the next safe task. Exits nonzero when any
+/// command fails (fail-closed, so hooks / the loop observe the failure). The kernel's
+/// completion-evidence guarantee: a stored `test_commands` is now actually run, not ignored.
+fn cmd_test(id: Option<&str>) {
+    let resolved = match id {
+        Some(s) if !s.is_empty() && !s.starts_with("--") => s.to_string(),
+        _ => {
+            let tasks = load_tasks();
+            let replay = current_statuses();
+            match next_safe(&tasks, &replay) {
+                Some(t) => t.id.clone(),
+                None => {
+                    eprintln!("hf test: no task id — use `hf test <ID>`");
+                    std::process::exit(2);
+                }
+            }
+        }
+    };
+    let (ledger, tasks_dir) = match route::route_for_task(&resolved) {
+        Ok(homes) => homes,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+    let Some(wo) = load_task_in(&tasks_dir, &resolved) else {
+        eprintln!("hf test: no such task {resolved}");
+        std::process::exit(1);
+    };
+    if wo.test_commands.is_empty() {
+        eprintln!("hf test: {resolved} declares no test_commands (nothing to run)");
+        std::process::exit(2);
+    }
+    let mut results = Vec::new();
+    let mut all_passed = true;
+    for cmd in &wo.test_commands {
+        println!("hf test: $ {cmd}");
+        let code = match std::process::Command::new("sh").arg("-c").arg(cmd).status() {
+            Ok(s) => s.code().unwrap_or(-1),
+            Err(e) => {
+                eprintln!("hf test: failed to spawn '{cmd}': {e}");
+                -1
+            }
+        };
+        if code != 0 {
+            all_passed = false;
+        }
+        results.push(serde_json::json!({ "cmd": cmd, "code": code }));
+    }
+    let payload = serde_json::json!({
+        "id": resolved,
+        "passed": all_passed,
+        "results": results,
+    })
+    .to_string();
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    led.append("test_result", &resolved, &payload, now_ns())
+        .unwrap();
+    if all_passed {
+        println!(
+            "hf test: {resolved} -> PASS ({} command(s) green, witnessed)",
+            wo.test_commands.len()
+        );
+    } else {
+        eprintln!("hf test: {resolved} -> FAIL (witnessed test_result; `hf done` is blocked)");
+        std::process::exit(1);
+    }
 }
 
 /// Persist each card's ledger-replayed status into its `.task.json` (ADR-0003 single-registry
@@ -1312,6 +1408,13 @@ fn main() {
                 .map(|s| s.as_str());
             cmd_done(id, pr);
         }
+        Some("test") => {
+            let id = args
+                .get(1)
+                .map(|s| s.as_str())
+                .filter(|s| !s.starts_with("--"));
+            cmd_test(id);
+        }
         Some("task") if args.get(1).map(|s| s.as_str()) == Some("mint") => {
             let slug = args
                 .iter()
@@ -1424,7 +1527,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -1444,6 +1547,41 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn latest_test_result_gates_done() {
+        // HFTASK-0045: `hf done` reads the latest witnessed test_result. Latest-wins so a
+        // green re-run after a fix supersedes an earlier failure; a never-tested task → None
+        // (and a task with test_commands + None is blocked by the cmd_done gate).
+        let path = std::env::temp_dir().join(format!("hf-test-gate-{}.db", now_ns()));
+        let p = path.to_string_lossy().to_string();
+        let mut led = Ledger::open(&p).unwrap();
+        let id = "HFTASK-9999";
+        assert_eq!(latest_test_passed(&led, id), None, "never tested → None");
+        led.append(
+            "test_result",
+            id,
+            &serde_json::json!({ "id": id, "passed": false }).to_string(),
+            now_ns(),
+        )
+        .unwrap();
+        assert_eq!(latest_test_passed(&led, id), Some(false), "failing run");
+        led.append(
+            "test_result",
+            id,
+            &serde_json::json!({ "id": id, "passed": true }).to_string(),
+            now_ns(),
+        )
+        .unwrap();
+        assert_eq!(
+            latest_test_passed(&led, id),
+            Some(true),
+            "latest green wins"
+        );
+        // a verdict for a different task must never bleed through
+        assert_eq!(latest_test_passed(&led, "HFTASK-0001"), None);
+        let _ = std::fs::remove_file(&path);
     }
     use work_order::{work_orders_from_bundle, SwarmBundle};
 
