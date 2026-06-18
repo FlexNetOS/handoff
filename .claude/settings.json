@@ -1,5 +1,9 @@
 {
   "$comment": "handoff repo project-layer settings (layered on top of the envctl user-global source of truth). SessionStart auto-invokes the handoff-loop; SessionEnd is the continuity safety net. See .handoff/hooks/*.sh and .handoff/hooks/hooks.toml (the kernel contract).",
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/statusline-command.sh\""
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -20,6 +24,12 @@
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(git -C * push:*)"
     ]
   }
 }
