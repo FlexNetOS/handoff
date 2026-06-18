@@ -1345,11 +1345,11 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
     }
 
     let payload = serde_json::json!({
-        "pr": meta.url,
+        "pr": &meta.url,
         "number": meta.number,
-        "head": meta.head_ref_name,
-        "base": meta.base_ref_name,
-        "reviewer": policy.merge.reviewer,
+        "head": &meta.head_ref_name,
+        "base": &meta.base_ref_name,
+        "reviewer": policy.merge.reviewer.as_str(),
         "task_id": task_id,
         "changed_files": files,
     })
@@ -1358,7 +1358,9 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
         .unwrap();
     println!(
         "hf review request: PR #{} ({}) queued for {} review",
-        meta.number, meta.url, policy.merge.reviewer
+        meta.number,
+        meta.url,
+        policy.merge.reviewer
     );
     println!("  Run `/code-review ultra` in the IDE on this PR to produce a verdict.");
     println!(
