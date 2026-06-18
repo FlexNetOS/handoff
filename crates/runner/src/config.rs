@@ -33,7 +33,10 @@ pub struct TuiConfig {
     #[serde(default)]
     pub run_finished_command: String,
     /// Consecutive no-progress retries per task before stalling. Defaults to 1.
-    #[serde(default = "default_retry_on_failure")]
+    #[serde(
+        default = "default_retry_on_failure",
+        skip_serializing_if = "is_default_retry_on_failure"
+    )]
     pub retry_on_failure: u32,
 }
 
@@ -51,6 +54,10 @@ fn default_interactive_command() -> String {
 
 fn default_retry_on_failure() -> u32 {
     DEFAULT_RETRY_ON_FAILURE
+}
+
+fn is_default_retry_on_failure(v: &u32) -> bool {
+    *v == DEFAULT_RETRY_ON_FAILURE
 }
 
 impl Default for TuiConfig {
