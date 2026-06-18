@@ -9,7 +9,7 @@ Reason: XML format is deprecated.
 
 ## MODIFIED Requirements
 ### Requirement: Export rate limit
-Limit exports to 20 per hour.
+The system SHALL limit exports to 20 per hour.
 
 #### Scenario: Under the limit
 The user has exported 19 times without error.
@@ -19,4 +19,8 @@ The user is blocked after 20 exports.
 
 ## ADDED Requirements
 ### Requirement: JSON export
-Export data as JSON.
+The system SHALL export widget data as JSON.
+
+#### Scenario: Successful JSON export
+The user requests a JSON export and receives a valid file.
+
