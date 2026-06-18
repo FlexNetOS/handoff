@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0055",
+  "title": "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "PRD §20.2/§20.3/§20.4/§20.6 — the kernel has NO property/crash/golden suite (only one concurrency test at ledger/src/lib.rs:871; no proptest dependency anywhere). The original backlog TASK-0015 'hardening suite' lost its tracking when the HFTASK-0015 slot was repurposed to the policy engine. Build: (a) §20.2 proptest property tests — random path_scopes never falsely overlap; random event streams replay to identical final state; random checkpoint interruptions preserve last valid state; packet roundtrip; (b) §20.4 crash tests — crash during claim/checkpoint/handoff/index; ledger lock held by a dead process; corrupted task YAML/JSON fails CLOSED and is NEVER silently marked done; (c) §20.3/§20.6 golden/replay + fresh-agent acceptance integration tests. Distinct from HFTASK-0045 (hf test runs a TASK's own test_commands) — this is the KERNEL's own hardening matrix.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0028"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:2ad694ee8166564b4035629fa981bac4bcdd5cac8bbee0b803567f84601c7d4d",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:c849a1c454be3ec927ca872ecf44769f72a872dcd59eb556f33690f788933696",
+    "constraint_hash": "blake3:000c4ca7301824b7d4e0b949b6dd961b3637079255b0a9d9c1d06b81ba871a9e",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
