@@ -133,7 +133,104 @@ fn next_safe<'a>(tasks: &'a [WorkOrder], replay: &[(String, Status)]) -> Option<
     })
 }
 
-fn cmd_init() {
+/// The handoff *kernel*'s own North Star doctrine. Used only when `hf init` runs in the
+/// kernel home (the handoff repo); a member repo gets a neutral "(seed me)" northstar so
+/// it never inherits the kernel's identity.
+const KERNEL_NORTHSTAR: &str = "KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native agentic OS where every agent action increases verified capability without corrupting the baseline: Integrity · Reversibility · Capability Gain (no promotion without all three). CECCA/NOA is the executive kernel; the Gold World is the protected baseline; failures compress into evidence. Authoritative: NORTH-STAR.md · keystone docs/adr-0001-flexnetos-autopilot-keystone.md. FLEET VISION (the why): NO HUMAN IN THE LOOP — multi-provider autopilot; user directs, system builds/operates; NEEDS-HUMAN is a scaffold replaced by a model with the human's skillset; end-state = single-person conglomerate. See ../NORTH-STAR.md · ../ARCHITECTURE-TRUTH.md · ../RUVECTOR-RUNBOOK.md";
+
+/// The repo's own name: the basename of the git toplevel, falling back to the cwd
+/// basename. This is what makes `hf init` portable — a member repo identifies as itself,
+/// not as "handoff".
+fn repo_name() -> String {
+    let toplevel = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let dir = toplevel
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    dir.as_deref()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".to_string())
+}
+
+/// True iff the cwd is the handoff *kernel* home — the repo that owns the keystone ADR and
+/// the backlog. Only here does `hf init` write the kernel doctrine + is `hf seed` meaningful.
+fn is_kernel_home() -> bool {
+    // The keystone ADR path is unique to the handoff kernel repo and present in every
+    // checkout (incl. git worktrees, where the toplevel basename is not "handoff") — so it
+    // is the robust signal, where a dir-name check would misfire.
+    Path::new("docs/adr-0001-flexnetos-autopilot-keystone.md").exists()
+}
+
+/// Mirror of `fleet-rollout.sh`'s `ensure_ledger_guard` (HFTASK-0035, ADR-0004 §3.3/§6):
+/// guarantee the repo's `.gitignore` ignores the local ledger so a freshly-init'd repo is
+/// P7-conformant out of the box (`hf fleet status` requires the guard). Idempotent — returns
+/// `true` iff it ADDED the guard, `false` if git already ignores `.handoff/ledger.db`.
+fn ensure_ledger_guard() -> bool {
+    let already = std::process::Command::new("git")
+        .args(["check-ignore", "-q", ".handoff/ledger.db"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if already {
+        return false;
+    }
+    let block =
+        "\n# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)\n\
+        .handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n";
+    let prev = fs::read_to_string(".gitignore").unwrap_or_default();
+    let _ = fs::write(".gitignore", format!("{prev}{block}"));
+    true
+}
+
+/// Build the `handoff.context_capsule.v1` an `hf init` writes. Pure (no I/O) so it is
+/// testable: a **member** capsule identifies as its own repo and carries a neutral northstar
+/// — never the kernel's `project_name`/doctrine — which is the portability contract.
+fn init_capsule(
+    kernel: bool,
+    name: &str,
+    role: &str,
+    plane: &str,
+    northstar: &str,
+) -> serde_json::Value {
+    let project_name = if kernel {
+        "handoff (Continuity Ledger Kernel)".to_string()
+    } else {
+        name.to_string()
+    };
+    serde_json::json!({
+        "schema": "handoff.context_capsule.v1",
+        "project_name": project_name,
+        "role": role,
+        "plane": plane,
+        "northstar": northstar,
+        "next_command": "hf resume"
+    })
+}
+
+/// `hf init` — initialize the `.handoff` continuity kernel in *any* repo (portable, ADR-0006).
+///
+/// In a **member** repo it writes a capsule describing that repo (name derived from the git
+/// toplevel; neutral "(seed me)" northstar — never the kernel's doctrine), a Tier-A README,
+/// the ledger schema, and the `.gitignore` residency guard so the repo passes `hf fleet status`
+/// immediately. In the **kernel home** (handoff) it writes the full kernel doctrine capsule.
+///
+/// Idempotent and non-destructive: an existing capsule/README is preserved (never clobbered),
+/// so re-running `hf init` — or running it where the fleet steward already seeded a capsule —
+/// is safe. Flags: `--name NAME`, `--northstar TEXT`, `--role ROLE`, `--plane PLANE`.
+fn cmd_init(args: &[String]) {
+    let flag = |name: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+
     for d in ["tasks", "packets", "context", "decisions"] {
         let _ = fs::create_dir_all(Path::new(HF).join(d));
     }
@@ -142,17 +239,71 @@ fn cmd_init() {
         Path::new(HF).join("active.md"),
         "# Active\n\n(generated by `hf handoff`)\n",
     );
-    let capsule = serde_json::json!({
-        "schema": "handoff.context_capsule.v1",
-        "project_name": "handoff (Continuity Ledger Kernel)",
-        "northstar": "KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native agentic OS where every agent action increases verified capability without corrupting the baseline: Integrity · Reversibility · Capability Gain (no promotion without all three). CECCA/NOA is the executive kernel; the Gold World is the protected baseline; failures compress into evidence. Authoritative: NORTH-STAR.md · keystone docs/adr-0001-flexnetos-autopilot-keystone.md. FLEET VISION (the why): NO HUMAN IN THE LOOP — multi-provider autopilot; user directs, system builds/operates; NEEDS-HUMAN is a scaffold replaced by a model with the human's skillset; end-state = single-person conglomerate. See ../NORTH-STAR.md · ../ARCHITECTURE-TRUTH.md · ../RUVECTOR-RUNBOOK.md",
-        "next_command": "hf resume"
+
+    let kernel = is_kernel_home();
+    let name = flag("--name").unwrap_or_else(repo_name);
+    let role = flag("--role").unwrap_or_else(|| {
+        if kernel {
+            "kernel".into()
+        } else {
+            "tool".into()
+        }
     });
-    let _ = fs::write(
-        capsule_path(),
-        serde_json::to_string_pretty(&capsule).unwrap(),
+    let plane = flag("--plane").unwrap_or_else(|| {
+        if kernel {
+            "orchestration".into()
+        } else {
+            "execution".into()
+        }
+    });
+    let northstar = flag("--northstar").unwrap_or_else(|| {
+        if kernel {
+            KERNEL_NORTHSTAR.to_string()
+        } else {
+            format!("(seed me) the guiding goal for {name}")
+        }
+    });
+    // Non-destructive: never clobber a curated/seeded capsule. Only write when absent.
+    let capsule_existed = capsule_path().exists();
+    if !capsule_existed {
+        let capsule = init_capsule(kernel, &name, &role, &plane, &northstar);
+        let _ = fs::write(
+            capsule_path(),
+            serde_json::to_string_pretty(&capsule).unwrap(),
+        );
+    }
+
+    // Member repos get the Tier-A README contract (kernel home has its own docs).
+    let readme = Path::new(HF).join("README.md");
+    if !kernel && !readme.exists() {
+        let body = format!(
+            "# .handoff (ADR-0004 §3.3/§6 rev)\n\n\
+            Continuity layer for `{name}`. **Committed content is git-text only** (capsule, cards,\n\
+            packets). A local `ledger.db` is **gitignored** (legitimate per-repo source of record — it\n\
+            rolls up into the FLEET ledger at `meta/.handoff/ledger.db`); a *committed* binary ledger is\n\
+            banned. This repo's packet compiles centrally via `hf fleet render {name}`. See\n\
+            `meta/handoff/FLEET_GUIDE.md`.\n\n\
+            Cold start: read `context/capsule.json`, then run `hf resume`.\n"
+        );
+        let _ = fs::write(&readme, body);
+    }
+
+    let guarded = ensure_ledger_guard();
+    let kind = if kernel { "kernel home" } else { "member" };
+    println!(
+        "hf init: {kind} `{name}` ready — {}/ (ledger, tasks, packets, context){}{}",
+        HF,
+        if capsule_existed {
+            "; capsule preserved"
+        } else {
+            "; capsule written"
+        },
+        if guarded {
+            "; .gitignore ledger guard added"
+        } else {
+            "; ledger guard present"
+        }
     );
-    println!("hf init: created {}/ (ledger, tasks, packets, context)", HF);
 }
 
 /// CLI entry for `hf claim <ID>`: exits nonzero when the claim is refused/blocked so
@@ -1721,7 +1872,7 @@ fn cmd_seed() {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(|s| s.as_str()) {
-        Some("init") => cmd_init(),
+        Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
         Some("claim") => {
@@ -1995,6 +2146,37 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn init_capsule_is_portable_for_members() {
+        // Portability contract (ADR-0006): a member's capsule identifies as ITSELF and
+        // never inherits the kernel's project_name or doctrine northstar.
+        let member = init_capsule(
+            false,
+            "weave",
+            "tool",
+            "execution",
+            "(seed me) the guiding goal for weave",
+        );
+        assert_eq!(member["project_name"], "weave");
+        assert_eq!(member["role"], "tool");
+        assert_eq!(member["plane"], "execution");
+        assert_eq!(member["schema"], "handoff.context_capsule.v1");
+        assert_eq!(member["next_command"], "hf resume");
+        let ns = member["northstar"].as_str().unwrap();
+        assert!(
+            !ns.contains("KERNEL DOCTRINE"),
+            "member must not get kernel doctrine"
+        );
+
+        // The kernel home keeps its curated identity + doctrine.
+        let kernel = init_capsule(true, "handoff", "kernel", "orchestration", KERNEL_NORTHSTAR);
+        assert_eq!(kernel["project_name"], "handoff (Continuity Ledger Kernel)");
+        assert!(kernel["northstar"]
+            .as_str()
+            .unwrap()
+            .contains("KERNEL DOCTRINE"));
+    }
 
     #[test]
     fn release_unclaims_only_in_progress() {
