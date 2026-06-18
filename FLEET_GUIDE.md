@@ -64,11 +64,27 @@ landing in your repo learn its place in one read.
 
 ## 3. Set up `.handoff` in your repo (rollout)
 
-Done for you by the fleet steward, but here is what it does (and how to do it by
-hand). **Do not run `hf init`/`hf seed` in a member repo** — `hf seed` would seed
-the kernel's own backlog into your repo. (A local `ledger.db` is fine — it must be
-gitignored via the `.handoff/**/ledger.db` guard, HFTASK-0035; a *committed* one is
-the violation.)
+Done for you by the fleet steward, but you can also do it yourself: **`hf init` is
+portable** — run it in any repo and it writes a capsule describing *that* repo (name
+derived from the git toplevel; a neutral `(seed me)` northstar — never the kernel's
+identity or doctrine), a Tier-A `README.md`, the local ledger schema, and the
+`.handoff/**/ledger.db` `.gitignore` guard (HFTASK-0035), so the repo passes
+`hf fleet status` immediately. It is idempotent and never clobbers an existing
+capsule. In the **kernel home** (handoff itself — detected by the keystone ADR) it
+writes the full kernel doctrine instead.
+
+```bash
+cd <your-repo>
+hf init                                   # portable: identifies as <your-repo>
+# or override any field:
+hf init --name "weave (A2A bus)" --role tool --plane execution \
+        --northstar "the repo's guiding goal"
+```
+
+> **`hf seed` stays kernel-only** — it seeds the kernel's own HFTASK backlog and is
+> meaningless (harmful) in a member repo. Only `hf init` is portable.
+
+Equivalent by hand (what `hf init` automates):
 
 ```bash
 cd <your-repo>
