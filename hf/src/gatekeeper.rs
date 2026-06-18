@@ -111,18 +111,9 @@ fn run_test_gate() -> Result<(), String> {
     Ok(())
 }
 
-/// Check the deterministic merge-gate enforcement.
-///
-/// When the `secrets` feature is enabled this uses `secrets::github_merge_gate`; otherwise it
-/// returns `Ok(true)` and records that the gate was unavailable.
-#[cfg(feature = "secrets")]
-fn merge_gate_check() -> Result<bool, String> {
-    crate::secrets::github_merge_gate("POST", "api.github.com", "/repos/FlexNetOS/handoff/merges")
-}
-
 #[cfg(not(feature = "secrets"))]
 fn merge_gate_check() -> Result<bool, String> {
-    Ok(true)
+    Ok(false)
 }
 
 /// HFTASK-0014 foundation: run deterministic gates on PR `pr` and record a judgment event.
