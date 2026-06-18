@@ -78,15 +78,16 @@ a warning (the ClaimGate convention). Log it; never fabricate a kb_ref.
    never edit a sibling repo or `.meta.yaml`/`.kb` without a witnessed verdict.
 4. Write `_workspace/07_metasync_<scope>.md` (coherence table + actions/tasks).
 
-## Ledger residency invariant (ADR-0004 §3 + envctl gate)
+## Ledger residency invariant (ADR-0004 §3/§6 rev + envctl gate)
 
-There are exactly **two orchestration-home ledgers**: **FLEET** `meta/.handoff/
-ledger.db` (fleet/member events) and **KERNEL** `meta/handoff/.handoff/ledger.db`
-(handoff self-dev). Per-repo `.handoff/` dirs are **git-text-only — no `ledger.db`,
-no binary state**; their events checkpoint into the FLEET ledger and their packets
-are compiled centrally by `hf fleet status` (unbuilt). This is the envctl agenticOS
-"ledger-residency ($META_ROOT only)" gate. A stray `<repo>/.handoff/ledger.db` is a
-policy-P7 violation — flag it for removal.
+There are **two orchestration-home ledgers**: **FLEET** `meta/.handoff/ledger.db`
+(fleet/member events) and **KERNEL** `meta/handoff/.handoff/ledger.db` (handoff
+self-dev). Per-repo `.handoff/` dirs are **git-text-only for visible state — no
+*tracked* `ledger.db` or binary state**. A **gitignored** `<repo>/.handoff/ledger.db`
+is a legitimate local source of record that rolls up into the FLEET ledger. The P7
+violations are (a) a *git-tracked* `.db` under `.handoff`, and (b) a missing
+`.handoff/**/ledger.db` `.gitignore` guard. This is the envctl agenticOS
+"ledger-residency ($META_ROOT only)" gate.
 
 ## Safety
 
@@ -94,7 +95,8 @@ policy-P7 violation — flag it for removal.
   target, preview with `meta --dry-run exec`. Idempotent, grep-guarded config edits.
 - kb write-back is one-way only — if you ever find kb content flowing into the
   ledger, that's a P0 authority-model corruption: stop and escalate.
-- Never create a per-repo `ledger.db` (and never `hf init`/`hf seed` inside a fleet
-  repo — those do). The shipped `hf` is the S1 spike missing `fleet`/`policy`/`drift`/
+- A per-repo `ledger.db` is fine **only when gitignored** (ADR-0004 §6 rev). If you
+  run `hf init`/`hf seed` inside a fleet repo, ensure the resulting `.handoff/ledger.db`
+  is guarded by `.gitignore`. The shipped `hf` is the S1 spike missing `fleet`/`policy`/`drift`/
   `sync`; the fleet-aware rendering that makes residency work is carded as HFTASK-0007/
   0011 + `hf fleet status` (ADR-0004 §4) — gaps, not things to route around.
