@@ -138,15 +138,11 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
             "view",
             pr,
             "--json",
-            "url,number,headRefName,baseRefName",
+            "url,number,headRefName,baseRefName,isDraft",
         ],
     )
     .unwrap_or_else(|e| {
         eprintln!("hf gatekeeper: cannot read PR {pr}: {e}");
-        std::process::exit(1);
-    });
-    let meta: crate::GhPrView = serde_json::from_str(&meta_json).unwrap_or_else(|e| {
-        eprintln!("hf gatekeeper: malformed gh output: {e}");
         std::process::exit(1);
     });
 
