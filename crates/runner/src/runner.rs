@@ -1487,7 +1487,7 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -eq 2 ]; then\n\
-                perl -i -pe 's/- \\[ \\]/- [x]/ if !$done++' \"$TASKS_FILE\"\n\
+                awk 'BEGIN { done = 0 } { if (!done) done = sub(/- \\[ \\]/, \"- [x]\"); print }' \"$TASKS_FILE\" > \"${TASKS_FILE}.tmp\" && mv \"${TASKS_FILE}.tmp\" \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
@@ -1564,7 +1564,7 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -ge 3 ]; then\n\
-                perl -i -pe 's/- \\[ \\]/- [x]/ if !$done++' \"$TASKS_FILE\"\n\
+                awk 'BEGIN { done = 0 } { if (!done) done = sub(/- \\[ \\]/, \"- [x]\"); print }' \"$TASKS_FILE\" > \"${TASKS_FILE}.tmp\" && mv \"${TASKS_FILE}.tmp\" \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
