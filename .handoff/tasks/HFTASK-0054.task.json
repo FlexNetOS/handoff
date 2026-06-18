@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0054",
   "title": "Issue #71.2: confirm ledger-path/member override fully covers member Tier-A (no per-repo ledger.db)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "GitHub #71 item 2 / envctl FINDING-0002: `hf` was strictly CWD-relative (no --ledger/HANDOFF_LEDGER), so a member repo could not render Tier-A against the shared FLEET ledger ($META_ROOT/.handoff/ledger.db) without a per-repo ledger.db that ADR-0004 forbids. `hf fleet render <member>` (PR #17, 1adbb13) partially addressed this. CONFIRM it (and add an explicit `--ledger`/HANDOFF_LEDGER override if gaps remain) fully covers member packet rendering AND seed/mint against the shared FLEET ledger with ZERO per-repo ledger.db, so envctl renders its Tier-A kernel-rendered (not git-text-only fallback) and passes its p7 gate. Verification-first: prove coverage end-to-end from a member CWD, build the override only where uncovered.",
   "path_scope": [
