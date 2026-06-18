@@ -20,7 +20,7 @@ fn make_change(files: &[&str]) -> (tempfile::TempDir, PathBuf) {
             "proposal" => write(&change_dir.join("proposal.md"), "proposal"),
             "design" => write(&change_dir.join("design.md"), "design"),
             "tasks" => write(&change_dir.join("tasks.md"), "- [ ] 1.1 do it"),
-            "specs" => write(&change_dir.join("specs/cap/spec.md"), "# Cap"),
+            "specs" => write(&change_dir.join("openspec/specs/cap/spec.md"), "# Cap"),
             "adr" => write(&root.path().join("adr/0001-x.md"), "# 0001"),
             other => panic!("unknown artifact {other}"),
         }
