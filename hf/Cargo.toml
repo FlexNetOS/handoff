@@ -9,6 +9,10 @@ description = "hf — the .handoff continuity CLI (S1 spike: init/seed/claim/che
 name = "hf"
 path = "src/main.rs"
 
+[[bin]]
+name = "hf-mcp"
+path = "src/bin/hf-mcp.rs"
+
 [dependencies]
 work-order = { path = "../work-order" }
 ledger = { path = "../ledger" }
@@ -35,7 +39,7 @@ cognitum-gate-tilezero = { path = "../../RuVector/crates/cognitum-gate-tilezero"
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 
 [features]
-default = []
+default = ["cognitum"]
 # Enable the experimental secrets-engine seam (merge-gate decision helper, relay prep).
 secrets = ["dep:envctl-secrets-engine"]
 # Enable the cognitum-gate action governor behind `hf policy gate`.

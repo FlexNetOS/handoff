@@ -13,6 +13,7 @@ mod branch;
 #[cfg(feature = "cognitum")]
 mod cognitum;
 mod contract;
+mod delivery;
 mod fleet;
 mod gates;
 mod hooks;
@@ -20,6 +21,7 @@ mod intake;
 mod kb;
 mod lease;
 mod policy;
+mod prompt_hub;
 mod route;
 mod routing;
 mod session;
@@ -49,7 +51,17 @@ fn now_ns() -> u64 {
 fn tasks_dir() -> PathBuf {
     Path::new(HF).join("tasks")
 }
+/// HFTASK-0054: ledger location is overridable via `--ledger <path>` or the `HANDOFF_LEDGER`
+/// environment variable. This lets a member repo render its Tier-A packet (`hf resume`/`hf
+/// handoff`) against a shared ledger (e.g. `$META_ROOT/.handoff/ledger.db`) from its own CWD
+/// without requiring a per-repo ledger.db. When unset, the default remains the local
+/// `<cwd>/.handoff/ledger.db`.
 fn ledger_path() -> String {
+    if let Ok(p) = std::env::var("HANDOFF_LEDGER") {
+        if !p.is_empty() {
+            return p;
+        }
+    }
     Path::new(HF)
         .join("ledger.db")
         .to_string_lossy()
@@ -131,7 +143,104 @@ fn next_safe<'a>(tasks: &'a [WorkOrder], replay: &[(String, Status)]) -> Option<
     })
 }
 
-fn cmd_init() {
+/// The handoff *kernel*'s own North Star doctrine. Used only when `hf init` runs in the
+/// kernel home (the handoff repo); a member repo gets a neutral "(seed me)" northstar so
+/// it never inherits the kernel's identity.
+const KERNEL_NORTHSTAR: &str = "KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native agentic OS where every agent action increases verified capability without corrupting the baseline: Integrity · Reversibility · Capability Gain (no promotion without all three). CECCA/NOA is the executive kernel; the Gold World is the protected baseline; failures compress into evidence. Authoritative: NORTH-STAR.md · keystone docs/adr-0001-flexnetos-autopilot-keystone.md. FLEET VISION (the why): NO HUMAN IN THE LOOP — multi-provider autopilot; user directs, system builds/operates; NEEDS-HUMAN is a scaffold replaced by a model with the human's skillset; end-state = single-person conglomerate. See ../NORTH-STAR.md · ../ARCHITECTURE-TRUTH.md · ../RUVECTOR-RUNBOOK.md";
+
+/// The repo's own name: the basename of the git toplevel, falling back to the cwd
+/// basename. This is what makes `hf init` portable — a member repo identifies as itself,
+/// not as "handoff".
+fn repo_name() -> String {
+    let toplevel = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let dir = toplevel
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    dir.as_deref()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".to_string())
+}
+
+/// True iff the cwd is the handoff *kernel* home — the repo that owns the keystone ADR and
+/// the backlog. Only here does `hf init` write the kernel doctrine + is `hf seed` meaningful.
+fn is_kernel_home() -> bool {
+    // The keystone ADR path is unique to the handoff kernel repo and present in every
+    // checkout (incl. git worktrees, where the toplevel basename is not "handoff") — so it
+    // is the robust signal, where a dir-name check would misfire.
+    Path::new("docs/adr-0001-flexnetos-autopilot-keystone.md").exists()
+}
+
+/// Mirror of `fleet-rollout.sh`'s `ensure_ledger_guard` (HFTASK-0035, ADR-0004 §3.3/§6):
+/// guarantee the repo's `.gitignore` ignores the local ledger so a freshly-init'd repo is
+/// P7-conformant out of the box (`hf fleet status` requires the guard). Idempotent — returns
+/// `true` iff it ADDED the guard, `false` if git already ignores `.handoff/ledger.db`.
+fn ensure_ledger_guard() -> bool {
+    let already = std::process::Command::new("git")
+        .args(["check-ignore", "-q", ".handoff/ledger.db"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if already {
+        return false;
+    }
+    let block =
+        "\n# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)\n\
+        .handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n";
+    let prev = fs::read_to_string(".gitignore").unwrap_or_default();
+    let _ = fs::write(".gitignore", format!("{prev}{block}"));
+    true
+}
+
+/// Build the `handoff.context_capsule.v1` an `hf init` writes. Pure (no I/O) so it is
+/// testable: a **member** capsule identifies as its own repo and carries a neutral northstar
+/// — never the kernel's `project_name`/doctrine — which is the portability contract.
+fn init_capsule(
+    kernel: bool,
+    name: &str,
+    role: &str,
+    plane: &str,
+    northstar: &str,
+) -> serde_json::Value {
+    let project_name = if kernel {
+        "handoff (Continuity Ledger Kernel)".to_string()
+    } else {
+        name.to_string()
+    };
+    serde_json::json!({
+        "schema": "handoff.context_capsule.v1",
+        "project_name": project_name,
+        "role": role,
+        "plane": plane,
+        "northstar": northstar,
+        "next_command": "hf resume"
+    })
+}
+
+/// `hf init` — initialize the `.handoff` continuity kernel in *any* repo (portable, ADR-0006).
+///
+/// In a **member** repo it writes a capsule describing that repo (name derived from the git
+/// toplevel; neutral "(seed me)" northstar — never the kernel's doctrine), a Tier-A README,
+/// the ledger schema, and the `.gitignore` residency guard so the repo passes `hf fleet status`
+/// immediately. In the **kernel home** (handoff) it writes the full kernel doctrine capsule.
+///
+/// Idempotent and non-destructive: an existing capsule/README is preserved (never clobbered),
+/// so re-running `hf init` — or running it where the fleet steward already seeded a capsule —
+/// is safe. Flags: `--name NAME`, `--northstar TEXT`, `--role ROLE`, `--plane PLANE`.
+fn cmd_init(args: &[String]) {
+    let flag = |name: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+
     for d in ["tasks", "packets", "context", "decisions"] {
         let _ = fs::create_dir_all(Path::new(HF).join(d));
     }
@@ -140,17 +249,71 @@ fn cmd_init() {
         Path::new(HF).join("active.md"),
         "# Active\n\n(generated by `hf handoff`)\n",
     );
-    let capsule = serde_json::json!({
-        "schema": "handoff.context_capsule.v1",
-        "project_name": "handoff (Continuity Ledger Kernel)",
-        "northstar": "KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native agentic OS where every agent action increases verified capability without corrupting the baseline: Integrity · Reversibility · Capability Gain (no promotion without all three). CECCA/NOA is the executive kernel; the Gold World is the protected baseline; failures compress into evidence. Authoritative: NORTH-STAR.md · keystone docs/adr-0001-flexnetos-autopilot-keystone.md. FLEET VISION (the why): NO HUMAN IN THE LOOP — multi-provider autopilot; user directs, system builds/operates; NEEDS-HUMAN is a scaffold replaced by a model with the human's skillset; end-state = single-person conglomerate. See ../NORTH-STAR.md · ../ARCHITECTURE-TRUTH.md · ../RUVECTOR-RUNBOOK.md",
-        "next_command": "hf resume"
+
+    let kernel = is_kernel_home();
+    let name = flag("--name").unwrap_or_else(repo_name);
+    let role = flag("--role").unwrap_or_else(|| {
+        if kernel {
+            "kernel".into()
+        } else {
+            "tool".into()
+        }
     });
-    let _ = fs::write(
-        capsule_path(),
-        serde_json::to_string_pretty(&capsule).unwrap(),
+    let plane = flag("--plane").unwrap_or_else(|| {
+        if kernel {
+            "orchestration".into()
+        } else {
+            "execution".into()
+        }
+    });
+    let northstar = flag("--northstar").unwrap_or_else(|| {
+        if kernel {
+            KERNEL_NORTHSTAR.to_string()
+        } else {
+            format!("(seed me) the guiding goal for {name}")
+        }
+    });
+    // Non-destructive: never clobber a curated/seeded capsule. Only write when absent.
+    let capsule_existed = capsule_path().exists();
+    if !capsule_existed {
+        let capsule = init_capsule(kernel, &name, &role, &plane, &northstar);
+        let _ = fs::write(
+            capsule_path(),
+            serde_json::to_string_pretty(&capsule).unwrap(),
+        );
+    }
+
+    // Member repos get the Tier-A README contract (kernel home has its own docs).
+    let readme = Path::new(HF).join("README.md");
+    if !kernel && !readme.exists() {
+        let body = format!(
+            "# .handoff (ADR-0004 §3.3/§6 rev)\n\n\
+            Continuity layer for `{name}`. **Committed content is git-text only** (capsule, cards,\n\
+            packets). A local `ledger.db` is **gitignored** (legitimate per-repo source of record — it\n\
+            rolls up into the FLEET ledger at `meta/.handoff/ledger.db`); a *committed* binary ledger is\n\
+            banned. This repo's packet compiles centrally via `hf fleet render {name}`. See\n\
+            `meta/handoff/FLEET_GUIDE.md`.\n\n\
+            Cold start: read `context/capsule.json`, then run `hf resume`.\n"
+        );
+        let _ = fs::write(&readme, body);
+    }
+
+    let guarded = ensure_ledger_guard();
+    let kind = if kernel { "kernel home" } else { "member" };
+    println!(
+        "hf init: {kind} `{name}` ready — {}/ (ledger, tasks, packets, context){}{}",
+        HF,
+        if capsule_existed {
+            "; capsule preserved"
+        } else {
+            "; capsule written"
+        },
+        if guarded {
+            "; .gitignore ledger guard added"
+        } else {
+            "; ledger guard present"
+        }
     );
-    println!("hf init: created {}/ (ledger, tasks, packets, context)", HF);
 }
 
 /// CLI entry for `hf claim <ID>`: exits nonzero when the claim is refused/blocked so
@@ -507,6 +670,14 @@ fn cmd_release(id: &str) {
             .is_ok()
         {
             println!("hf release: {id} -> backlog (un-claimed)");
+            // ADR-0003 rule 3 (HFTASK-0042) gap-hunt: a released kb-minted card should also
+            // revert its planning-plane status to backlog (mirrors claim → active).
+            if kb::write_back(&wo.correlation_id, &kb::KbTransition::Released) {
+                println!(
+                    "hf release: kb {} → backlog (write-back)",
+                    wo.correlation_id
+                );
+            }
         }
     }
 }
@@ -639,25 +810,37 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         std::process::exit(1);
     }
     led.record_transition(&wo, Status::Done, now_ns()).unwrap();
-    if let Some(p) = pr {
+    // HFTASK-0052 gap-hunt: auto-detect the merged PR from a prior `pr_opened` event if the
+    // user did not pass `--pr N`. This gives every merged task a `pr_merged` ledger marker.
+    let resolved_pr = pr.map(String::from).or_else(|| latest_pr_opened(&led, id));
+    if let Some(ref p) = resolved_pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
         let _ = led.append("pr_merged", id, &payload, now_ns());
-        // HFTASK-0044: a `--pr` done is the post-merge signal — the trunk now has the merge,
+        // HFTASK-0021: round-trip the merged result to the originating prompt_hub workflow
+        // via the correlation_id carried on the WorkOrder.
+        delivery::emit_delivery(&mut led, &wo, p, now_ns());
+        // HFTASK-0044: a merged done is the post-merge signal — the trunk now has the merge,
         // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
         sync_develop_to_trunk(&mut led, id);
     }
     // ADR-0003 rule 3 (HFTASK-0042): flip the kb plan to completed with evidence (no-op for
     // non-kb cards). One-way: planning is informed by execution, never read back.
-    let evidence = pr
+    let evidence = resolved_pr
+        .as_ref()
         .map(|p| format!("pr {p} merged"))
         .unwrap_or_else(|| "done".to_string());
     if kb::write_back(&wo.correlation_id, &kb::KbTransition::Done(evidence)) {
         println!("hf done: kb {} → completed (write-back)", wo.correlation_id);
     }
-    println!(
-        "hf done: {id} -> done{}",
-        pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
-    );
+    if let Some(ref p) = resolved_pr {
+        println!("hf done: {id} -> done (pr {p})");
+        println!(
+            "hf done: delivery -> {} (workflow {})",
+            p, wo.correlation_id
+        );
+    } else {
+        println!("hf done: {id} -> done");
+    }
 }
 
 /// HFTASK-0044: fast-forward the base branch (develop) to the trunk after a merge, per the
@@ -722,6 +905,22 @@ fn latest_test_passed(led: &Ledger, id: &str) -> Option<bool> {
             serde_json::from_str::<serde_json::Value>(&e.payload_json)
                 .ok()
                 .and_then(|v| v["passed"].as_bool())
+        })
+}
+
+/// HFTASK-0052 gap-hunt: if `hf done` is run after `hf ship` recorded a `pr_opened` event,
+/// derive the merged PR automatically so the ledger gets a `pr_merged` marker even when the
+/// user forgets `--pr N`. Returns `None` if no `pr_opened` event exists.
+fn latest_pr_opened(led: &Ledger, id: &str) -> Option<String> {
+    led.all_events()
+        .ok()?
+        .iter()
+        .rev()
+        .find(|e| e.event_type == "pr_opened" && e.work_order_id == id)
+        .and_then(|e| {
+            serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                .ok()
+                .and_then(|v| v["pr"].as_str().map(String::from))
         })
 }
 
@@ -1462,6 +1661,26 @@ fn cmd_seed() {
            "PRD §6/§7.2 architecture has a Daemon node that is unrealized — there is no handoffd process. Build the daemon: lease-heartbeat ticker, ledger tail/watch feed (the read-model behind hf watch / Mission Control), and a supervised resume hook, so the loop has a live process, not only one-shot CLI invocations.", &["HFTASK-0007"]),
         mk("HFTASK-0052", "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events", Priority::P1,
            "PRD §18: hooks are shell scripts, not the typed handoff.hook_event.v1 / handoff.hook_result.v1 gate contract (payload + severity + required_actions). And 6 of 12 required hook events are absent from hooks.toml: SessionResume, PreCommand, PostCommand, PreTest, PostTest, PostHandoff. Build the typed hook runner + add the missing events so lifecycle gating is a typed contract, not stringly-typed shell.", &["HFTASK-0015"]),
+        // --- Cross-repo: envctl Epic A (handoff full-sync) blockers, filed as FlexNetOS/handoff#71 ---
+        // Surfaced by the envctl maintainer agent during its agenticOS-consolidation Epic A and the
+        // 2026-06-18 forge-loop audit (envctl .handoff/loop/loop_state.md cycle-1 CARRIED FINDING +
+        // FINDING-0002). Both are KERNEL-side (out of envctl's scope) and had no HFTASK — minted here
+        // so Epic A's blocker is tracked on the handoff backlog and clearable in-loop.
+        mk("HFTASK-0053", "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary)", Priority::P1,
+           "GitHub #71 item 1 / envctl Epic A cycle-1 CARRIED FINDING: the `ledger` crate links bundled C-SQLite (rusqlite -> libsqlite3-sys). It is not an envctl no-c violation today (separate workspace) but it breaks the continuity kernel's pure-Rust / 'no C in the trust boundary' agenticOS north star. Port `ledger` off rusqlite to a pure-Rust store (libSQL Hrana `remote` like envctl's secrets store, or an embedded pure-Rust engine such as redb/sled) so `hf` builds C-free, KEEPING the witnessed append-only chain, replay, BEGIN IMMEDIATE serialization (HFTASK-0028), and rollup-provenance semantics intact. No-downgrade: a store swap, never a capability loss; re-verify witness-chain + provenance tests on the new backend. Distinct from HFTASK-0006 (RVF vector ledger axis) — this removes the C dependency.", &["HFTASK-0006"]),
+        mk("HFTASK-0054", "Issue #71.2: confirm ledger-path/member override fully covers member Tier-A (no per-repo ledger.db)", Priority::P2,
+           "GitHub #71 item 2 / envctl FINDING-0002: `hf` was strictly CWD-relative (no --ledger/HANDOFF_LEDGER), so a member repo could not render Tier-A against the shared FLEET ledger ($META_ROOT/.handoff/ledger.db) without a per-repo ledger.db that ADR-0004 forbids. `hf fleet render <member>` (PR #17, 1adbb13) partially addressed this. CONFIRM it (and add an explicit `--ledger`/HANDOFF_LEDGER override if gaps remain) fully covers member packet rendering AND seed/mint against the shared FLEET ledger with ZERO per-repo ledger.db, so envctl renders its Tier-A kernel-rendered (not git-text-only fallback) and passes its p7 gate. Verification-first: prove coverage end-to-end from a member CWD, build the override only where uncovered.", &["HFTASK-0034"]),
+        // --- Backlog reconciliation (deep design audit 2026-06-18): residual PRD commitments with no HFTASK ---
+        // A 4-agent fleet/design sweep (GitHub issues + sibling .handoff findings + PRD/ADR corpus +
+        // local surfaces) confirmed issue #71 was the only cross-repo ask, but found 3 PRD commitments
+        // still untracked after the 0039-0054 mint — same Category-2 class as the prior audit. Minted
+        // here (no-downgrade: everything originally designed MUST be built).
+        mk("HFTASK-0055", "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite)", Priority::P1,
+           "PRD §20.2/§20.3/§20.4/§20.6 — the kernel has NO property/crash/golden suite (only one concurrency test at ledger/src/lib.rs:871; no proptest dependency anywhere). The original backlog TASK-0015 'hardening suite' lost its tracking when the HFTASK-0015 slot was repurposed to the policy engine. Build: (a) §20.2 proptest property tests — random path_scopes never falsely overlap; random event streams replay to identical final state; random checkpoint interruptions preserve last valid state; packet roundtrip; (b) §20.4 crash tests — crash during claim/checkpoint/handoff/index; ledger lock held by a dead process; corrupted task YAML/JSON fails CLOSED and is NEVER silently marked done; (c) §20.3/§20.6 golden/replay + fresh-agent acceptance integration tests. Distinct from HFTASK-0045 (hf test runs a TASK's own test_commands) — this is the KERNEL's own hardening matrix.", &["HFTASK-0028"]),
+        mk("HFTASK-0056", "PRD §11.5/§15/§16 merge serialization: merge.lock/index.lock + single-writer merge (merge-steward)", Priority::P2,
+           "PRD §11.3/§11.5/§15/§16 (lines 404/419/421/612/627/640/725): the kernel specifies repo-local .handoff/locks/{merge,index}.lock and a SINGLE-WRITER merge path — 'Merge is single-writer; only the merge steward can hold merge.lock; no merge without merge lock' — plus merge-steward/conflict-arbiter roles. None exist in code: HFTASK-0048 built only the CLAIM lease lockfile, HFTASK-0009 ship leaves the merge to GitHub-native auto-merge, and grit (ADR-0009) covers the fleet-level INTENT but not the PRD's concrete merge.lock artifact + steward contract. Build merge.lock/index.lock acquisition + single-writer merge serialization gated by it. No-downgrade: an accepted PRD commitment that composes with grit and auto-merge.", &["HFTASK-0048"]),
+        mk("HFTASK-0057", "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection", Priority::P2,
+           "PRD §7.3 (lines 256-257: schemars for generation, jsonschema for validation), §20.1, §23 TASK-0002 acceptance ('JSON Schema is generated or checked in' + 'Invalid task cards fail validation'): there is NO schemars/jsonschema dependency; only 3 hand-written schemas (schemas/{task,session,packet}.schema.json) exist and nothing validates against them, so a malformed task card is NOT rejected at load. Build schema generation for the handoff.*.v1 types via schemars (or keep curated schemas in lockstep) AND wire jsonschema runtime validation so an invalid card fails closed instead of loading. No-downgrade: completes the typed-contract guarantee (HFTASK-0052 added Rust hook types but not schema gen/validation).", &["HFTASK-0001"]),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -1688,10 +1907,27 @@ fn cmd_seed() {
     );
 }
 
+/// HFTASK-0054: extract a global `--ledger <path>` flag from the raw argument list. When
+/// present, the path is exported as `HANDOFF_LEDGER` so `ledger_path()` honors it. The flag
+/// and its value are removed so subcommand dispatch stays positional.
+fn apply_ledger_flag(args: &mut Vec<String>) {
+    if let Some(pos) = args.iter().position(|a| a == "--ledger") {
+        if let Some(path) = args.get(pos + 1).cloned() {
+            std::env::set_var("HANDOFF_LEDGER", &path);
+        }
+        // Remove both tokens; if no value was provided, just drop the flag.
+        args.remove(pos);
+        if pos < args.len() {
+            args.remove(pos);
+        }
+    }
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    apply_ledger_flag(&mut args);
     match args.first().map(|s| s.as_str()) {
-        Some("init") => cmd_init(),
+        Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
         Some("claim") => {
@@ -1904,6 +2140,47 @@ fn main() {
                 }
             }
         }
+        Some("delivery") => {
+            let json = args.iter().any(|a| a == "--json");
+            match args.get(1).map(|s| s.as_str()) {
+                Some("get") => {
+                    delivery::cmd_delivery_get(args.get(2).map(|s| s.as_str()).unwrap_or(""), json)
+                }
+                Some("list") => delivery::cmd_delivery_list(json),
+                _ => {
+                    eprintln!("hf delivery: use `hf delivery get <correlation_id> [--json]` or `hf delivery list [--json]`");
+                    std::process::exit(2);
+                }
+            }
+        }
+        Some("prompt-hub") => {
+            let flag = |name: &str| {
+                args.iter()
+                    .position(|a| a == name)
+                    .and_then(|i| args.get(i + 1))
+                    .map(|s| s.as_str())
+            };
+            let scope: Option<Vec<String>> = flag("--scope").map(|s| {
+                s.split(',')
+                    .map(|g| g.trim().to_string())
+                    .filter(|g| !g.is_empty())
+                    .collect()
+            });
+            let vibe = args
+                .get(1)
+                .map(|s| s.as_str())
+                .filter(|s| !s.starts_with("--"))
+                .unwrap_or("");
+            let dispatch = args.iter().any(|a| a == "--dispatch");
+            let json = args.iter().any(|a| a == "--json");
+            if vibe.is_empty() {
+                eprintln!(
+                    "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]"
+                );
+                std::process::exit(2);
+            }
+            prompt_hub::cmd_prompt_hub(vibe, scope.as_deref(), dispatch, json);
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
@@ -1916,7 +2193,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -1924,6 +2201,37 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn init_capsule_is_portable_for_members() {
+        // Portability contract (ADR-0006): a member's capsule identifies as ITSELF and
+        // never inherits the kernel's project_name or doctrine northstar.
+        let member = init_capsule(
+            false,
+            "weave",
+            "tool",
+            "execution",
+            "(seed me) the guiding goal for weave",
+        );
+        assert_eq!(member["project_name"], "weave");
+        assert_eq!(member["role"], "tool");
+        assert_eq!(member["plane"], "execution");
+        assert_eq!(member["schema"], "handoff.context_capsule.v1");
+        assert_eq!(member["next_command"], "hf resume");
+        let ns = member["northstar"].as_str().unwrap();
+        assert!(
+            !ns.contains("KERNEL DOCTRINE"),
+            "member must not get kernel doctrine"
+        );
+
+        // The kernel home keeps its curated identity + doctrine.
+        let kernel = init_capsule(true, "handoff", "kernel", "orchestration", KERNEL_NORTHSTAR);
+        assert_eq!(kernel["project_name"], "handoff (Continuity Ledger Kernel)");
+        assert!(kernel["northstar"]
+            .as_str()
+            .unwrap()
+            .contains("KERNEL DOCTRINE"));
+    }
 
     #[test]
     fn release_unclaims_only_in_progress() {
@@ -1936,6 +2244,64 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn ledger_path_defaults_local_and_honors_handoff_ledger() {
+        // HFTASK-0054: without an override, ledger_path() is cwd-relative.
+        let prev = std::env::var("HANDOFF_LEDGER").ok();
+        std::env::remove_var("HANDOFF_LEDGER");
+        // Build the expected default the same way ledger_path() does so the
+        // assertion holds on Windows too (Path::join yields a `\` separator).
+        let default_local = Path::new(super::HF)
+            .join("ledger.db")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(super::ledger_path(), default_local);
+
+        // With the override, it points exactly at the supplied path.
+        std::env::set_var("HANDOFF_LEDGER", "/tmp/fleet.ledger.db");
+        assert_eq!(super::ledger_path(), "/tmp/fleet.ledger.db");
+
+        // Empty override is treated as unset (defensive).
+        std::env::set_var("HANDOFF_LEDGER", "");
+        assert_eq!(super::ledger_path(), default_local);
+
+        match prev {
+            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
+            None => std::env::remove_var("HANDOFF_LEDGER"),
+        }
+    }
+
+    #[test]
+    fn apply_ledger_flag_extracts_and_exports_path() {
+        // HFTASK-0054: the global `--ledger <path>` flag is stripped and exported.
+        let prev = std::env::var("HANDOFF_LEDGER").ok();
+        std::env::remove_var("HANDOFF_LEDGER");
+
+        let mut args = vec![
+            "--ledger".into(),
+            "/meta/.handoff/ledger.db".into(),
+            "status".into(),
+        ];
+        super::apply_ledger_flag(&mut args);
+        assert_eq!(
+            std::env::var("HANDOFF_LEDGER").unwrap(),
+            "/meta/.handoff/ledger.db"
+        );
+        assert_eq!(args, vec!["status"]);
+
+        // No flag => no mutation (clear the var exported above first).
+        std::env::remove_var("HANDOFF_LEDGER");
+        let mut args2 = vec!["handoff".into()];
+        super::apply_ledger_flag(&mut args2);
+        assert!(std::env::var("HANDOFF_LEDGER").is_err());
+        assert_eq!(args2, vec!["handoff"]);
+
+        match prev {
+            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
+            None => std::env::remove_var("HANDOFF_LEDGER"),
+        }
     }
 
     #[test]
@@ -1970,6 +2336,30 @@ mod tests {
         );
         // a verdict for a different task must never bleed through
         assert_eq!(latest_test_passed(&led, "HFTASK-0001"), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn latest_pr_opened_derives_merged_pr_for_done() {
+        let path = std::env::temp_dir().join(format!("hf-pr-opened-{}.db", now_ns()));
+        let p = path.to_string_lossy().to_string();
+        let mut led = Ledger::open(&p).unwrap();
+        let id = "HFTASK-9999";
+        assert_eq!(latest_pr_opened(&led, id), None, "no pr_opened yet");
+        led.append(
+            "pr_opened",
+            id,
+            &serde_json::json!({ "id": id, "branch": "feat/x", "pr": "https://github.com/FlexNetOS/handoff/pull/42", "base": "develop" }).to_string(),
+            now_ns(),
+        )
+        .unwrap();
+        assert_eq!(
+            latest_pr_opened(&led, id),
+            Some("https://github.com/FlexNetOS/handoff/pull/42".to_string()),
+            "extracts the pr url from the latest pr_opened event"
+        );
+        // a pr_opened for a different task must not bleed through
+        assert_eq!(latest_pr_opened(&led, "HFTASK-0001"), None);
         let _ = std::fs::remove_file(&path);
     }
     use work_order::{work_orders_from_bundle, SwarmBundle};

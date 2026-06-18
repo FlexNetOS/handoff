@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -29,13 +29,41 @@ jobs:
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
 
-      - uses: dtolnay/rust-toolchain@stable
+      # HFTASK-0013/0017: optional path deps live in the sibling envctl/RuVector checkouts.
+      # CI only needs the manifests to resolve; default-feature builds do not compile envctl.
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: handoff
       - name: Run tests
         working-directory: handoff
         run: cargo test --workspace
+
+  test-no-default-features:
+    name: Test (no default features)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Run tests without cognitum gate
+        working-directory: handoff
+        run: cargo test --workspace --no-default-features
 
   clippy:
     name: Clippy
@@ -49,7 +77,10 @@ jobs:
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -71,7 +102,10 @@ jobs:
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
       - name: Check formatting

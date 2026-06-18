@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0034",
   "title": "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0004 §6 (rev): flip hf/src/fleet.rs P7 enforcement — a gitignored local .handoff/ledger.db is LEGITIMATE; only a git-TRACKED .db under .handoff is a violation. Gate: fail on tracked .db; fail if the .handoff/**/ledger.db .gitignore guard is missing; a .db merely present on disk is NOT a violation (remove the stray-ledger flag at fleet.rs:102/111/145-154). Cross-fleet follow-up (other repos): envctl ci/gates/p7.sh Gate 3b removal; prompt_hub/lane member-rule capsule/README edits.",
   "path_scope": [

@@ -1,0 +1,23 @@
+[package]
+name        = "rusty-idd-core"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+license.workspace = true
+edition.workspace = true
+readme      = "README.md"
+keywords    = ["ai", "github", "merge", "automation", "rust"]
+categories  = ["command-line-utilities", "development-tools"]
+
+# Library only. The standalone `idd` binary was retired in slice 8 — its CLI is
+# now `rusty-idd <verb>` (crates/cli delegates to `cli::run` here, byte-identical).
+[lib]
+name = "rusty_idd_core"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,27 @@
+[package]
+name        = "rusty-idd-tui"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+license.workspace = true
+edition     = "2024"
+# Bound by ratatui 0.30 (>=1.86) + time 0.3.47 (>=1.88) + edition 2024 (>=1.85).
+
+# Library only. The standalone `openspec-tui` binary was retired in slice 8 —
+# the TUI is now `rusty-idd tui`, which calls `rusty_idd_tui::run()`.
+[lib]
+name = "rusty_idd_tui"
+path = "src/lib.rs"
+
+[dependencies]
+# The UI layer. The execution layer (runner/config/data) and its serde/chrono
+# deps moved to the rusty-idd-runner crate.
+ratatui = "0.30"
+crossterm = "0.29"
+tui-markdown = { version = "0.3.7", features = ["highlight-code"] }
+tempfile = "3"                                    # used in tests
+rusty-idd-runner = { path = "../runner" }
+
+[dev-dependencies]

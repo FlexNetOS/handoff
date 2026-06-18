@@ -20,4 +20,7 @@ fi
 # Witness whatever progress exists, then re-render the packet/active from ledger truth.
 "$HF" checkpoint --auto --quiet 2>/dev/null || true
 "$HF" handoff 2>/dev/null || true
+# HFTASK-0052 / fleet auto-sync: roll every member's per-repo ledger into the central
+# FLEET ledger. Best-effort and idempotent; degrades gracefully when no meta root exists.
+"$HF" sync --auto 2>/dev/null || true
 exit 0

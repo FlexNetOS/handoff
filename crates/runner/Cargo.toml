@@ -1,0 +1,26 @@
+[package]
+name        = "rusty-idd-runner"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+license.workspace = true
+edition     = "2024"
+# Edition 2024 needs >=1.85; runner.rs uses `let ... && let ...` chains stabilized in 1.88.
+
+[lib]
+name = "rusty_idd_runner"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Maintained serde_yaml fork (mdBook/Norway ecosystem). Replaces the archived
+# serde_yaml 0.9 (RUSTSEC: unmaintained). API-compatible drop-in. NOT serde_yml
+# (RUSTSEC-2025-0068, unsound). Matches the spec-engine design's YAML choice.
+serde_norway = "0.9"
+
+[dev-dependencies]
+tempfile = "3"

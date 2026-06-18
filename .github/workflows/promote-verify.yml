@@ -1,0 +1,129 @@
+name: Promote Verify
+
+# rusty-idd two-tier promote-verify gate: develop -> master must pass a clean-merge
+# probe, locked build/test, drift, fmt/clippy, and cargo audit --deny warnings.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  merge-probe:
+    name: Clean merge probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Probe develop -> master merge
+        run: |
+          git fetch origin develop
+          git checkout origin/master
+          git merge --no-commit --no-ff origin/develop
+
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      # Mirror ci.yml's checkout layout: the repo lives under handoff/ so the
+      # ledger/hf path deps (../../RuVector, ../../envctl) resolve to sibling
+      # clones at the workspace root.
+      - uses: actions/checkout@v6
+        with:
+          path: handoff
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        shell: bash
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+      - name: Clone envctl provider (envctl)
+        shell: bash
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Run tests
+        working-directory: handoff
+        run: cargo test --workspace
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: handoff
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Run clippy
+        working-directory: handoff
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: handoff
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Check formatting
+        working-directory: handoff
+        run: cargo fmt -p hf -p ledger -p work-order -- --check
+
+  drift:
+    name: Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: handoff
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      - name: Build hf
+        working-directory: handoff
+        run: cargo build -p hf
+      - name: Run hf drift
+        working-directory: handoff
+        run: ./target/debug/hf drift
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

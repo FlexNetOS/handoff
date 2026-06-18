@@ -1,0 +1,32 @@
+[package]
+name        = "rusty-idd-spec"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+license.workspace = true
+edition     = "2021"
+# Bound by transitive dep time 0.3.47 (rustc >=1.88) via comrak->syntect. >= core (1.74).
+
+[lib]
+name = "rusty_idd_spec"
+path = "src/lib.rs"
+
+# Edge dependencies only. The `model/` submodule stays parser/serde/io-free
+# (the hexagonal wall, per spec-engine-design.md §1, §3). comrak lives in
+# `parse/`, serde in `validate/report.rs`.
+[dependencies]
+comrak = "0.52"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Maintained serde_yaml fork for loading schema.yaml (design §1). NOT serde_yaml
+# (archived) / serde_yml (unsound). Same choice as crates/runner.
+serde_norway = "0.9"
+# Template engine for artifact scaffolding (design §1: minijinja preferred —
+# lighter, fewer deps than Tera).
+minijinja = "2"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"

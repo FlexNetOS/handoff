@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["work-order", "ledger", "hf"]
+members = ["work-order", "ledger", "hf", "cli", "core", "runner", "spec", "tui"]
 
 [workspace.package]
 edition = "2021"
+version = "0.1.0"
 license = "Apache-2.0 OR MIT"

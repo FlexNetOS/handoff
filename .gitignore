@@ -1,10 +1,13 @@
 /target
+node_modules/
 # HFTASK-0035 (ADR-0004 §3.3/§6 rev): the local ledger is gitignored (legitimate per-repo
 # source of record, never committed). `**` also covers the top-level path + grit worktrees.
 .handoff/**/ledger.db
 .handoff/**/*.db-wal
 .handoff/**/*.db-shm
+.handoff/**/*.rvf
 /.handoff/packets/
+/.handoff/workspaces/
 
 .grit
 /_workspace/
@@ -16,3 +19,8 @@
 # HFTASK-0048: the on-disk lock mirror is ephemeral advisory state (the ledger is
 # authoritative); like the ledger.db, it is never committed.
 /.handoff/locks/
+
+# HFTASK-0021: delivery artifacts are generated from the authoritative ledger events
+# (`.handoff/deliveries/<correlation_id>.delivery.json`). They are a front-door polling cache,
+# not source truth, so they are never committed.
+/.handoff/deliveries/
