@@ -13,6 +13,7 @@ mod branch;
 mod contract;
 mod fleet;
 mod gates;
+mod hooks;
 mod intake;
 mod kb;
 mod lease;
@@ -1800,6 +1801,36 @@ fn main() {
         }
         Some("session") => session::cmd_session(&args[1..]),
         Some("drift") => gates::cmd_drift(args.iter().any(|a| a == "--json")),
+        Some("hook") => {
+            let json = args.iter().any(|a| a == "--json");
+            match args.get(1).map(|s| s.as_str()) {
+                Some("list") => hooks::cmd_hook_list(json),
+                Some("run") => {
+                    let event = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                    // optional `--payload <json>`
+                    let payload = args
+                        .iter()
+                        .position(|a| a == "--payload")
+                        .and_then(|i| args.get(i + 1))
+                        .map(|s| s.as_str());
+                    // Witness each typed result as a `hook_result` ledger event (best-effort).
+                    let code = hooks::cmd_hook_run(event, payload, json, |r| {
+                        if let Ok(mut led) = Ledger::open(&ledger_path()) {
+                            if let Ok(p) = serde_json::to_string(r) {
+                                let _ = led.append("hook_result", &r.event, &p, now_ns());
+                            }
+                        }
+                    });
+                    if code != 0 {
+                        std::process::exit(code);
+                    }
+                }
+                _ => {
+                    eprintln!("hf hook: use `hf hook list` or `hf hook run <event> [--payload <json>] [--json]`");
+                    std::process::exit(2);
+                }
+            }
+        }
         Some("policy")
             if args
                 .get(1)

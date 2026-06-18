@@ -63,3 +63,49 @@ event = "PostMerge"
 command = "hf sync --auto"               # HFTASK-0011
 timeout_seconds = 45
 fail_mode = "warn"
+
+# --- HFTASK-0052: the 6 PRD §18 events that complete the 12-event typed contract.
+# Fired via `hf hook run <event>`, which wraps each command in the typed
+# handoff.hook_event.v1 / handoff.hook_result.v1 envelope (severity + required_actions).
+
+[[hooks]]
+# Resuming an existing session (vs a cold SessionStart): rehydrate without re-preflight.
+event = "SessionResume"
+command = "hf resume --compact"
+timeout_seconds = 10
+fail_mode = "warn"
+
+[[hooks]]
+# Before the agent runs a shell command: confirm a task is claimed (no unclaimed mutation).
+event = "PreCommand"
+command = "hf policy check-claim --json"
+timeout_seconds = 10
+fail_mode = "warn"
+
+[[hooks]]
+# After a command: opportunistic checkpoint so progress is witnessed.
+event = "PostCommand"
+command = "hf checkpoint --auto --quiet"
+timeout_seconds = 30
+fail_mode = "warn"
+
+[[hooks]]
+# Before running tests: ensure the working tree is in-scope for the claimed task.
+event = "PreTest"
+command = "hf policy check-edit --json"
+timeout_seconds = 10
+fail_mode = "warn"
+
+[[hooks]]
+# After tests: run the drift sentinel so a green test run that drifted scope is caught.
+event = "PostTest"
+command = "hf drift --json"
+timeout_seconds = 30
+fail_mode = "block"
+
+[[hooks]]
+# After a handoff packet renders: a final drift gate so the packet reflects clean truth.
+event = "PostHandoff"
+command = "hf drift --json"
+timeout_seconds = 30
+fail_mode = "warn"
