@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["work-order", "ledger", "hf"]
+members = ["work-order", "ledger", "hf", "cli", "core", "runner", "spec", "tui"]
 
 [workspace.package]
 edition = "2021"
