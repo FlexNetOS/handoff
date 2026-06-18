@@ -94,18 +94,6 @@ fn claimed_scopes(tasks: &[WorkOrder], replay: &[(String, Status)]) -> (Vec<Stri
 
 // --- hf drift (HFTASK-0005, expanded to the §12.3 sentinel by HFTASK-0046) -------
 
-/// Per-component intent_lock match for a card: (objective, path_scope, acceptance).
-/// Pure: recompute each hash from the body and compare to the stored lock (HFTASK-0046,
-/// the granular form of `intent_unchanged` so drift can name WHICH component moved).
-fn intent_component_match(t: &WorkOrder) -> (bool, bool, bool) {
-    let fresh = WorkOrder::compute_intent_lock(&t.objective, &t.path_scope, &t.acceptance_criteria);
-    (
-        fresh.objective_hash == t.intent_lock.objective_hash,
-        fresh.path_scope_hash == t.intent_lock.path_scope_hash,
-        fresh.acceptance_hash == t.intent_lock.acceptance_hash,
-    )
-}
-
 /// A decision/architecture surface: changing it should be accompanied by an ADR/decision
 /// record. Pure (HFTASK-0046, the §12.3 "undocumented architecture change" sentinel).
 fn is_decision_surface(path: &str) -> bool {
@@ -154,6 +142,8 @@ struct DriftReport {
     objective_hash_match: bool,
     path_scope_match: bool,
     acceptance_hash_match: bool,
+    constraint_hash_match: bool,
+    northstar_revision_match: bool,
     out_of_scope_files: Vec<String>,
     missing_evidence: Vec<String>,
     acceptance_without_tests: Vec<String>,
@@ -161,6 +151,9 @@ struct DriftReport {
     undocumented_decisions: Vec<String>,
     drift: Vec<String>,
     required_actions: Vec<String>,
+    /// Tasks whose 5-surface intent_lock drifted this run → the `task_intent_changed` witnesses
+    /// `cmd_drift` will append (deduped). (id, changed surface names, observed-lock signature).
+    intent_changed: Vec<(String, Vec<&'static str>, String)>,
 }
 
 impl DriftReport {
@@ -182,6 +175,8 @@ fn detect() -> DriftReport {
         objective_hash_match: true,
         path_scope_match: true,
         acceptance_hash_match: true,
+        constraint_hash_match: true,
+        northstar_revision_match: true,
         out_of_scope_files: vec![],
         missing_evidence: vec![],
         acceptance_without_tests: vec![],
@@ -189,31 +184,73 @@ fn detect() -> DriftReport {
         undocumented_decisions: vec![],
         drift: vec![],
         required_actions: vec![],
+        intent_changed: vec![],
     };
 
-    // 1–3) per-component intent_lock drift (body edited without re-locking).
+    // 1–3, 9–10) per-surface intent_lock drift across all FIVE surfaces (HFTASK-0047). The
+    // constraint/northstar checks no-op on a legacy partial lock (empty fields), so old cards
+    // are never spuriously flagged.
+    let ns_rev = crate::current_northstar_revision();
     for t in &tasks {
-        let (obj, scope, acc) = intent_component_match(t);
-        if !obj {
+        let c = t.intent_components(&ns_rev);
+        let mut changed: Vec<&'static str> = vec![];
+        if !c.objective {
             r.objective_hash_match = false;
+            changed.push("objective");
             r.drift
                 .push(format!("objective drift: {} (re-mint/reclaim)", t.id));
             r.required_actions
                 .push(format!("re-lock {} objective", t.id));
         }
-        if !scope {
+        if !c.path_scope {
             r.path_scope_match = false;
+            changed.push("path_scope");
             r.drift
                 .push(format!("path_scope drift: {} (re-lock)", t.id));
             r.required_actions
                 .push(format!("re-lock {} path_scope", t.id));
         }
-        if !acc {
+        if !c.acceptance {
             r.acceptance_hash_match = false;
+            changed.push("acceptance");
             r.drift
                 .push(format!("acceptance drift: {} (re-lock)", t.id));
             r.required_actions
                 .push(format!("re-lock {} acceptance", t.id));
+        }
+        if !c.constraint {
+            r.constraint_hash_match = false;
+            changed.push("constraint");
+            r.drift.push(format!(
+                "constraint drift: {} — permission/dependency surface changed without re-lock (§12.1)",
+                t.id
+            ));
+            r.required_actions
+                .push(format!("re-lock {} constraint surface", t.id));
+        }
+        if !c.northstar {
+            r.northstar_revision_match = false;
+            changed.push("northstar");
+            r.drift.push(format!(
+                "northstar drift: {} — minted against a superseded doctrine revision (re-mint)",
+                t.id
+            ));
+            r.required_actions
+                .push(format!("re-mint {} against the current North Star", t.id));
+        }
+        if !changed.is_empty() {
+            // observed signature = the live recomputed 5-surface lock, so repeated `hf drift`
+            // runs over the same mutated card dedupe to one witnessed event.
+            let live = t.full_intent_lock(&ns_rev);
+            let sig = format!(
+                "{}|{}|{}|{}|{}",
+                live.objective_hash,
+                live.path_scope_hash,
+                live.acceptance_hash,
+                live.constraint_hash,
+                live.northstar_revision
+            );
+            r.intent_changed.push((t.id.clone(), changed, sig));
         }
     }
 
@@ -310,9 +347,51 @@ fn detect_drift() -> (Vec<String>, bool) {
     (r.drift.clone(), r.clean())
 }
 
+/// HFTASK-0047: witness each newly-observed intent mutation as a `handoff.task_intent_changed.v1`
+/// event, deduped by the observed 5-surface lock signature so repeated `hf drift` runs over the
+/// same mutated card append at most one event per distinct mutation. Best-effort (a witness, not
+/// a gate): a ledger-open failure never changes the drift verdict.
+fn emit_intent_changed(report: &DriftReport) {
+    if report.intent_changed.is_empty() {
+        return;
+    }
+    let path = Path::new(HF).join("ledger.db");
+    let Ok(mut led) = Ledger::open(&path.to_string_lossy()) else {
+        return;
+    };
+    // latest observed signature already witnessed per task
+    let mut last_sig: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Ok(events) = led.all_events() {
+        for e in events {
+            if e.event_type != "task_intent_changed" {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&e.payload_json) {
+                if let Some(sig) = v["observed"].as_str() {
+                    last_sig.insert(e.work_order_id, sig.to_string());
+                }
+            }
+        }
+    }
+    for (id, surfaces, sig) in &report.intent_changed {
+        if last_sig.get(id).map(|s| s == sig).unwrap_or(false) {
+            continue; // already witnessed this exact mutation
+        }
+        let payload = serde_json::json!({
+            "schema": "handoff.task_intent_changed.v1",
+            "id": id,
+            "changed_surfaces": surfaces,
+            "observed": sig,
+        })
+        .to_string();
+        let _ = led.append("task_intent_changed", id, &payload, crate::now_ns());
+    }
+}
+
 pub fn cmd_drift(json: bool) {
     let r = detect();
     let clean = r.clean();
+    emit_intent_changed(&r);
     if json {
         let out = serde_json::json!({
             "schema": "handoff.drift_report.v1",
@@ -320,6 +399,9 @@ pub fn cmd_drift(json: bool) {
             "objective_hash_match": r.objective_hash_match,
             "path_scope_match": r.path_scope_match,
             "acceptance_hash_match": r.acceptance_hash_match,
+            "constraint_hash_match": r.constraint_hash_match,
+            "northstar_revision_match": r.northstar_revision_match,
+            "intent_changed": r.intent_changed.iter().map(|(id, s, _)| serde_json::json!({"id": id, "changed_surfaces": s})).collect::<Vec<_>>(),
             "out_of_scope_files": r.out_of_scope_files,
             "missing_evidence": r.missing_evidence,
             "acceptance_without_tests": r.acceptance_without_tests,
@@ -473,7 +555,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{glob_match, intent_component_match, is_decision_surface};
+    use super::{glob_match, is_decision_surface};
     use work_order::WorkOrder;
 
     #[test]
@@ -489,21 +571,21 @@ mod tests {
 
     #[test]
     fn intent_components_detect_each_edit() {
-        // A freshly-locked card matches on all three components; mutating the objective trips
-        // only objective; mutating acceptance trips only acceptance (HFTASK-0046 granularity).
+        // A freshly-locked card matches on all five surfaces; mutating one surface trips only
+        // that surface (HFTASK-0046 granularity, extended to the §12.1 constraint surface by
+        // HFTASK-0047).
         let mk = |obj: &str, scope: &[&str], acc: &[&str]| {
             let path_scope: Vec<String> = scope.iter().map(|s| s.to_string()).collect();
             let acceptance: Vec<String> = acc.iter().map(|s| s.to_string()).collect();
-            let intent_lock = WorkOrder::compute_intent_lock(obj, &path_scope, &acceptance);
-            WorkOrder {
+            let mut wo = WorkOrder {
                 schema: "handoff.task.v1".into(),
                 id: "T".into(),
                 title: "t".into(),
                 status: work_order::Status::Claimed,
                 priority: work_order::Priority::P1,
                 objective: obj.into(),
-                path_scope,
-                acceptance_criteria: acceptance,
+                path_scope: path_scope.clone(),
+                acceptance_criteria: acceptance.clone(),
                 test_commands: vec![],
                 dependencies: vec![],
                 blocked_by: vec![],
@@ -511,17 +593,26 @@ mod tests {
                 allows_dependency_addition: false,
                 correlation_id: String::new(),
                 role: None,
-                intent_lock,
-            }
+                intent_lock: WorkOrder::compute_intent_lock(obj, &path_scope, &acceptance),
+            };
+            // promote to a full 5-surface lock so constraint/northstar are under contract
+            wo.intent_lock = wo.full_intent_lock("blake3:rev-1");
+            wo
         };
         let good = mk("obj", &["handoff/**"], &["ok"]);
-        assert_eq!(intent_component_match(&good), (true, true, true));
+        assert!(good.intent_components("blake3:rev-1").all_match());
         let mut tampered = good.clone();
         tampered.objective = "changed".into();
-        assert_eq!(intent_component_match(&tampered), (false, true, true));
+        let c = tampered.intent_components("blake3:rev-1");
+        assert!(!c.objective && c.path_scope && c.acceptance && c.constraint && c.northstar);
         let mut acc_tampered = good.clone();
         acc_tampered.acceptance_criteria = vec!["different".into()];
-        assert_eq!(intent_component_match(&acc_tampered), (true, true, false));
+        let c = acc_tampered.intent_components("blake3:rev-1");
+        assert!(c.objective && c.path_scope && !c.acceptance);
+        // constraint surface drift
+        let mut con_tampered = good.clone();
+        con_tampered.allows_network = true;
+        assert!(!con_tampered.intent_components("blake3:rev-1").constraint);
     }
 
     #[test]

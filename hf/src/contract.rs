@@ -73,6 +73,11 @@ pub struct CompletionEvidence {
     pub status: Status,
     /// Number of witnessed checkpoint transitions for the task in the ledger.
     pub checkpoints: usize,
+    /// Current capsule North-Star doctrine hash (HFTASK-0047). Used to discharge the
+    /// `intent:northstar` obligation when the recorded lock carries that surface. Empty is
+    /// acceptable for a legacy partial lock (the obligation is simply not raised).
+    #[allow(dead_code)]
+    pub northstar_revision: String,
 }
 
 /// A machine-checked AgentContract proof, carrying the real `ruvector-verified` receipt.
@@ -167,6 +172,50 @@ pub fn prove_contract(
         }
     }
 
+    // The two HFTASK-0047 surfaces (§12.1 constraint + capsule North-Star). Each obligation is
+    // raised ONLY when the recorded lock actually carries that surface — a legacy partial lock
+    // (empty field) raises nothing, so existing 3-obligation proofs are unchanged (no-downgrade).
+    let extra: [(&'static str, &'static str, &str, String); 2] = [
+        (
+            "intent:constraint",
+            "constraint",
+            recorded.constraint_hash.as_str(),
+            if recorded.constraint_hash.is_empty() {
+                String::new()
+            } else {
+                task.constraint_hash()
+            },
+        ),
+        (
+            "intent:northstar",
+            "northstar",
+            recorded.northstar_revision.as_str(),
+            evidence.northstar_revision.clone(),
+        ),
+    ];
+    for (name, field, rec, red) in extra {
+        if rec.is_empty() {
+            continue; // legacy partial lock — surface not under contract
+        }
+        match discharge(&mut env, rec, &red) {
+            Ok(Some(proof_term)) => {
+                last_proof_id = proof_term;
+                obligations.push(Obligation { name, proof_term });
+            }
+            Ok(None) => {
+                return Err(ProofError::IntentDrift {
+                    task: task.id.clone(),
+                    field,
+                })
+            }
+            Err(()) => {
+                return Err(ProofError::EnvironmentBroken {
+                    task: task.id.clone(),
+                })
+            }
+        }
+    }
+
     // Completion obligation — only when the task is being handed off AS COMPLETE.
     if matches!(evidence.status, Status::Review | Status::Done) {
         // Decide on the flag, then witness it: completion holds iff ≥1 witnessed checkpoint.
@@ -215,6 +264,10 @@ fn content_hash(task: &str, obligations: &[Obligation], lock: &work_order::Inten
     lock.objective_hash.hash(&mut h);
     lock.path_scope_hash.hash(&mut h);
     lock.acceptance_hash.hash(&mut h);
+    // HFTASK-0047 surfaces — empty on a legacy partial lock, so the binding is byte-stable for
+    // pre-0047 contracts (hashing "" is a no-op for those).
+    lock.constraint_hash.hash(&mut h);
+    lock.northstar_revision.hash(&mut h);
     h.finish()
 }
 
@@ -277,14 +330,19 @@ mod tests {
         }
     }
 
+    fn ev(status: Status, checkpoints: usize) -> CompletionEvidence {
+        CompletionEvidence {
+            status,
+            checkpoints,
+            northstar_revision: String::new(),
+        }
+    }
+
     #[test]
     fn intact_contract_proves_intent_obligations() {
         let task = mk_task(Status::Checkpointed);
-        let ev = CompletionEvidence {
-            status: Status::Checkpointed,
-            checkpoints: 1,
-        };
-        let proof = prove_contract(&task, &ev).expect("intact contract should prove");
+        let proof = prove_contract(&task, &ev(Status::Checkpointed, 1))
+            .expect("intact contract should prove");
         // Mid-work (not complete): exactly the 3 intent-integrity obligations, no completion.
         assert_eq!(proof.obligations.len(), 3);
         assert_eq!(proof.proof_terms, 3);
@@ -301,11 +359,8 @@ mod tests {
         let mut task = mk_task(Status::Checkpointed);
         // Mutate the objective WITHOUT re-locking: the recorded hash no longer matches.
         task.objective = "a different objective entirely".to_string();
-        let ev = CompletionEvidence {
-            status: Status::Checkpointed,
-            checkpoints: 1,
-        };
-        let err = prove_contract(&task, &ev).expect_err("drift must fail closed");
+        let err = prove_contract(&task, &ev(Status::Checkpointed, 1))
+            .expect_err("drift must fail closed");
         assert_eq!(
             err,
             ProofError::IntentDrift {
@@ -318,11 +373,8 @@ mod tests {
     #[test]
     fn complete_task_with_checkpoint_proves_completion() {
         let task = mk_task(Status::Done);
-        let ev = CompletionEvidence {
-            status: Status::Done,
-            checkpoints: 2,
-        };
-        let proof = prove_contract(&task, &ev).expect("done + checkpoint should prove");
+        let proof =
+            prove_contract(&task, &ev(Status::Done, 2)).expect("done + checkpoint should prove");
         // 3 intent + 1 completion.
         assert_eq!(proof.obligations.len(), 4);
         assert!(proof.obligations.iter().any(|o| o.name == "completion"));
@@ -331,11 +383,8 @@ mod tests {
     #[test]
     fn complete_task_without_checkpoint_is_unproven() {
         let task = mk_task(Status::Done);
-        let ev = CompletionEvidence {
-            status: Status::Done,
-            checkpoints: 0, // never checkpointed → unproven completion
-        };
-        let err = prove_contract(&task, &ev).expect_err("no checkpoint must block");
+        let err =
+            prove_contract(&task, &ev(Status::Done, 0)).expect_err("no checkpoint must block");
         match err {
             ProofError::UnprovenCompletion { task, .. } => assert_eq!(task, "HFTASK-TEST"),
             other => panic!("expected UnprovenCompletion, got {other:?}"),
@@ -345,12 +394,8 @@ mod tests {
     #[test]
     fn attestation_is_deterministic() {
         let task = mk_task(Status::Checkpointed);
-        let ev = CompletionEvidence {
-            status: Status::Checkpointed,
-            checkpoints: 1,
-        };
-        let a = prove_contract(&task, &ev).unwrap();
-        let b = prove_contract(&task, &ev).unwrap();
+        let a = prove_contract(&task, &ev(Status::Checkpointed, 1)).unwrap();
+        let b = prove_contract(&task, &ev(Status::Checkpointed, 1)).unwrap();
         // The content binding + the proof/environment hashes are deterministic for the same
         // contract (the attestation's wall-clock timestamp is the only varying field).
         assert_eq!(a.content_hash, b.content_hash);
@@ -359,5 +404,78 @@ mod tests {
             a.attestation.environment_hash,
             b.attestation.environment_hash
         );
+    }
+
+    #[test]
+    fn full_lock_proves_five_intent_obligations() {
+        // HFTASK-0047: a 5-field lock raises the two extra obligations and they discharge.
+        let mut task = mk_task(Status::Checkpointed);
+        task.intent_lock = task.full_intent_lock("blake3:northstar-rev-1");
+        let mut evidence = ev(Status::Checkpointed, 1);
+        evidence.northstar_revision = "blake3:northstar-rev-1".to_string();
+        let proof = prove_contract(&task, &evidence).expect("full contract should prove");
+        // 3 base + constraint + northstar = 5 intent obligations (mid-work, no completion).
+        assert_eq!(proof.obligations.len(), 5);
+        assert!(proof
+            .obligations
+            .iter()
+            .any(|o| o.name == "intent:constraint"));
+        assert!(proof
+            .obligations
+            .iter()
+            .any(|o| o.name == "intent:northstar"));
+    }
+
+    #[test]
+    fn constraint_drift_on_full_lock_blocks_handoff() {
+        let mut task = mk_task(Status::Checkpointed);
+        task.intent_lock = task.full_intent_lock("blake3:rev-1");
+        // Mutate the permission surface WITHOUT re-locking.
+        task.allows_network = !task.allows_network;
+        let mut evidence = ev(Status::Checkpointed, 1);
+        evidence.northstar_revision = "blake3:rev-1".to_string();
+        let err = prove_contract(&task, &evidence).expect_err("constraint drift must fail closed");
+        assert_eq!(
+            err,
+            ProofError::IntentDrift {
+                task: "HFTASK-TEST".to_string(),
+                field: "constraint",
+            }
+        );
+    }
+
+    #[test]
+    fn northstar_revision_drift_blocks_handoff() {
+        let mut task = mk_task(Status::Checkpointed);
+        task.intent_lock = task.full_intent_lock("blake3:rev-1");
+        let mut evidence = ev(Status::Checkpointed, 1);
+        evidence.northstar_revision = "blake3:rev-2".to_string(); // doctrine moved under it
+        let err = prove_contract(&task, &evidence).expect_err("northstar drift must fail closed");
+        assert_eq!(
+            err,
+            ProofError::IntentDrift {
+                task: "HFTASK-TEST".to_string(),
+                field: "northstar",
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_partial_lock_raises_no_extra_obligations() {
+        // No-downgrade: a pre-0047 lock still proves exactly 3 intent obligations even when the
+        // evidence carries a northstar revision (the surface is not under that contract).
+        let task = mk_task(Status::Checkpointed);
+        let mut evidence = ev(Status::Checkpointed, 1);
+        evidence.northstar_revision = "blake3:rev-1".to_string();
+        let proof = prove_contract(&task, &evidence).expect("legacy contract still proves");
+        assert_eq!(proof.obligations.len(), 3);
+        assert!(!proof
+            .obligations
+            .iter()
+            .any(|o| o.name == "intent:constraint"));
+        assert!(!proof
+            .obligations
+            .iter()
+            .any(|o| o.name == "intent:northstar"));
     }
 }
