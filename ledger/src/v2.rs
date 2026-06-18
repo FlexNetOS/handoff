@@ -151,15 +151,21 @@ impl Ledger {
         if results.is_empty() {
             return Ok(Vec::new());
         }
-        let ids: HashSet<u64> = results.iter().map(|r| r.id).collect();
-        let rows: Vec<EventRow> = self
+        let order: Vec<u64> = results.iter().map(|r| r.id).collect();
+        let ids: HashSet<u64> = order.iter().copied().collect();
+        let mut rows: Vec<EventRow> = self
             .v1
             .all_events()?
             .into_iter()
             .filter(|r| ids.contains(&r.seq))
             .collect();
+        rows.sort_by_key(|r| {
+            order
+                .iter()
+                .position(|id| *id == r.seq)
+                .unwrap_or(usize::MAX)
+        });
         Ok(rows)
-    }
 
     // ------------------------------------------------------------------
     // Delegated v1 API (authoritative structured storage / witness / lease)
