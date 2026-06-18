@@ -164,6 +164,105 @@ fn cmd_claim(id: &str) {
 /// router (HFTASK-0018, ADR-0012) instead of the topologically-first `next_safe`. Resumes an
 /// in-progress task if one exists (same precedence as `next_safe`); otherwise routes over the
 /// ready backlog candidates (deps all Done) and claims the winner.
+/// HFTASK-0049: `hf claim --next` — claim the next safe task by topological/dependency order
+/// (resume an in-progress task first, else the first ready backlog card). The value-routed
+/// sibling is `hf claim --batch` (ADR-0012 bandit); `--next` is the deterministic claim.
+fn cmd_claim_next() {
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    match next_safe(&tasks, &replay) {
+        Some(t) => {
+            let id = t.id.clone();
+            cmd_claim(&id);
+        }
+        None => {
+            eprintln!("hf claim --next: no safe task (all done or blocked)");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// HFTASK-0049: `hf doctor` — kernel health diagnostics. Verifies the witness chain
+/// (tamper-evidence), reports event/task counts and the next safe task, and checks ledger
+/// residency (the local ledger lives under `.handoff/`). Exits nonzero if the witness chain
+/// is broken or the ledger is unreadable — fail-closed, so a hook/CI can gate on it.
+fn cmd_doctor(json: bool) {
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    let done = tasks
+        .iter()
+        .filter(|t| status_of(&t.id, &replay, t) == Status::Done)
+        .count();
+    let ledger_present = Path::new(&ledger_path()).exists();
+    let chain = Ledger::open(&ledger_path()).and_then(|l| l.verify_witness_chain());
+    let (chain_ok, events) = match chain {
+        Ok(n) => (true, n),
+        Err(_) => (false, 0),
+    };
+    let next = next_safe(&tasks, &replay).map(|t| t.id.clone());
+    let healthy = chain_ok && ledger_present;
+    if json {
+        let out = serde_json::json!({
+            "schema": "handoff.doctor.v1",
+            "healthy": healthy,
+            "witness_chain_ok": chain_ok,
+            "witnessed_events": events,
+            "ledger_present": ledger_present,
+            "ledger_path": ledger_path(),
+            "tasks_total": tasks.len(),
+            "done": done,
+            "remaining": tasks.len() - done,
+            "next_task_id": next,
+        });
+        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else {
+        println!("=== hf doctor ===");
+        println!(
+            "  witness chain : {}  ({events} witnessed events)",
+            if chain_ok {
+                "OK (tamper-evident)"
+            } else {
+                "BROKEN"
+            }
+        );
+        println!(
+            "  ledger        : {} @ {}",
+            if ledger_present { "present" } else { "MISSING" },
+            ledger_path()
+        );
+        println!("  tasks         : {done}/{} done", tasks.len());
+        println!(
+            "  next safe     : {}",
+            next.as_deref().unwrap_or("(none — all done or blocked)")
+        );
+        println!(
+            "  health        : {}",
+            if healthy { "OK" } else { "DEGRADED" }
+        );
+    }
+    if !healthy {
+        std::process::exit(1);
+    }
+}
+
+/// HFTASK-0049: `hf reconcile` — re-apply state precedence (Git > ledger > cards > packet):
+/// sync each card's status to ledger truth and re-render the packet from the live ledger, so
+/// the derived views match reality. Never edits the ledger (the source of truth) — this is the
+/// verb the docs' precedence rule tells an agent to run when views look stale.
+fn cmd_reconcile() {
+    let n = sync_cards();
+    let tasks = load_tasks();
+    let replay = current_statuses();
+    let witness = Ledger::open(&ledger_path())
+        .and_then(|l| l.verify_witness_chain())
+        .unwrap_or(0);
+    let md = render_packet_md(&tasks, &replay, witness);
+    let _ = std::fs::write(packet_path(), &md);
+    println!(
+        "hf reconcile: synced {n} card(s) to ledger truth; re-rendered packet ({witness} witnessed events)"
+    );
+}
+
 /// HFTASK-0043: replay the ledger's task_transition history into per-context-bucket outcome
 /// counts for the bandit. `done` = success; a transition back to Backlog from an in-progress
 /// state (release/reopen) = failure. Tasks not in the current backlog are ignored. The ledger
@@ -1463,10 +1562,14 @@ fn main() {
         Some("claim") => {
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
                 cmd_claim_batch();
+            } else if args.iter().any(|a| a == "--next") {
+                cmd_claim_next();
             } else {
                 cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or(""));
             }
         }
+        Some("doctor") => cmd_doctor(args.iter().any(|a| a == "--json")),
+        Some("reconcile") => cmd_reconcile(),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("checkpoint") => {
             let auto = args.iter().any(|a| a == "--auto");
@@ -1637,7 +1740,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
