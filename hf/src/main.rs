@@ -1326,7 +1326,7 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
             "pr": meta.url,
             "number": meta.number,
             "reason": "protected files touched",
-            "protected_files": hits,
+            "protected_files": &hits,
             "task_id": task_id,
         })
         .to_string();
