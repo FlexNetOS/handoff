@@ -9,6 +9,10 @@ description = "hf — the .handoff continuity CLI (S1 spike: init/seed/claim/che
 name = "hf"
 path = "src/main.rs"
 
+[[bin]]
+name = "hf-mcp"
+path = "src/bin/hf-mcp.rs"
+
 [dependencies]
 work-order = { path = "../work-order" }
 ledger = { path = "../ledger" }
