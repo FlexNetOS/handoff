@@ -175,6 +175,88 @@ pub fn cmd_mint_from_kb(slug: &str) {
     println!("  next: hf claim {id}");
 }
 
+// --- ADR-0003 rule 3: kb task write-back (OUT direction, HFTASK-0042) -------------------
+//
+// The seam above is INward (kb plan → handoff card). This is the OUTward write-back: as the
+// execution plane advances a card minted from a kb task, it flips that kb task's status and
+// appends a progress line — so the planning plane reflects execution. STILL ONE-WAY: the kb is
+// never read back as execution truth (ADR-0003); we only *inform* it. Best-effort + degrading:
+// a card whose `correlation_id` is not a kb slug, an absent meta `.kb/`, or an absent `git-kb`
+// all make write-back a silent no-op (exactly how the weave-lease bridge degrades).
+
+/// The execution transition being mirrored back to the kb task.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KbTransition {
+    /// `hf claim` → kb status `active`.
+    Claimed,
+    /// `hf checkpoint`/`hf handoff` → append a progress line (status unchanged).
+    Progress(String),
+    /// `hf done` → kb status `completed`, with an evidence progress line.
+    Done(String),
+}
+
+/// True iff `correlation_id` is shaped like a kb slug (e.g. `tasks/foo`). The seam stamps the
+/// slug as the card's `correlation_id`; handoff's own cards use `handoff-buildout` and intake
+/// cards use a workflow UUID — neither contains '/', so they are never written back.
+pub fn is_kb_slug(correlation_id: &str) -> bool {
+    correlation_id.contains('/') && !correlation_id.trim().is_empty()
+}
+
+/// Pure: map a transition to the `git-kb set` field assignments + the commit message. Split
+/// out so the write-back contract is unit-testable without git-kb. `+progress=` appends to the
+/// frontmatter `progress` array (git-kb's `+field:value` array-add), so progress accrues.
+pub fn writeback_args(slug: &str, t: &KbTransition) -> (Vec<String>, String) {
+    match t {
+        KbTransition::Claimed => (
+            vec!["status=active".to_string()],
+            format!("handoff write-back: {slug} claimed → active"),
+        ),
+        KbTransition::Progress(note) => (
+            vec![format!("+progress={}", sanitize(note))],
+            format!("handoff write-back: {slug} progress"),
+        ),
+        KbTransition::Done(evidence) => (
+            vec![
+                "status=completed".to_string(),
+                format!("+progress=completed: {}", sanitize(evidence)),
+            ],
+            format!("handoff write-back: {slug} done → completed"),
+        ),
+    }
+}
+
+/// Collapse newlines/control chars so a progress line stays a single frontmatter value.
+fn sanitize(s: &str) -> String {
+    s.replace(['\n', '\r'], " ").trim().to_string()
+}
+
+/// Mirror a card transition back to its kb task (ADR-0003 rule 3). Best-effort + one-way:
+/// returns `true` if the kb was updated, `false` if write-back did not apply (not a kb card,
+/// no meta `.kb/`, the slug is not a live kb task, or git-kb is unavailable/failed).
+pub fn write_back(correlation_id: &str, t: &KbTransition) -> bool {
+    if !is_kb_slug(correlation_id) {
+        return false;
+    }
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let Some(root) = kb_root(&repo_root) else {
+        return false;
+    };
+    // Confirm the slug is a real kb task before mutating (and so a stray slug-shaped
+    // correlation_id can never spuriously create kb churn).
+    if run_kb_in(&root, &["show", correlation_id]).is_err() {
+        return false;
+    }
+    let (sets, msg) = writeback_args(correlation_id, t);
+    let mut argv: Vec<&str> = vec!["set", correlation_id];
+    argv.extend(sets.iter().map(|s| s.as_str()));
+    if run_kb_in(&root, &argv).is_err() {
+        return false;
+    }
+    // Persist the workspace edit as a kb commit (set is workspace-first per git-kb).
+    let _ = run_kb_in(&root, &["commit", "-m", &msg]);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +350,40 @@ mod tests {
         assert!(wo.objective.contains("Roll .handoff"));
         // intent_lock is computed so a downstream verifier can detect drift
         assert!(!wo.intent_lock.objective_hash.is_empty());
+    }
+
+    // --- HFTASK-0042 write-back ---
+
+    #[test]
+    fn only_kb_slug_correlation_ids_write_back() {
+        // kb-minted cards carry a slug; handoff's own + intake cards do not.
+        assert!(is_kb_slug("tasks/fleet-handoff-rollout"));
+        assert!(is_kb_slug("context/overridable/active"));
+        assert!(!is_kb_slug("handoff-buildout")); // handoff seed cards
+        assert!(!is_kb_slug("550e8400-e29b-41d4-a716-446655440000")); // intake workflow uuid
+        assert!(!is_kb_slug(""));
+    }
+
+    #[test]
+    fn writeback_args_map_each_transition() {
+        let slug = "tasks/demo";
+        let (sets, msg) = writeback_args(slug, &KbTransition::Claimed);
+        assert_eq!(sets, vec!["status=active"]);
+        assert!(msg.contains("claimed → active"));
+
+        let (sets, _) = writeback_args(slug, &KbTransition::Done("pr 64 merged".into()));
+        assert_eq!(sets[0], "status=completed");
+        assert!(sets[1].starts_with("+progress=completed: pr 64 merged"));
+
+        // progress lines append (git-kb `+field` array-add) and stay single-line
+        let (sets, _) = writeback_args(slug, &KbTransition::Progress("did x\nthen y".into()));
+        assert_eq!(sets, vec!["+progress=did x then y"]);
+    }
+
+    #[test]
+    fn write_back_is_noop_without_a_kb_card() {
+        // A non-slug correlation_id never touches git-kb (returns false, no side effects).
+        assert!(!write_back("handoff-buildout", &KbTransition::Claimed));
+        assert!(!write_back("", &KbTransition::Done("x".into())));
     }
 }
