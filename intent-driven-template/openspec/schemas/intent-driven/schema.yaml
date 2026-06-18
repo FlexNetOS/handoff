@@ -8,7 +8,7 @@ artifacts:
     template: proposal
     instruction: Describe the change, its goals, capabilities, and impact.
   - id: specs
-    generates: openspec/specs/**/*.md
+    generates: specs/**/*.md
     description: Delta specs for each capability introduced or modified.
     template: spec
     instruction: For each capability in the proposal, write a delta spec.
