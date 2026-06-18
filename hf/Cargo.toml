@@ -39,7 +39,7 @@ cognitum-gate-tilezero = { path = "../../RuVector/crates/cognitum-gate-tilezero"
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 
 [features]
-default = []
+default = ["cognitum"]
 # Enable the experimental secrets-engine seam (merge-gate decision helper, relay prep).
 secrets = ["dep:envctl-secrets-engine"]
 # Enable the cognitum-gate action governor behind `hf policy gate`.
