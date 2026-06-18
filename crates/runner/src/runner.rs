@@ -770,7 +770,7 @@ mod tests {
             if let Some((drive, rest)) = path.split_once(":/") {
                 format!("/{}/{}", drive.to_ascii_lowercase(), rest)
             } else {
-                path
+                path.to_owned()
             }
         }
         #[cfg(not(windows))]
