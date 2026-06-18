@@ -1517,8 +1517,8 @@ mod tests {
                 done=0\n\
                 : > \"$tmp_file\"\n\
                 while IFS= read -r line || [ -n \"$line\" ]; do\n\
-                    if [ \"$done\" -eq 0 ] && [[ \"$line\" =~ ^-\\ \\[\\ \\](.*)$ ]]; then\n\
-                        line=\"- [x]${BASH_REMATCH[1]}\"\n\
+                    if [ \"$done\" -eq 0 ] && [ \"${line#- \\[ \\]}\" != \"$line\" ]; then\n\
+                        line=\"- [x]${line#- \\[ \\]}\"\n\
                         done=1\n\
                     fi\n\
                     printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
@@ -1604,8 +1604,8 @@ mod tests {
                 done=0\n\
                 : > \"$tmp_file\"\n\
                 while IFS= read -r line || [ -n \"$line\" ]; do\n\
-                    if [ \"$done\" -eq 0 ] && [[ \"$line\" =~ ^-\\ \\[\\ \\](.*)$ ]]; then\n\
-                        line=\"- [x]${BASH_REMATCH[1]}\"\n\
+                    if [ \"$done\" -eq 0 ] && [ \"${line#- \\[ \\]}\" != \"$line\" ]; then\n\
+                        line=\"- [x]${line#- \\[ \\]}\"\n\
                         done=1\n\
                     fi\n\
                     printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
