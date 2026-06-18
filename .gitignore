@@ -12,3 +12,7 @@
 
 # HFTASK-0037: active.md is a derived view (hf renders it); like packets/, never committed.
 /.handoff/active.md
+
+# HFTASK-0048: the on-disk lock mirror is ephemeral advisory state (the ledger is
+# authoritative); like the ledger.db, it is never committed.
+/.handoff/locks/
