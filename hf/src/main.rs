@@ -164,6 +164,60 @@ fn cmd_claim(id: &str) {
 /// router (HFTASK-0018, ADR-0012) instead of the topologically-first `next_safe`. Resumes an
 /// in-progress task if one exists (same precedence as `next_safe`); otherwise routes over the
 /// ready backlog candidates (deps all Done) and claims the winner.
+/// HFTASK-0043: replay the ledger's task_transition history into per-context-bucket outcome
+/// counts for the bandit. `done` = success; a transition back to Backlog from an in-progress
+/// state (release/reopen) = failure. Tasks not in the current backlog are ignored. The ledger
+/// is the outcome store — this closes the keystone T5 co-learning loop (ADR-0012 v2).
+fn routing_history(tasks: &[WorkOrder]) -> routing::History {
+    use std::collections::HashMap;
+    let bucket: HashMap<&str, _> = tasks
+        .iter()
+        .map(|t| (t.id.as_str(), routing::bucket_of(t)))
+        .collect();
+    let mut hist = routing::History::new();
+    let Ok(led) = Ledger::open(&ledger_path()) else {
+        return hist;
+    };
+    let Ok(events) = led.all_events() else {
+        return hist;
+    };
+    let mut prev: HashMap<String, Status> = HashMap::new();
+    for e in events {
+        if e.event_type != "task_transition" {
+            continue;
+        }
+        let Some(st) = serde_json::from_str::<serde_json::Value>(&e.payload_json)
+            .ok()
+            .and_then(|v| v.get("status").cloned())
+            .and_then(|s| serde_json::from_value::<Status>(s).ok())
+        else {
+            continue;
+        };
+        let was = prev.get(&e.work_order_id).copied();
+        if let Some(b) = bucket.get(e.work_order_id.as_str()) {
+            match st {
+                Status::Done => hist.entry(b.clone()).or_default().0 += 1,
+                Status::Backlog
+                    if matches!(
+                        was,
+                        Some(
+                            Status::Claimed
+                                | Status::Active
+                                | Status::Checkpointed
+                                | Status::Review
+                        )
+                    ) =>
+                {
+                    hist.entry(b.clone()).or_default().1 += 1;
+                }
+                _ => {}
+            }
+        }
+        prev.insert(e.work_order_id, st);
+    }
+    hist
+}
+
 fn cmd_claim_batch() {
     use rand::SeedableRng;
     let tasks = load_tasks();
@@ -197,7 +251,10 @@ fn cmd_claim_batch() {
         .and_then(|l| l.verify_witness_chain())
         .unwrap_or(0);
     let mut rng = rand::rngs::StdRng::seed_from_u64(witness as u64);
-    match routing::route(&candidates, &mut rng) {
+    // HFTASK-0043: seed the bandit from real ledger outcomes (done = success, reopen =
+    // failure) so routing LEARNS, not just samples the priority prior.
+    let history = routing_history(&tasks);
+    match routing::route_with_history(&candidates, &history, &mut rng) {
         Some((t, d)) => {
             println!(
                 "hf claim --batch: routed to arm {} (context {}/{}, value {:.3}) [ADR-0012]",
