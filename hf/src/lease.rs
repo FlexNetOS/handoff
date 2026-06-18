@@ -75,6 +75,60 @@ pub fn gate(outcome: Reserve) -> ClaimGate {
     }
 }
 
+// --- HFTASK-0048: in-ledger lease holder identity + on-disk `.handoff/locks/*.lock` mirror ---
+
+/// This kernel's lease holder identity. Stable by default (so a single agent's repeated
+/// `hf claim`/heartbeat doesn't self-conflict): `HF_LEASE_HOLDER` if set, else the hostname.
+/// **Parallel agents on one host MUST set `HF_LEASE_HOLDER`** (e.g. the grit worktree/session
+/// id) so the in-ledger lease gives them real mutual exclusion.
+pub fn local_holder() -> String {
+    std::env::var("HF_LEASE_HOLDER")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            std::env::var("HOSTNAME")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_else(|| "localhost".to_string())
+}
+
+/// `.handoff/locks/<sanitized-resource>.lock` — the on-disk advisory mirror of an in-ledger
+/// lease (the ledger is authoritative; this file is for cross-tool visibility). Colons/slashes
+/// in the resource are flattened so the name is a single safe filename.
+pub fn lockfile_path(resource: &str) -> std::path::PathBuf {
+    let safe: String = resource
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    std::path::Path::new(".handoff")
+        .join("locks")
+        .join(format!("{safe}.lock"))
+}
+
+/// Write the advisory lockfile mirror (best-effort; failure never blocks the ledger lease).
+pub fn write_lockfile(resource: &str, holder: &str, ttl_secs: u64, acquired_ns: u64) {
+    let path = lockfile_path(resource);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let body = format!(
+        "{{\"resource\":\"{resource}\",\"holder\":\"{holder}\",\"ttl_secs\":{ttl_secs},\"acquired_ns\":{acquired_ns}}}\n"
+    );
+    let _ = std::fs::write(&path, body);
+}
+
+/// Remove the advisory lockfile mirror on release (best-effort).
+pub fn remove_lockfile(resource: &str) {
+    let _ = std::fs::remove_file(lockfile_path(resource));
+}
+
 /// A source of advisory leases. Abstracted so `hf claim` can be tested against an
 /// in-memory fake instead of a live `weave` mesh.
 pub trait Leaser {

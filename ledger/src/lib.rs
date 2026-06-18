@@ -81,6 +81,42 @@ fn hash_action(event_type: &str, work_order_id: &str, payload: &str) -> [u8; 32]
     h.finalize().into()
 }
 
+/// HFTASK-0048: outcome of an atomic in-ledger lease acquisition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeaseOutcome {
+    /// Lease was free → we now hold it (carries the witnessed seq).
+    Acquired { seq: u64 },
+    /// We already held it → the lease was extended (heartbeat).
+    Heartbeat { seq: u64 },
+    /// Another live holder owns it → no write occurred.
+    Conflict { holder: String },
+}
+
+/// Pure lease state machine: replay this resource's `lease_acquired`/`lease_released` events
+/// (in seq order) and resolve the current live holder, honoring release and TTL expiry against
+/// `now_ns`. Free/expired → `None`. Split out so the policy is unit-testable without a DB.
+pub fn resolve_lease(events: &[(String, String)], now_ns: u64) -> Option<String> {
+    let mut held: Option<(String, u64)> = None; // (holder, expiry_ns)
+    for (etype, payload) in events {
+        let v: serde_json::Value = serde_json::from_str(payload).unwrap_or(serde_json::Value::Null);
+        let holder = v["holder"].as_str().unwrap_or_default().to_string();
+        match etype.as_str() {
+            "lease_acquired" => {
+                let acq = v["acquired_ns"].as_u64().unwrap_or(0);
+                let ttl = v["ttl_secs"].as_u64().unwrap_or(0);
+                let expiry = acq.saturating_add(ttl.saturating_mul(1_000_000_000));
+                held = Some((holder, expiry));
+            }
+            "lease_released" if held.as_ref().is_some_and(|(h, _)| *h == holder) => {
+                // a release only clears the lease when it names the current holder
+                held = None;
+            }
+            _ => {}
+        }
+    }
+    held.and_then(|(h, expiry)| (expiry > now_ns).then_some(h))
+}
+
 impl Ledger {
     /// Open (or create) the ledger. `":memory:"` for ephemeral spike runs.
     ///
@@ -276,6 +312,125 @@ impl Ledger {
         self.seq = next_seq;
         self.prev_witness_hash = action_hash;
         Ok(next_seq)
+    }
+
+    /// HFTASK-0048: **atomically** acquire an advisory lease on `resource`, in-ledger.
+    ///
+    /// The whole check-then-write runs inside ONE `BEGIN IMMEDIATE` transaction, so two
+    /// concurrent acquirers serialize on the write lock (HFTASK-0028's invariant): the second
+    /// blocks until the first commits, then re-reads the now-current lease state. This is a
+    /// **no-downgrade superset** of the weave advisory lease — it gives real mutual exclusion
+    /// even when weave is absent (the prior degraded path had none). `lease_acquired` /
+    /// `lease_released` events are witnessed exactly like any other event (chained prev_hash),
+    /// keyed by `work_order_id = resource` so replay is a single indexed scan.
+    ///
+    /// - free, or held by `holder` (heartbeat/extend) → append `lease_acquired`, return
+    ///   `Acquired`/`Heartbeat`.
+    /// - held by another live holder → no write, return `Conflict { holder }`.
+    pub fn try_acquire_lease(
+        &mut self,
+        resource: &str,
+        holder: &str,
+        ttl_secs: u64,
+        now_ns: u64,
+    ) -> rusqlite::Result<LeaseOutcome> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        // Resolve the current holder from this resource's lease history, INSIDE the write lock.
+        let events: Vec<(String, String)> = {
+            let mut stmt = tx.prepare(
+                "SELECT event_type, payload_json FROM events
+                 WHERE work_order_id = ?1 AND event_type IN ('lease_acquired','lease_released')
+                 ORDER BY seq",
+            )?;
+            let rows = stmt.query_map([resource], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let current = resolve_lease(&events, now_ns);
+        let heartbeat = match &current {
+            Some(h) if h == holder => true, // we already hold it → extend
+            Some(other) => {
+                let other = other.clone();
+                drop(tx); // read-only: release the write lock without writing
+                return Ok(LeaseOutcome::Conflict { holder: other });
+            }
+            None => false, // free
+        };
+
+        // Append the witnessed `lease_acquired` event, chaining off the live tail (same logic
+        // as `append`, inlined so it shares this transaction).
+        let payload = serde_json::json!({
+            "resource": resource,
+            "holder": holder,
+            "ttl_secs": ttl_secs,
+            "acquired_ns": now_ns,
+        })
+        .to_string();
+        let action_hash = hash_action("lease_acquired", resource, &payload);
+        let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
+            .query_row(
+                "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
+                [],
+                |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
+            )
+            .unwrap_or((0, vec![0u8; 32]));
+        let mut prev_hash = [0u8; 32];
+        if tail_prev.len() == 32 {
+            prev_hash.copy_from_slice(&tail_prev);
+        }
+        let next_seq = tail_seq + 1;
+        tx.execute(
+            "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
+             VALUES (?1, ?2, 'lease_acquired', ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                next_seq as i64,
+                now_ns as i64,
+                resource,
+                payload,
+                action_hash.to_vec(),
+                prev_hash.to_vec(),
+            ],
+        )?;
+        tx.commit()?;
+        self.seq = next_seq;
+        self.prev_witness_hash = action_hash;
+        Ok(if heartbeat {
+            LeaseOutcome::Heartbeat { seq: next_seq }
+        } else {
+            LeaseOutcome::Acquired { seq: next_seq }
+        })
+    }
+
+    /// HFTASK-0048: release a lease we hold on `resource` (append `lease_released`). Idempotent
+    /// and witnessed; uses the normal `append` path (no conditional needed — `resolve_lease`
+    /// only clears the lease when the released holder matches the current one).
+    pub fn release_lease(
+        &mut self,
+        resource: &str,
+        holder: &str,
+        now_ns: u64,
+    ) -> rusqlite::Result<u64> {
+        let payload = serde_json::json!({ "resource": resource, "holder": holder }).to_string();
+        self.append("lease_released", resource, &payload, now_ns)
+    }
+
+    /// HFTASK-0048: the current live holder of `resource`, or `None` if free/expired. Pure read
+    /// over the witnessed history (used by `hf lease` and the claim gate's degraded path).
+    pub fn lease_holder(&self, resource: &str, now_ns: u64) -> rusqlite::Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT event_type, payload_json FROM events
+             WHERE work_order_id = ?1 AND event_type IN ('lease_acquired','lease_released')
+             ORDER BY seq",
+        )?;
+        let events = stmt
+            .query_map([resource], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(resolve_lease(&events, now_ns))
     }
 
     /// Convenience: record a work-order state transition.
@@ -546,6 +701,104 @@ mod tests {
             consistency_report: vec![],
             evolution_suggestions: vec![],
         }
+    }
+
+    // --- HFTASK-0048: atomic in-ledger lease ---------------------------------
+
+    const SEC: u64 = 1_000_000_000;
+
+    #[test]
+    fn resolve_lease_free_held_released_expired() {
+        // free
+        assert_eq!(resolve_lease(&[], 100), None);
+        // held within ttl
+        let acq = |h: &str, acq: u64, ttl: u64| {
+            (
+                "lease_acquired".to_string(),
+                format!("{{\"holder\":\"{h}\",\"acquired_ns\":{acq},\"ttl_secs\":{ttl}}}"),
+            )
+        };
+        let rel = |h: &str| {
+            (
+                "lease_released".to_string(),
+                format!("{{\"holder\":\"{h}\"}}"),
+            )
+        };
+        let ev = vec![acq("a", 0, 10)];
+        assert_eq!(resolve_lease(&ev, 5 * SEC), Some("a".into()));
+        // expired
+        assert_eq!(resolve_lease(&ev, 20 * SEC), None);
+        // released by holder
+        let ev = vec![acq("a", 0, 100), rel("a")];
+        assert_eq!(resolve_lease(&ev, 5 * SEC), None);
+        // a release by a NON-holder does not free it
+        let ev = vec![acq("a", 0, 100), rel("b")];
+        assert_eq!(resolve_lease(&ev, 5 * SEC), Some("a".into()));
+    }
+
+    #[test]
+    fn try_acquire_lease_is_atomic_first_holder_wins() {
+        let mut led = Ledger::open(":memory:").unwrap();
+        let res = "handoff:claim:HFTASK-0048";
+        // free → acquired
+        assert!(matches!(
+            led.try_acquire_lease(res, "alice", 3600, SEC).unwrap(),
+            LeaseOutcome::Acquired { .. }
+        ));
+        // a different holder is refused while alice holds it (no write)
+        assert_eq!(
+            led.try_acquire_lease(res, "bob", 3600, 2 * SEC).unwrap(),
+            LeaseOutcome::Conflict {
+                holder: "alice".into()
+            }
+        );
+        // same holder re-acquires → heartbeat (extend)
+        assert!(matches!(
+            led.try_acquire_lease(res, "alice", 3600, 3 * SEC).unwrap(),
+            LeaseOutcome::Heartbeat { .. }
+        ));
+        assert_eq!(
+            led.lease_holder(res, 4 * SEC).unwrap(),
+            Some("alice".into())
+        );
+        // after alice releases, bob can acquire
+        led.release_lease(res, "alice", 5 * SEC).unwrap();
+        assert_eq!(led.lease_holder(res, 6 * SEC).unwrap(), None);
+        assert!(matches!(
+            led.try_acquire_lease(res, "bob", 3600, 7 * SEC).unwrap(),
+            LeaseOutcome::Acquired { .. }
+        ));
+        assert_eq!(led.lease_holder(res, 8 * SEC).unwrap(), Some("bob".into()));
+    }
+
+    #[test]
+    fn try_acquire_lease_respects_ttl_expiry() {
+        let mut led = Ledger::open(":memory:").unwrap();
+        let res = "r";
+        // alice holds a 10s lease at t=0
+        led.try_acquire_lease(res, "alice", 10, 0).unwrap();
+        // bob is refused before expiry…
+        assert_eq!(
+            led.try_acquire_lease(res, "bob", 10, 5 * SEC).unwrap(),
+            LeaseOutcome::Conflict {
+                holder: "alice".into()
+            }
+        );
+        // …but acquires once alice's lease has expired
+        assert!(matches!(
+            led.try_acquire_lease(res, "bob", 10, 20 * SEC).unwrap(),
+            LeaseOutcome::Acquired { .. }
+        ));
+    }
+
+    #[test]
+    fn lease_events_keep_the_witness_chain_intact() {
+        let mut led = Ledger::open(":memory:").unwrap();
+        led.try_acquire_lease("r", "alice", 60, 1).unwrap();
+        led.release_lease("r", "alice", 2).unwrap();
+        led.try_acquire_lease("r", "bob", 60, 3).unwrap();
+        // the chain over the lease events must verify like any other witnessed history
+        assert_eq!(led.verify_witness_chain().unwrap(), 3);
     }
 
     #[test]
