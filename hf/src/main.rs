@@ -441,6 +441,11 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
 
     led.record_transition(&wo, Status::Claimed, now_ns())
         .unwrap();
+    // ADR-0003 rule 3 (HFTASK-0042): mirror the claim to the kb plan (status → active).
+    // One-way + best-effort: a no-op for non-kb cards.
+    if kb::write_back(&wo.correlation_id, &kb::KbTransition::Claimed) {
+        println!("hf claim: kb {} → active (write-back)", wo.correlation_id);
+    }
     println!("hf claim: {id} -> claimed");
     true
 }
@@ -573,8 +578,8 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     // Route the checkpoint to the home its task lives in (KERNEL vs FLEET). The
     // `--auto` path already resolved `id` from the LOCAL backlog, so it routes
     // local; an explicit `checkpoint <ID>` for a FLEET-resident task routes FLEET.
-    let ledger = match route::route_for_task(&id) {
-        Ok((ledger, _tasks)) => ledger,
+    let (ledger, tasks_dir) = match route::route_for_task(&id) {
+        Ok(homes) => homes,
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(1);
@@ -583,6 +588,19 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     let payload = serde_json::json!({ "id": id, "note": note }).to_string();
     let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
     led.append("checkpoint", &id, &payload, now_ns()).unwrap();
+    // ADR-0003 rule 3 (HFTASK-0042): append a progress line to the kb plan (no-op for non-kb).
+    if let Some(wo) = load_task_in(&tasks_dir, &id) {
+        if kb::write_back(
+            &wo.correlation_id,
+            &kb::KbTransition::Progress(note.to_string()),
+        ) && !quiet
+        {
+            println!(
+                "hf checkpoint: kb {} progress logged (write-back)",
+                wo.correlation_id
+            );
+        }
+    }
     if !quiet {
         println!("hf checkpoint: {id} :: {note}");
     }
@@ -625,6 +643,14 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         // HFTASK-0044: a `--pr` done is the post-merge signal — the trunk now has the merge,
         // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
         sync_develop_to_trunk(&mut led, id);
+    }
+    // ADR-0003 rule 3 (HFTASK-0042): flip the kb plan to completed with evidence (no-op for
+    // non-kb cards). One-way: planning is informed by execution, never read back.
+    let evidence = pr
+        .map(|p| format!("pr {p} merged"))
+        .unwrap_or_else(|| "done".to_string());
+    if kb::write_back(&wo.correlation_id, &kb::KbTransition::Done(evidence)) {
+        println!("hf done: kb {} → completed (write-back)", wo.correlation_id);
     }
     println!(
         "hf done: {id} -> done{}",
