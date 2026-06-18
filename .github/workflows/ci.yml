@@ -29,6 +29,11 @@ jobs:
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
 
+      # HFTASK-0013/0017: optional path deps live in the sibling envctl/RuVector checkouts.
+      # CI only needs the manifests to resolve; default-feature builds do not compile them.
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -48,6 +53,9 @@ jobs:
 
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
 
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
@@ -70,6 +78,9 @@ jobs:
 
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
 
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
