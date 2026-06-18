@@ -35,21 +35,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      # Mirror ci.yml's checkout layout: the repo lives under handoff/ so the
+      # ledger/hf path deps (../../RuVector, ../../envctl) resolve to sibling
+      # clones at the workspace root.
+      - uses: actions/checkout@v6
         with:
           path: handoff
-
-      # ledger/hf depend on RuVector/envctl via relative paths from the meta
-      # workspace layout; the sibling checkouts must sit next to handoff.
       - name: Clone rvf-crypto provider (meta-ruvector)
         shell: bash
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
-
       - name: Clone envctl provider (envctl)
         shell: bash
         run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
-
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -62,17 +59,13 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           path: handoff
-
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
-
       - name: Clone envctl provider (envctl)
         run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
-
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy
@@ -87,17 +80,13 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           path: handoff
-
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
-
       - name: Clone envctl provider (envctl)
         run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
-
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
@@ -112,17 +101,13 @@ jobs:
     name: Drift
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           path: handoff
-
       - name: Clone rvf-crypto provider (meta-ruvector)
         run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
-
       - name: Clone envctl provider (envctl)
         run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
-
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
         with:

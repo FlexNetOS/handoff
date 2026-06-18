@@ -2251,10 +2251,13 @@ mod tests {
         // HFTASK-0054: without an override, ledger_path() is cwd-relative.
         let prev = std::env::var("HANDOFF_LEDGER").ok();
         std::env::remove_var("HANDOFF_LEDGER");
-        assert_eq!(
-            std::path::PathBuf::from(super::ledger_path()),
-            std::path::PathBuf::from(".handoff/ledger.db")
-        );
+        // Build the expected default the same way ledger_path() does so the
+        // assertion holds on Windows too (Path::join yields a `\` separator).
+        let default_local = Path::new(super::HF)
+            .join("ledger.db")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(super::ledger_path(), default_local);
 
         // With the override, it points exactly at the supplied path.
         std::env::set_var("HANDOFF_LEDGER", "/tmp/fleet.ledger.db");
@@ -2262,10 +2265,7 @@ mod tests {
 
         // Empty override is treated as unset (defensive).
         std::env::set_var("HANDOFF_LEDGER", "");
-        assert_eq!(
-            std::path::PathBuf::from(super::ledger_path()),
-            std::path::PathBuf::from(".handoff/ledger.db")
-        );
+        assert_eq!(super::ledger_path(), default_local);
 
         match prev {
             Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
