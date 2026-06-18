@@ -84,7 +84,23 @@ ensure_ledger_guard() {
   return $((1 - changed))
 }
 
-GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0
+# HFTASK-0037: `hf resume` / `hf handoff` render `.handoff/active.md` as a local derived
+# view (like `.handoff/packets/latest.md`). It must never be committed, or every session
+# will dirty the tree. Idempotent: returns 0 if it ADDED the guard, 1 if already ignored.
+ensure_active_md_guard() {
+  local dir="$1"
+  if git -C "$dir" check-ignore -q .handoff/active.md 2>/dev/null; then
+    return 1
+  fi
+  {
+    echo ""
+    echo "# handoff continuity: active.md is a local derived view (HFTASK-0037)"
+    echo "/.handoff/active.md"
+  } >> "$dir/.gitignore"
+  return 0
+}
+
+GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0; ACTIVE_GUARDED=0
 if [ ${#ONLY[@]} -gt 0 ]; then
   TARGETS=("${ONLY[@]}")
 else
@@ -95,21 +111,24 @@ for repo in "${TARGETS[@]}"; do
   [ -z "$repo" ] && continue
   dir="$META_ROOT/$repo"
   [ -d "$dir/.git" ] || { echo "skip $repo (not cloned)"; continue; }
-  # HFTASK-0035: a repo that already has .handoff still needs the ledger .gitignore guard
-  # (back-fill). Ensure it (idempotent), commit just the .gitignore if requested, then skip
+  # HFTASK-0035/0037: a repo that already has .handoff still needs the .gitignore guards
+  # (back-fill). Ensure them (idempotent), commit just the .gitignore if requested, then skip
   # the rest of generation.
   if [ -d "$dir/.handoff" ]; then
-    if ensure_ledger_guard "$dir"; then
-      GUARDED=$((GUARDED+1)); echo "guard added $repo (existing .handoff)"
+    local ledger_changed=0 active_changed=0
+    ensure_ledger_guard "$dir" && { ledger_changed=1; GUARDED=$((GUARDED+1)); }
+    ensure_active_md_guard "$dir" && { active_changed=1; ACTIVE_GUARDED=$((ACTIVE_GUARDED+1)); }
+    if [ "$ledger_changed" = 1 ] || [ "$active_changed" = 1 ]; then
+      echo "guard added $repo (ledger=$ledger_changed active=$active_changed)"
       if [ "$DO_COMMIT" = 1 ]; then
         if git -C "$dir" add .gitignore && \
-           git -C "$dir" commit -q -m "chore: gitignore the local .handoff ledger (ADR-0004 §6, HFTASK-0035)"; then
+           git -C "$dir" commit -q -m "chore: gitignore handoff derived state (ADR-0004 §6 / HFTASK-0035 / HFTASK-0037)"; then
           COMMITTED=$((COMMITTED+1))
           [ "$DO_PUSH" = 1 ] && { git -C "$dir" push -q 2>/dev/null && PUSHED=$((PUSHED+1)) || { echo "  push FAILED $repo"; FAILED=$((FAILED+1)); }; }
         else echo "  guard commit FAILED $repo"; FAILED=$((FAILED+1)); fi
       fi
     else
-      echo "skip $repo (.handoff exists, guard present)"; SKIPPED=$((SKIPPED+1))
+      echo "skip $repo (.handoff exists, guards present)"; SKIPPED=$((SKIPPED+1))
     fi
     continue
   fi
@@ -130,15 +149,17 @@ JSON
 # .handoff (ADR-0004 §3.3/§6 rev)
 
 Continuity layer for \`${repo}\`. **Committed content is git-text only** (capsule, cards,
-packets). A local \`ledger.db\` is **gitignored** (legitimate per-repo source of record — it
-rolls up into the FLEET ledger at \`meta/.handoff/ledger.db\`); a *committed* binary ledger is
-banned. This repo's packet compiles centrally via \`hf fleet render ${repo}\`. See
+packets). Local derived views — \`ledger.db\`, \`active.md\`, and \`packets/latest.md\` — are
+**gitignored**; the ledger is the per-repo source of record that rolls up into the FLEET
+ledger at \`meta/.handoff/ledger.db\`. A *committed* binary ledger or derived view is banned.
+This repo's packet compiles centrally via \`hf fleet render ${repo}\`. See
 \`meta/handoff/FLEET_GUIDE.md\`.
 
 Cold start: read \`context/capsule.json\`, then run \`hf resume\`.
 MD
-  # HFTASK-0035: newly-seeded repos get the ledger .gitignore guard too.
+  # HFTASK-0035/0037: newly-seeded repos get the ledger and active.md .gitignore guards.
   ensure_ledger_guard "$dir" && GUARDED=$((GUARDED+1))
+  ensure_active_md_guard "$dir" && ACTIVE_GUARDED=$((ACTIVE_GUARDED+1))
   GENERATED=$((GENERATED+1)); echo "generated $repo (role=$role plane=$plane)"
 
   # grit (ADR-0009): initialize the parallel-agent coordination layer per repo (local
@@ -167,4 +188,4 @@ MD
 done
 
 echo "---"
-echo "generated=$GENERATED guarded(ledger .gitignore)=$GUARDED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"
+echo "generated=$GENERATED guarded(ledger .gitignore)=$GUARDED active-guarded=$ACTIVE_GUARDED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"
