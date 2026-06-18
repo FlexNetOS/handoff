@@ -1487,7 +1487,17 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -eq 2 ]; then\n\
-                awk 'BEGIN { done = 0 } { if (!done) done = sub(/- \\[ \\]/, \"- [x]\"); print }' \"$TASKS_FILE\" > \"${TASKS_FILE}.tmp\" && mv \"${TASKS_FILE}.tmp\" \"$TASKS_FILE\"\n\
+                tmp_file=\"${TASKS_FILE}.tmp\"\n\
+                done=0\n\
+                : > \"$tmp_file\"\n\
+                while IFS= read -r line || [ -n \"$line\" ]; do\n\
+                    if [ \"$done\" -eq 0 ] && [[ \"$line\" =~ ^-\\ \\[\\ \\](.*)$ ]]; then\n\
+                        line=\"- [x]${BASH_REMATCH[1]}\"\n\
+                        done=1\n\
+                    fi\n\
+                    printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
+                done < \"$TASKS_FILE\"\n\
+                mv \"$tmp_file\" \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
@@ -1564,7 +1574,17 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -ge 3 ]; then\n\
-                awk 'BEGIN { done = 0 } { if (!done) done = sub(/- \\[ \\]/, \"- [x]\"); print }' \"$TASKS_FILE\" > \"${TASKS_FILE}.tmp\" && mv \"${TASKS_FILE}.tmp\" \"$TASKS_FILE\"\n\
+                tmp_file=\"${TASKS_FILE}.tmp\"\n\
+                done=0\n\
+                : > \"$tmp_file\"\n\
+                while IFS= read -r line || [ -n \"$line\" ]; do\n\
+                    if [ \"$done\" -eq 0 ] && [[ \"$line\" =~ ^-\\ \\[\\ \\](.*)$ ]]; then\n\
+                        line=\"- [x]${BASH_REMATCH[1]}\"\n\
+                        done=1\n\
+                    fi\n\
+                    printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
+                done < \"$TASKS_FILE\"\n\
+                mv \"$tmp_file\" \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
