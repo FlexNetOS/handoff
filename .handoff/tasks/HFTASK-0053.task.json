@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0053",
+  "title": "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "GitHub #71 item 1 / envctl Epic A cycle-1 CARRIED FINDING: the `ledger` crate links bundled C-SQLite (rusqlite -> libsqlite3-sys). It is not an envctl no-c violation today (separate workspace) but it breaks the continuity kernel's pure-Rust / 'no C in the trust boundary' agenticOS north star. Port `ledger` off rusqlite to a pure-Rust store (libSQL Hrana `remote` like envctl's secrets store, or an embedded pure-Rust engine such as redb/sled) so `hf` builds C-free, KEEPING the witnessed append-only chain, replay, BEGIN IMMEDIATE serialization (HFTASK-0028), and rollup-provenance semantics intact. No-downgrade: a store swap, never a capability loss; re-verify witness-chain + provenance tests on the new backend. Distinct from HFTASK-0006 (RVF vector ledger axis) — this removes the C dependency.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0006"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:c54f46f583ad471e4abf98ed4f23fc65e8152e52128ded542a6536ce0e794df5",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:56bf1acf2360fc0189795d33afd89ee7c4584e54b0ecede6e0d7f69153dd3f24",
+    "constraint_hash": "blake3:ec7f57d94775d69b2c40caa925d996cb221220ca5f965991a28e24b8e75f6d06",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
