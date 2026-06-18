@@ -13,6 +13,7 @@ mod branch;
 #[cfg(feature = "cognitum")]
 mod cognitum;
 mod contract;
+mod delivery;
 mod fleet;
 mod gates;
 mod hooks;
@@ -642,6 +643,9 @@ fn cmd_done(id: &str, pr: Option<&str>) {
     if let Some(p) = pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
         let _ = led.append("pr_merged", id, &payload, now_ns());
+        // HFTASK-0021: round-trip the merged result to the originating prompt_hub workflow
+        // via the correlation_id carried on the WorkOrder.
+        delivery::emit_delivery(&mut led, &wo, p, now_ns());
         // HFTASK-0044: a `--pr` done is the post-merge signal — the trunk now has the merge,
         // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
         sync_develop_to_trunk(&mut led, id);
@@ -654,10 +658,15 @@ fn cmd_done(id: &str, pr: Option<&str>) {
     if kb::write_back(&wo.correlation_id, &kb::KbTransition::Done(evidence)) {
         println!("hf done: kb {} → completed (write-back)", wo.correlation_id);
     }
-    println!(
-        "hf done: {id} -> done{}",
-        pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
-    );
+    if let Some(p) = pr {
+        println!("hf done: {id} -> done (pr {p})");
+        println!(
+            "hf done: delivery -> {} (workflow {})",
+            p, wo.correlation_id
+        );
+    } else {
+        println!("hf done: {id} -> done");
+    }
 }
 
 /// HFTASK-0044: fast-forward the base branch (develop) to the trunk after a merge, per the
@@ -1924,6 +1933,19 @@ fn main() {
                 }
             }
         }
+        Some("delivery") => {
+            let json = args.iter().any(|a| a == "--json");
+            match args.get(1).map(|s| s.as_str()) {
+                Some("get") => {
+                    delivery::cmd_delivery_get(args.get(2).map(|s| s.as_str()).unwrap_or(""), json)
+                }
+                Some("list") => delivery::cmd_delivery_list(json),
+                _ => {
+                    eprintln!("hf delivery: use `hf delivery get <correlation_id> [--json]` or `hf delivery list [--json]`");
+                    std::process::exit(2);
+                }
+            }
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
@@ -1936,7 +1958,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
