@@ -26,3 +26,11 @@ ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-
 # serde/thiserror/rand. Path dep, crates-only, CI-safe (same as the other RuVector crates).
 ruvector-domain-expansion = { path = "../../RuVector/crates/ruvector-domain-expansion", default-features = false }
 rand = "0.8"
+# HFTASK-0013 (ADR-0001 §9.5/R10): envctl secrets-engine — optional until the relay-bearer
+# and child-env injection paths are fully wired. default-features off keeps the build lean.
+envctl-secrets-engine = { path = "../../envctl/crates/secrets-engine", default-features = false, features = ["inmem-store"], optional = true }
+
+[features]
+default = []
+# Enable the experimental secrets-engine seam (merge-gate decision helper, relay prep).
+secrets = ["dep:envctl-secrets-engine"]

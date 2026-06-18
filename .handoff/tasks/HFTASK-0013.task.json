@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0013",
   "title": "Integrate envctl secrets-engine as the secret relay/injection layer",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §9.5/R10: replace long-lived PARENT_REPO_PAT with envctl secrets-engine (~/Desktop/meta/envctl/crates/secrets-engine). Worker gets only a short-lived peer-bound revocable relay bearer (relay_mint, <=24h); real GitHub credential stays in the encrypted vault, swapped at egress (relay_swap). Use broker::decide (pure default-deny: host/path/method allowlists, budgets, fail-closed presence gate) as the deterministic merge-gate enforcement layer beneath the §5b AI gatekeeper. Surface: Engine Rust API / secretd gRPC (Relay.Mint) / secretctl. GREENFIELD to build: GitHub ProviderMint (native scoped sub-token, currently NoMint) + inject.rs/run_child child-env path (todo!, Phase 6/8); relay-bearer+relay_swap HTTP path works now.",
   "path_scope": [
