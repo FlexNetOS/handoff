@@ -51,7 +51,17 @@ fn now_ns() -> u64 {
 fn tasks_dir() -> PathBuf {
     Path::new(HF).join("tasks")
 }
+/// HFTASK-0054: ledger location is overridable via `--ledger <path>` or the `HANDOFF_LEDGER`
+/// environment variable. This lets a member repo render its Tier-A packet (`hf resume`/`hf
+/// handoff`) against a shared ledger (e.g. `$META_ROOT/.handoff/ledger.db`) from its own CWD
+/// without requiring a per-repo ledger.db. When unset, the default remains the local
+/// `<cwd>/.handoff/ledger.db`.
 fn ledger_path() -> String {
+    if let Ok(p) = std::env::var("HANDOFF_LEDGER") {
+        if !p.is_empty() {
+            return p;
+        }
+    }
     Path::new(HF)
         .join("ledger.db")
         .to_string_lossy()
@@ -1877,8 +1887,25 @@ fn cmd_seed() {
     );
 }
 
+/// HFTASK-0054: extract a global `--ledger <path>` flag from the raw argument list. When
+/// present, the path is exported as `HANDOFF_LEDGER` so `ledger_path()` honors it. The flag
+/// and its value are removed so subcommand dispatch stays positional.
+fn apply_ledger_flag(args: &mut Vec<String>) {
+    if let Some(pos) = args.iter().position(|a| a == "--ledger") {
+        if let Some(path) = args.get(pos + 1).cloned() {
+            std::env::set_var("HANDOFF_LEDGER", &path);
+        }
+        // Remove both tokens; if no value was provided, just drop the flag.
+        args.remove(pos);
+        if pos < args.len() {
+            args.remove(pos);
+        }
+    }
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    apply_ledger_flag(&mut args);
     match args.first().map(|s| s.as_str()) {
         Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
@@ -2146,7 +2173,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -2197,6 +2224,58 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn ledger_path_defaults_local_and_honors_handoff_ledger() {
+        // HFTASK-0054: without an override, ledger_path() is cwd-relative.
+        let prev = std::env::var("HANDOFF_LEDGER").ok();
+        std::env::remove_var("HANDOFF_LEDGER");
+        assert_eq!(super::ledger_path(), ".handoff/ledger.db");
+
+        // With the override, it points exactly at the supplied path.
+        std::env::set_var("HANDOFF_LEDGER", "/tmp/fleet.ledger.db");
+        assert_eq!(super::ledger_path(), "/tmp/fleet.ledger.db");
+
+        // Empty override is treated as unset (defensive).
+        std::env::set_var("HANDOFF_LEDGER", "");
+        assert_eq!(super::ledger_path(), ".handoff/ledger.db");
+
+        match prev {
+            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
+            None => std::env::remove_var("HANDOFF_LEDGER"),
+        }
+    }
+
+    #[test]
+    fn apply_ledger_flag_extracts_and_exports_path() {
+        // HFTASK-0054: the global `--ledger <path>` flag is stripped and exported.
+        let prev = std::env::var("HANDOFF_LEDGER").ok();
+        std::env::remove_var("HANDOFF_LEDGER");
+
+        let mut args = vec![
+            "--ledger".into(),
+            "/meta/.handoff/ledger.db".into(),
+            "status".into(),
+        ];
+        super::apply_ledger_flag(&mut args);
+        assert_eq!(
+            std::env::var("HANDOFF_LEDGER").unwrap(),
+            "/meta/.handoff/ledger.db"
+        );
+        assert_eq!(args, vec!["status"]);
+
+        // No flag => no mutation (clear the var exported above first).
+        std::env::remove_var("HANDOFF_LEDGER");
+        let mut args2 = vec!["handoff".into()];
+        super::apply_ledger_flag(&mut args2);
+        assert!(std::env::var("HANDOFF_LEDGER").is_err());
+        assert_eq!(args2, vec!["handoff"]);
+
+        match prev {
+            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
+            None => std::env::remove_var("HANDOFF_LEDGER"),
+        }
     }
 
     #[test]
