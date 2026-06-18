@@ -1,0 +1,33 @@
+[package]
+name        = "rusty-idd-cli"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+license.workspace = true
+edition     = "2021"
+publish     = false
+# This crate is only the unified CLI binary; it transitively depends on all workspace
+# crates via path deps, so publishing as a library to crates.io would fail.
+
+[[bin]]
+name = "rusty-idd"
+path = "src/main.rs"
+
+[lib]
+name     = "rusty_idd_cli"
+path     = "src/lib.rs"
+
+[dependencies]
+# The unification seam: depend ON the existing crates, add deps only HERE
+# (the core crate stays std-only / zero-dep — the drift gate enforces this).
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+rusty-idd-core = { path = "../core" }
+rusty-idd-spec = { path = "../spec" }
+rusty-idd-runner = { path = "../runner" }
+rusty-idd-tui = { path = "../tui" }
+
+[dev-dependencies]
+tempfile = "3"

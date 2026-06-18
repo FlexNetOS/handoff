@@ -1,0 +1,263 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 09:23:51
+Change: batch-implementation-runner
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/43: 1.1 Add `DependencyConfig` struct with serde in `data.rs` for reading/writing `dependencies.yaml` (depends_on: Vec<String>), with `read_dependencies` and `write_dependencies` functions
+──────────────────────────────────────────────────────────────
+Tasks 1.1 und 1.2 sind abgeschlossen. Hier eine Zusammenfassung der Änderungen:
+
+**Task 1.1 — `DependencyConfig` Struct + Read/Write Funktionen** (`src/data.rs`):
+- `DependencyConfig` Struct mit `depends_on: Vec<String>` (Serialize + Deserialize)
+- `read_dependencies(change_dir)` — liest `dependencies.yaml`, gibt leeren Vec zurück wenn Datei fehlt
+- `write_dependencies(change_dir, deps)` — schreibt/überschreibt `dependencies.yaml`
+
+**Task 1.2 — Unit Tests** (8 neue Tests):
+- `test_read_dependencies_with_deps` — Datei mit Abhängigkeiten lesen
+- `test_read_dependencies_file_missing` — Fehlende Datei ergibt leere Liste
+- `test_read_dependencies_empty_list` — Leere depends_on-Liste
+- `test_write_dependencies_creates_file` — Neue Datei erstellen
+- `test_write_dependencies_overwrites_existing` — Bestehende Datei überschreiben
+- `test_write_dependencies_empty_list` — Leere Liste schreiben
+- `test_write_then_add_dependency` — Abhängigkeit hinzufügen
+- `test_write_then_remove_dependency` — Abhängigkeit entfernen
+
+Alle 31 data-Tests bestehen erfolgreich.
+──────────────────────────────────────────────────────────────
+Task 3/43: 1.3 Implement topological sort using Kahn's algorithm in `data.rs` — takes a map of change names to their dependencies, returns sorted Vec or cycle error
+──────────────────────────────────────────────────────────────
+**Aufgaben 1.3 und 1.4 abgeschlossen.**
+
+Implementiert in `src/data.rs`:
+- **`topological_sort()`** — Kahn's Algorithmus, nimmt `HashMap<String, Vec<String>>` (Change-Name → Dependencies), gibt sortierte `Vec<String>` zurück oder einen Fehler bei Zyklen
+- Externe Dependencies (nicht im Map enthalten) werden ignoriert (als bereits erfüllt behandelt)
+- Deterministische Ausgabe durch alphabetische Sortierung bei gleicher In-Degree
+
+**8 Unit-Tests** hinzugefügt:
+- Lineare Kette, mehrere Wurzeln, Diamant-Form, keine Dependencies, leere Map
+- Direkte und indirekte Zykluserkennung
+- Externe Dependencies werden korrekt ignoriert
+──────────────────────────────────────────────────────────────
+Task 5/43: 1.5 Add function to resolve archived dependencies — check `openspec/changes/archive/` for matching change names (with date-prefix stripping), returns set of fulfilled dependency names
+──────────────────────────────────────────────────────────────
+Tasks 1.5 und 1.6 sind abgeschlossen. Hier eine Zusammenfassung:
+
+**Task 1.5** — `resolve_archived_dependencies(archive_dir: &Path) -> HashSet<String>` in `src/data.rs`:
+- Scannt das Archiv-Verzeichnis nach Unterverzeichnissen
+- Fügt sowohl den vollen Namen (z.B. `2026-03-08-add-api`) als auch den datumslosen Suffix (z.B. `add-api`) in das Ergebnis-Set ein
+- Gibt ein leeres Set zurück, wenn das Verzeichnis nicht existiert
+- Helper-Funktion `strip_date_prefix()` zum Parsen des `YYYY-MM-DD-` Patterns
+
+**Task 1.6** — 10 Unit Tests hinzugefügt:
+- `test_resolve_archived_exact_match` — Änderungen ohne Datums-Prefix
+- `test_resolve_archived_date_prefix_match` — Datums-Prefix wird korrekt entfernt
+- `test_resolve_archived_no_match` — leeres Archiv-Verzeichnis
+- `test_resolve_archived_nonexistent_directory` — Verzeichnis existiert nicht
+- `test_resolve_archived_ignores_files` — Dateien werden ignoriert, nur Verzeichnisse zählen
+- `test_resolve_archived_mixed_names` — gemischte Namen mit und ohne Datums-Prefix
+- 4 Tests für `strip_date_prefix` (valid, no prefix, too short, invalid format)
+──────────────────────────────────────────────────────────────
+Task 7/43: 1.7 Add function to check if a change has a `tasks.md` file (used to filter eligible changes for batch runs)
+──────────────────────────────────────────────────────────────
+Tasks 1.7 und 1.8 sind erledigt:
+
+- **`has_tasks_file(change_dir: &Path) -> bool`** in `src/data.rs:469` — prüft ob `tasks.md` als Datei (nicht Verzeichnis) im Change-Verzeichnis existiert
+- **4 Unit Tests** — existierende Datei, fehlende Datei, `tasks.md` ist ein Verzeichnis, nicht-existierendes Verzeichnis
+
+Alle Tests bestanden erfolgreich.
+──────────────────────────────────────────────────────────────
+Task 9/43: 2.1 Add `DependencyView` screen variant to `Screen` enum in `app.rs` with fields: change_name, dependencies list, selected index
+──────────────────────────────────────────────────────────────
+## Implementation Complete
+
+**Change:** batch-implementation-runner
+**Schema:** spec-driven
+**Progress:** 16/43 tasks complete
+
+### Completed This Session (Section 2 — Dependency Management View)
+- [x] 2.1 `DependencyView` screen variant added to `Screen` enum
+- [x] 2.2 `DependencyAdd` screen variant added to `Screen` enum
+- [x] 2.3 `handle_dependency_view_input` — navigation (j/k/Up/Down), remove (D), add (A), back (Esc)
+- [x] 2.4 `handle_dependency_add_input` — navigation, select with Enter (writes `dependencies.yaml`), cancel with Esc
+- [x] 2.5 Unit tests for input handling (9 tests: navigation, remove, remove last adjusts selection, remove on empty, esc back, add navigation, add enter, add esc)
+- [x] 2.6 `draw_dependency_view` — list with selection highlight, empty message, keybinding hints
+- [x] 2.7 `draw_dependency_add` — selectable list of available changes
+- [x] 2.8 Unit tests for rendering (7 tests: title, dependencies display, empty message, keybinding hints, selection highlight, add title, add changes)
+
+All 211 tests pass. Next up would be **Section 3: ArtifactMenu Dependencies Item**.
+──────────────────────────────────────────────────────────────
+Task 17/43: 3.1 Add "Dependencies [n]" menu item to `build_artifact_menu_items` in `app.rs` for active changes, reading dependency count from `dependencies.yaml`
+──────────────────────────────────────────────────────────────
+Alle drei Tasks der Gruppe 3 (ArtifactMenu Dependencies Item) sind erledigt. Hier eine Zusammenfassung der Änderungen:
+
+**Was wurde implementiert:**
+
+1. **`ArtifactMenuItem`** um ein `is_dependency_item: bool` Feld erweitert, um Dependencies-Items von normalen Menüeinträgen zu unterscheiden.
+
+2. **`build_artifact_menu_items`** erhält einen neuen `is_archived: bool` Parameter. Für aktive Changes wird ein "Dependencies [n]" Menüeintrag hinzugefügt, wobei `n` die Anzahl der Abhängigkeiten aus `dependencies.yaml` ist.
+
+3. **`handle_artifact_menu_input`**: Bei Enter auf ein Dependencies-Item wird der `DependencyView` Screen gepusht (statt eine Datei zu öffnen).
+
+4. **4 neue Tests:**
+   - `test_dependencies_item_appears_for_active_change` — Item erscheint mit "[0]"
+   - `test_dependencies_item_shows_count` — Item zeigt korrekte Anzahl "[2]"
+   - `test_dependencies_item_not_shown_for_archived_change` — kein Item bei archivierten Changes
+   - `test_enter_on_dependencies_item_opens_dependency_view` — Enter navigiert zum DependencyView
+
+Alle **215 Tests** bestehen.
+──────────────────────────────────────────────────────────────
+Task 20/43: 4.1 Read dependencies for all active changes in the ChangeList and pass them to the UI rendering
+──────────────────────────────────────────────────────────────
+Tasks 4.1–4.3 sind abgeschlossen. Hier eine Zusammenfassung der Änderungen:
+
+**`data.rs`:**
+- `load_change_dependencies()` hinzugefügt — liest Dependencies für alle Changes und gibt eine `HashMap<String, Vec<String>>` zurück
+- Test für die Funktion hinzugefügt
+
+**`app.rs`:**
+- `change_deps: HashMap<String, Vec<String>>` Feld zum `Screen::ChangeList` Enum-Variant hinzugefügt
+- `App::new()` lädt Dependencies beim Start für aktive Changes
+- Tab-Wechsel: Dependencies werden beim Wechsel zu Active geladen, beim Wechsel zu Archived geleert
+- Alle Test-Konstruktionen aktualisiert
+
+**`ui.rs`:**
+- `draw_change_list` akzeptiert jetzt `change_deps` Parameter
+- Dependencies werden rechts neben dem Progress angezeigt: `<- dep1, dep2`
+- Lange Dependency-Listen werden mit `...` abgeschnitten wenn sie nicht in die verfügbare Breite passen
+- 3 neue Tests: inline Dependencies angezeigt, keine Pfeile ohne Dependencies, Truncation bei langen Listen
+
+**Testergebnis:** 219 Tests bestanden (vorher 215).
+──────────────────────────────────────────────────────────────
+Task 23/43: 5.1 Add `DependencyGraph` screen variant to `Screen` enum with scroll support
+──────────────────────────────────────────────────────────────
+Alle 6 Tasks des Abschnitts **"5. Dependency Graph View"** sind implementiert und getestet. Hier ist eine Zusammenfassung:
+
+**Implementierte Änderungen:**
+
+1. **`src/app.rs`** — `DependencyGraph { graph_text, scroll }` Screen-Variante hinzugefügt, `handle_dependency_graph_input` (j/k/Up/Down zum Scrollen, Esc zurück), `G`-Keybinding in ChangeList (nur Active Tab) zum Öffnen der Graph-Ansicht. 4 Tests hinzugefügt.
+
+2. **`src/data.rs`** — `generate_dependency_graph()` Funktion implementiert, die eine ASCII-Baumdarstellung mit Tree-Connectoren (├──, └──, │) erzeugt. Roots (Changes ohne Abhängigkeiten) werden als Wurzeln dargestellt, abhängige Changes als Kinder. 5 Tests hinzugefügt (linear chain, diamond, no deps, multiple roots, empty).
+
+3. **`src/ui.rs`** — `draw_dependency_graph()` Rendering-Funktion mit Scroll-Position im Titel und [Esc] Back Hint. Match-Arm im `draw()` ergänzt. 3 Tests hinzugefügt.
+
+4. **`src/main.rs`** — `DependencyGraph`-Match-Arm im Event-Loop hinzugefügt.
+
+Alle **231 Tests** bestehen.
+──────────────────────────────────────────────────────────────
+Task 29/43: 6.1 Add `RunAllSelection` screen variant to `Screen` enum with fields: list of (change_name, selected, blocked, progress) entries
+──────────────────────────────────────────────────────────────
+Alle 6 Teilaufgaben des Abschnitts **6. Run All Selection Screen** sind implementiert und getestet. Hier eine Zusammenfassung:
+
+**Was wurde implementiert:**
+
+1. **`RunAllSelection` Screen-Variant** (`app.rs`): Neue `Screen::RunAllSelection` mit `entries: Vec<RunAllEntry>`, `selected: usize`, `error: Option<String>`. Die `RunAllEntry`-Struktur enthält `change_name`, `included`, `blocked`, `blocked_by`, `completed_tasks`, `total_tasks`.
+
+2. **`build_run_all_entries()`** (`app.rs`): Filtert Changes mit `tasks.md`, liest Dependencies, bestimmt blocked-Status bei nicht erfüllten Dependencies.
+
+3. **`handle_run_all_selection_input()`** (`app.rs`): Navigation (j/k/Up/Down), Toggle (Space, nicht bei blocked), Enter (Zykluserkennung via topologische Sortierung), Esc (Abbrechen).
+
+4. **16 Unit-Tests**: Navigation, Toggle, blocked Toggle noop, Esc, Enter mit leerer Auswahl, A-Keybinding (Active tab), A ignoriert auf Archived tab, A ignoriert bei laufender Implementation, Entry-Felder, + 7 UI-Rendering-Tests.
+
+5. **`draw_run_all_selection()`** (`ui.rs`): Zeigt `[x]`/`[ ]`/`[~]` Checkboxen, Change-Namen, Fortschritt, blocked-Gründe, Keybinding-Hints, Fehlermeldungen.
+
+6. **`A` Keybinding** in ChangeList (nur Active-Tab, nur wenn keine Implementation läuft) öffnet den RunAllSelection Screen.
+──────────────────────────────────────────────────────────────
+Task 35/43: 7.1 Add `BatchImplState` struct in `runner.rs` with queue, current_index, failed/skipped/completed sets
+──────────────────────────────────────────────────────────────
+Task 7.1 ist erledigt. Hier eine Zusammenfassung der Änderungen:
+
+**`src/runner.rs`** - `BatchImplState` Struct hinzugefügt mit:
+- `queue: Vec<String>` — topologisch sortierte Change-Namen
+- `current_index: usize` — aktueller Index in der Queue
+- `completed/failed/skipped: HashSet<String>` — Statusverfolgung
+- `deps: HashMap<String, Vec<String>>` — Abhängigkeiten für Failure-Propagation
+
+**Methoden:**
+- `new()` — Konstruktor
+- `current_change()` — aktuell laufender Change
+- `is_finished()` / `total()` — Statusabfragen
+- `should_skip()` — prüft transitive fehlgeschlagene Abhängigkeiten
+- `advance(success)` — markiert aktuellen Change als completed/failed, springt zum nächsten (überspringt blockierte Changes automatisch)
+
+**11 Unit Tests** für alle Szenarien: Erstellung, Fortschritt, Failure-Propagation, unabhängige Changes nach Fehler, transitive Skips.
+──────────────────────────────────────────────────────────────
+Task 36/43: 7.2 Implement batch advancement logic — when current ImplState finishes, determine next eligible change considering failures and skips
+──────────────────────────────────────────────────────────────
+Task 7.2 ist abgeschlossen. Hier ist eine Zusammenfassung der Änderungen:
+
+**Task 7.2: Batch Advancement Logic**
+
+Implementierte Änderungen:
+
+1. **`app.rs`**: Import von `BatchImplState` aus `runner` hinzugefügt
+2. **`App` struct**: Neues Feld `batch: Option<BatchImplState>` eingefügt
+3. **`App::advance_batch()`** Methode implementiert — die Kernlogik:
+   - Liest den Task-Fortschritt des gerade beendeten Changes
+   - Bestimmt Erfolg/Misserfolg (alle Tasks erledigt = Erfolg)
+   - Ruft `batch.advance(success)` auf, um den nächsten Change zu ermitteln
+   - Startet die nächste Implementation oder räumt den Batch-State auf
+4. **Alle Test-Konstruktionen** von `App` in `app.rs` und `ui.rs` aktualisiert (`batch: None`)
+
+Alle 258 Tests bestanden.
+──────────────────────────────────────────────────────────────
+Task 37/43: 7.3 Add unit tests for batch advancement (success advances, failure skips dependents, all complete finishes batch)
+──────────────────────────────────────────────────────────────
+**Zusammenfassung der erledigten Arbeit:**
+
+**Task 7.3** — bereits implementiert (11 BatchImplState-Tests in `runner.rs` waren schon vorhanden und bestanden alle). Markiert als erledigt.
+
+**Task 7.4** — Batch-Start aus RunAllSelection verdrahtet:
+- **`app.rs:829-840`**: Den TODO-Kommentar im `Enter`-Handler von `RunAllSelection` durch echte Batch-Startlogik ersetzt: Bei erfolgreichem topologischen Sortieren wird ein `BatchImplState` erstellt und die Implementierung des ersten Changes gestartet.
+- **3 neue Tests** hinzugefügt:
+  - `test_run_all_enter_starts_batch_and_implementation` — prüft, dass Batch und Implementation korrekt gesetzt werden
+  - `test_run_all_enter_no_batch_when_none_included` — prüft, dass bei keiner Auswahl ein Fehler angezeigt wird
+  - `test_run_all_enter_navigates_back` — prüft die Navigation zurück zur ChangeList
+
+Alle **261 Tests** bestehen.
+──────────────────────────────────────────────────────────────
+Task 39/43: 7.5 Handle ImplUpdate::Finished in the event loop to trigger batch advancement — start next change or clear batch state
+──────────────────────────────────────────────────────────────
+**Task 7.5 erledigt.** Zusammenfassung der Änderungen:
+
+**Code-Änderung** (`src/app.rs:156-158`): In `poll_implementation()` wird jetzt nach dem Empfangen von `ImplUpdate::Finished` und dem Löschen der aktuellen Implementation auch `self.advance_batch()` aufgerufen. Dies startet automatisch die nächste Änderung im Batch oder räumt den Batch-State auf, wenn alle Änderungen verarbeitet sind.
+
+**4 neue Tests:**
+- `test_poll_implementation_finished_clears_single_batch` — Einzelner Batch-Eintrag: Batch wird nach Finished aufgeräumt
+- `test_poll_implementation_finished_advances_batch_to_next` — Zwei unabhängige Änderungen: Nächste Implementation wird gestartet
+- `test_poll_implementation_finished_skips_dependent_on_failure` — Fehlgeschlagene Änderung: Abhängige werden übersprungen, unabhängige laufen weiter
+- `test_poll_implementation_finished_no_batch_unchanged` — Ohne Batch: Verhält sich wie vorher
+──────────────────────────────────────────────────────────────
+Task 40/43: 7.6 Add cancellation support — `S` during batch run stops current change and clears batch state
+──────────────────────────────────────────────────────────────
+Tasks 7.6 und 7.7 sind erledigt. Hier ist eine Zusammenfassung:
+
+**Task 7.6 — Batch-Cancellation-Support:**
+- `stop_running_implementation()` in `app.rs:162` wurde um `self.batch = None;` erweitert. Wenn `S` gedrückt wird, wird jetzt sowohl die laufende Implementierung gestoppt als auch der gesamte Batch-Zustand aufgeräumt, sodass keine weiteren Changes gestartet werden.
+
+**Task 7.7 — Unit Tests:**
+Drei Tests hinzugefügt:
+1. `test_stop_running_implementation_clears_batch` — Verifiziert, dass sowohl `implementation` als auch `batch` geleert werden und das cancel_flag gesetzt wird
+2. `test_stop_running_implementation_no_impl_clears_batch` — Verifiziert, dass der Batch auch ohne laufende Implementierung aufgeräumt wird
+3. `test_stop_running_implementation_no_batch_unchanged` — Verifiziert, dass das Stoppen einer Einzel-Implementierung ohne Batch normal funktioniert
+
+Alle 268 Tests bestehen.
+──────────────────────────────────────────────────────────────
+Task 42/43: 8.1 Modify `draw_status_bar` in `ui.rs` to show batch progress when `BatchImplState` is active (current change X/Y, failed/skipped counts)
+──────────────────────────────────────────────────────────────
+Beide Tasks der Sektion 8 (Status Bar Batch Progress) sind nun erledigt. Alle Tasks in `tasks.md` sind jetzt abgeschlossen.
+
+**Zusammenfassung der Änderungen:**
+
+1. **`src/ui.rs` - `draw_status_bar`**: Die Funktion akzeptiert jetzt einen optionalen `&BatchImplState` Parameter. Wenn ein Batch aktiv ist, zeigt die Status Bar zusätzlich:
+   - **Batch-Fortschritt**: z.B. `Change 2/4`
+   - **Fehler/Skip-Zähler**: z.B. `1 failed, 2 skipped` (nur wenn vorhanden)
+   - Diese Info wird gelb gefärbt am Ende der ersten Zeile der Status Bar angezeigt
+
+2. **`src/ui.rs` - `draw`**: Übergibt jetzt `app.batch.as_ref()` an `draw_status_bar`
+
+3. **4 neue Tests**:
+   - `test_status_bar_batch_progress` — normaler Batch-Fortschritt (Change 2/4)
+   - `test_status_bar_batch_with_failures` — mit Failed-Anzeige
+   - `test_status_bar_batch_with_skips` — mit Failed- und Skipped-Anzeige
+   - `test_status_bar_no_batch_unchanged` — ohne Batch bleibt alles wie vorher

@@ -1,16 +1,23 @@
 {
   "schema": "handoff.task.v1",
   "id": "HFTASK-0052",
-  "title": "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events",
+  "title": "Session-end auto-sync + auto pr_merged ledger marker",
   "status": "backlog",
   "priority": "P1",
-  "objective": "PRD §18: hooks are shell scripts, not the typed handoff.hook_event.v1 / handoff.hook_result.v1 gate contract (payload + severity + required_actions). And 6 of 12 required hook events are absent from hooks.toml: SessionResume, PreCommand, PostCommand, PreTest, PostTest, PostHandoff. Build the typed hook runner + add the missing events so lifecycle gating is a typed contract, not stringly-typed shell.",
+  "objective": "Wire `hf sync --auto` into the SessionStop lifecycle hook so every session end rolls per-repo ledgers into the central FLEET ledger. Make `hf done` automatically derive the merged PR from the most recent `pr_opened` event recorded by `hf ship`, falling back to `--pr N`, and record a `pr_merged` marker. Update the promote-verify CI workflow to clone RuVector/envctl next to the checkout so the master-target PR gate can build.",
   "path_scope": [
-    "spike/**",
-    "handoff/**"
+    ".handoff/hooks/**",
+    "hf/src/main.rs",
+    ".github/workflows/promote-verify.yml",
+    ".handoff/decisions/**",
+    "CLAUDE.md",
+    ".handoff/tasks/HFTASK-0052.task.json"
   ],
   "acceptance_criteria": [
-    "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events: implemented + cargo test green + checkpointed"
+    "SessionStop hook runs `hf sync --auto`",
+    "`hf done` auto-records `pr_merged` from a prior `pr_opened` event",
+    "cargo test / clippy / fmt green",
+    "`hf drift` clean"
   ],
   "test_commands": [
     "cargo test"
@@ -24,8 +31,8 @@
   "correlation_id": "handoff-buildout",
   "role": "implementer",
   "intent_lock": {
-    "objective_hash": "blake3:6d16981d63ba9c3b4e659fcf149e227a9785ff9f65182a9a410c37d6f1f7a7fe",
-    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
-    "acceptance_hash": "blake3:8183725a4b366ed7e453c190bcb129d24a78a03eff2d3011cfdca8a3933acae2"
+    "objective_hash": "blake3:0e27485d7ff68b4f5135b05000633488c76e4ef646bc5dd9fa3d3ab156d303c2",
+    "path_scope_hash": "blake3:f9eeebcb2b6dbb85cc6298cd05ec29e05344b82b98f31cafe24858766664cd5f",
+    "acceptance_hash": "blake3:e0c889fd02ec5a85564b774de99696d757b80c5ce7f19f572d4e42777f3d945f"
   }
 }

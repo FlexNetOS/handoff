@@ -1,15 +1,16 @@
 ---
 name: fleet-handoff
-description: "Repo-per-.handoff control: roll out and maintain the .handoff continuity protocol across the fleet of sibling repos as a GIT-TEXT-ONLY layer (no per-repo ledger.db; events live in the FLEET ledger meta/.handoff — ADR-0004 §3, policy P7). ALWAYS use to install .handoff into a target repo, audit fleet conformance, reconcile a fleet repo's drift, or eject the kernel harness into a repo. Do NOT use for the handoff repo's own task loop (that's handoff-loop)."
+description: "Repo-per-.handoff control: roll out and maintain the .handoff continuity protocol across the fleet of sibling repos (ADR-0004 §3/§6 rev, policy P7). A per-repo .handoff/ledger.db is LEGITIMATE when gitignored (local source of record that rolls up to the FLEET ledger); only a git-TRACKED .db or a missing .gitignore guard is a violation. ALWAYS use to install .handoff into a target repo, audit fleet conformance, reconcile a fleet repo's drift, or eject the kernel harness into a repo. Do NOT use for the handoff repo's own task loop (that's handoff-loop)."
 ---
 
 # fleet-handoff — one conforming .handoff per repo, all witnessed
 
 The kernel proven in `handoff/` is rolled out so **every fleet repo carries its own
-git-text `.handoff` control surface** (ADR-0004 fleet rollout, policy P7). Same
-continuity guarantees, repo by repo — but the witnessed *events* live in the shared
-FLEET ledger (`meta/.handoff/ledger.db`), never in the repo. This skill installs,
-maintains, and reconciles that surface.
+`.handoff` control surface** (ADR-0004 fleet rollout, policy P7). Same
+continuity guarantees, repo by repo — the witnessed *events* roll up into the shared
+FLEET ledger (`meta/.handoff/ledger.db`). A repo may keep a **gitignored** local
+`.handoff/ledger.db` as its source of record; only a *git-tracked* `.db` is banned.
+This skill installs, maintains, and reconciles that surface.
 
 ## The fleet
 
@@ -32,23 +33,25 @@ Widening the pilot (`active = false` or adding `targets`) **expands scope** → 
 requires a witnessed gatekeeper verdict (`[promotion] requires_verdict = true`).
 Never self-promote past the pilot.
 
-## Ledger residency — read this before anything (ADR-0004 §3, settled)
+## Ledger residency — read this before anything (ADR-0004 §3/§6 rev, settled)
 
-**Per-repo `.handoff/` is git-committed TEXT ONLY — never a `ledger.db`, never binary
-state.** This is the beads lesson (binary DB never in git; JSON/JSONL text is the
-git-visible state) and it is *decided*, not optional. There is **one witnessed
-ledger per orchestration home**:
+**Per-repo `.handoff/` is git-committed TEXT ONLY for cards/capsule/README — never a
+*tracked* `ledger.db` or binary state.** This is the beads lesson (binary DB never in
+git; JSON/JSONL text is the git-visible state) and it is *decided*, not optional.
+There is **one witnessed ledger per orchestration home**, plus optional gitignored
+per-repo source ledgers that roll up into it:
 
 | Ledger | Path | Holds | A repo's events go here |
 |--------|------|-------|-------------------------|
 | **FLEET** | `meta/.handoff/ledger.db` | fleet/member events (run `hf` from `meta/`) | ✅ fleet repos checkpoint here |
 | **KERNEL** | `meta/handoff/.handoff/ledger.db` | handoff's own self-dev (23 HFTASK) | kernel work only |
+| **per-repo (gitignored)** | `<repo>/.handoff/ledger.db` | local source of record, rolls up to FLEET | ✅ legitimate when guarded by `.gitignore` |
 
-A fleet repo (flexnetos_runner, envctl, …) has **no ledger of its own**; its
-witnessed events are checkpointed into the FLEET ledger, and its `packets/` are
-compiled centrally by `hf fleet status` (see below) — never rendered from a per-repo
-ledger. Creating a `<repo>/.handoff/ledger.db` is a **policy P7 violation** — remove
-it on sight.
+A fleet repo's witnessed events are **rolled up** into the FLEET ledger, and its
+`packets/` are compiled centrally by `hf fleet status`. A `<repo>/.handoff/ledger.db`
+that is **gitignored** is LEGITIMATE (the rollup model). The P7 violations are:
+(a) a *git-tracked* `.handoff/*.db`, and (b) a missing `.handoff/**/ledger.db`
+`.gitignore` guard that would allow a future commit.
 
 ## Conformance: a conforming per-repo `.handoff` (Tier A/B = full)
 
@@ -59,7 +62,7 @@ it on sight.
 | Packets | `<repo>/.handoff/packets/` | compiled **centrally** by `hf fleet status` (unbuilt) — not locally rendered |
 | README | `<repo>/.handoff/README.md` | git text |
 | Hooks/Policies/Skills | `<repo>/.handoff/{hooks,policies,skills}/` | **OPTIONAL** (only when the repo runs autonomous loops) — static declarative text |
-| **NO ledger.db** | — | per ADR-0004 §3: no binary state in a per-repo `.handoff/` |
+| **gitignored ledger.db** | — | per ADR-0004 §6 rev: a *gitignored* local ledger is legitimate; only a *tracked* one is banned |
 
 **Tiers (policy P7):** Tier A canon + Tier B FlexNetOS tools = full set above. Tier C
 forks + Tier D hubs/docs = **capsule.json + README only**, one commit, merge-safe,
@@ -76,9 +79,9 @@ no CI/policy forcing.
    templates at `~/Downloads/tmp/handoff/handoff/templates/.handoff/`) only if the
    repo runs autonomous loops. Adapt any `policy.toml` `[remote]` to that repo's
    origin/branches — **SSH form** (`git@github.com:FlexNetOS/<repo>.git`), matching the
-   `.meta.yaml` default; never `https://` (it fails the workspace's auth). **Do NOT run
-   `hf init`/`hf seed` in the repo** — those create a per-repo `ledger.db` (forbidden)
-   and `seed` stamps handoff's own backlog.
+   `.meta.yaml` default; never `https://` (it fails the workspace's auth). **If you run
+   `hf init`/`hf seed` in the repo**, ensure the resulting `.handoff/ledger.db` is
+   **gitignored** (ADR-0004 §6 rev); the fleet rollout script adds the guard for you.
 4. **Events go to the FLEET ledger; packets are compiled centrally.** Witnessed
    events for the repo are checkpointed into `meta/.handoff/ledger.db` (run `hf`
    from `meta/`). The repo's `packets/` are compiled by `hf fleet status` (kernel
@@ -91,8 +94,10 @@ no CI/policy forcing.
 ## Maintenance / audit procedure
 
 For each repo (or the named target), produce a conformance row:
-1. Has a git-text `.handoff/` (REQUIRED capsule.json present)? **Does it wrongly
-   contain a `ledger.db` / binary state?** → policy P7 violation, remove it.
+1. Has a git-text `.handoff/` (REQUIRED capsule.json present)? **Is any `ledger.db`
+   under `.handoff` git-TRACKED, or is the `.handoff/**/ledger.db` `.gitignore` guard
+   missing?** → policy P7 violation (ADR-0004 §6 rev); fix by removing the tracked
+   binary or adding the guard. A gitignored ledger on disk is legitimate.
 2. Reconcile per-repo drift, scoped to one repo, with the FLEET ledger as the event
    source: **Git > FLEET ledger (`meta/.handoff`) > the repo's cards > its (centrally
    compiled) packet** → re-sync cards (`hf checkpoint --sync-cards`); packets await
@@ -111,13 +116,13 @@ For each repo (or the named target), produce a conformance row:
 - A repo unreachable/uncloned → `meta git update` once; still absent → mark PENDING,
   continue with the rest, note the omission (never silently drop a repo).
 
-## The core invariant: no per-repo ledger; events live at the orchestration home
+## The core invariant: git-text visible state; events roll up to the orchestration home
 
-A fleet repo's git-committed text (capsule + cards + README) is its visible state;
-its witnessed *events* live in the **FLEET ledger** (`meta/.handoff/ledger.db`), not
-in the repo. There is exactly one ledger per orchestration home (FLEET at `meta/`,
-KERNEL at `meta/handoff/`). `hf fleet status` is the join that compiles a board (and
-each repo's packet) from `../.meta.yaml` members + their capsules/cards + fleet-ledger
+A fleet repo's git-committed text (capsule + cards + README) is its visible state.
+Its witnessed *events* live in the **FLEET ledger** (`meta/.handoff/ledger.db`), either
+written directly or rolled up from a **gitignored** per-repo `.handoff/ledger.db`
+(ADR-0004 §6 rev). `hf fleet status` is the join that compiles a board (and each
+repo's packet) from `../.meta.yaml` members + their capsules/cards + fleet-ledger
 events; **Git is the sync transport**. State precedence stays **Git > ledger >
-cards**. If you ever find a `<repo>/.handoff/ledger.db`, it is a P7 violation — remove
-it (the events belong in the FLEET ledger).
+cards**. If you find a *git-tracked* `<repo>/.handoff/ledger.db`, that is a P7
+violation — remove it. A gitignored ledger on disk is legitimate.

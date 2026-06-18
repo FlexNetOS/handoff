@@ -1,0 +1,52 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 11:06:25
+Change: implementation-stall-detection
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/9: 1.1 Add `Stalled` variant to `ImplUpdate` enum in `runner.rs`
+──────────────────────────────────────────────────────────────
+**Task 1.1 abgeschlossen.** 
+
+Zusammenfassung der Änderungen:
+- **`src/runner.rs:17`** — `Stalled` Variante zum `ImplUpdate` Enum hinzugefügt
+- **`src/runner.rs:405`** — Bestehenden Test-Match um `Stalled` erweitert
+- **`src/app.rs:146`** — `poll_implementation()` Match-Arm für `Stalled` hinzugefügt (vorläufig wie `Finished` behandelt, vollständiges Handling kommt in Task 3.1)
+
+Alle 272 Tests bestehen weiterhin.
+──────────────────────────────────────────────────────────────
+Task 2/9: 1.2 Add tests for `ImplUpdate::Stalled` message passing via channel
+──────────────────────────────────────────────────────────────
+**Task 1.2 erledigt.** Zwei Tests hinzugefügt in `src/runner.rs`:
+
+1. **`test_impl_update_stalled`** — Verifiziert, dass `ImplUpdate::Stalled` über den Channel gesendet und empfangen werden kann.
+2. **`test_impl_update_stalled_after_progress`** — Verifiziert, dass `Stalled` korrekt nach `Progress`-Nachrichten über denselben Channel ankommt (realistischeres Szenario).
+
+Beide Tests bestehen. Der nächste offene Task wäre **2.1** (Stall Counter und `prev_completed` Tracking in `implementation_loop`).
+──────────────────────────────────────────────────────────────
+Task 3/9: 2.1 Add stall counter (`stall_count`) and `prev_completed` tracking to `implementation_loop`, increment on no-progress runs, reset on progress, abort and send `Stalled` when counter reaches 3
+──────────────────────────────────────────────────────────────
+Alle Tasks sind abgeschlossen. Hier eine Zusammenfassung der Änderungen:
+
+## Zusammenfassung
+
+### `runner.rs` — Stall Detection im Implementation Loop
+
+**Task 2.1 + 2.2**: Die `implementation_loop` trackt jetzt `stall_count` und `prev_completed`:
+- Nach jedem Prozess-Lauf (egal ob erfolgreich oder fehlgeschlagen) wird der Fortschritt erneut gelesen
+- Wenn `completed > prev_completed` → Stall-Counter wird zurückgesetzt
+- Wenn kein Fortschritt → Stall-Counter wird inkrementiert
+- Nach 3 aufeinanderfolgenden Läufen ohne Fortschritt → `ImplUpdate::Stalled` wird gesendet
+- Spawn-Fehler zählen ebenfalls zum Stall-Counter (mit `continue` statt sofortigem Abbruch)
+- Der sofortige Abbruch bei `!exited_ok` wurde entfernt — jetzt werden alle Exit-Codes gleich behandelt
+
+**Tests 2.3-2.5**: Drei neue Tests:
+- `test_loop_sends_stalled_after_three_no_progress_runs` — `true`-Befehl ohne Taskmodifikation
+- `test_stall_counter_resets_on_progress` — Shell-Script markiert Task bei Lauf 2, Counter wird zurückgesetzt
+- `test_loop_continues_past_failed_runs_with_eventual_progress` — Shell-Script markiert Task bei Lauf 3, Loop endet mit `Finished` statt `Stalled`
+
+### `app.rs` — UI/Batch Integration
+
+**Task 3.1**: `ImplUpdate::Stalled` wird in `poll_implementation` behandelt (war bereits korrekt als `Finished | Stalled` implementiert). `advance_batch` prüft den Task-Fortschritt und behandelt unvollständige Tasks als Fehler.
+
+**Task 3.2**: Neuer Test `test_poll_implementation_stalled_treats_as_failure_skips_dependents` — verifiziert, dass abhängige Changes bei Stall übersprungen werden.

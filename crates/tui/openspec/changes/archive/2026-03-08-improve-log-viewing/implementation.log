@@ -1,0 +1,22 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-07 12:27:45
+Change: improve-log-viewing
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/8: 1.1 Add `is_plain_text: bool` field to `Screen::ArtifactView` in `src/app.rs`
+──────────────────────────────────────────────────────────────
+Alle Tasks sind erledigt. Hier eine Zusammenfassung der Änderungen:
+
+**`src/app.rs`:**
+- `is_plain_text: bool` Feld zu `Screen::ArtifactView` hinzugefügt
+- Bei `Enter` auf einem Artifact: `is_plain_text` wird anhand der `.log`-Erweiterung gesetzt
+- `L`-Shortcut: Öffnet `implementation.log` direkt als Plain-Text, wenn die Datei existiert
+- `R`-Handler: Navigiert nach Runner-Start automatisch zur Log-Ansicht
+- 5 neue Tests: `test_l_key_opens_log_when_exists`, `test_l_key_noop_when_log_missing`, `test_l_key_works_for_archived_changes`, `test_r_key_navigates_to_log_view`, `test_r_key_esc_returns_to_artifact_menu`
+
+**`src/ui.rs`:**
+- `draw_artifact_view()` nimmt `is_plain_text`-Parameter; überspringt `tui_markdown::from_str()` wenn `true` und nutzt stattdessen `ratatui::text::Text::from(content)`
+- 3 neue Tests: `test_plain_text_preserves_single_newlines`, `test_plain_text_preserves_separator_lines`, `test_non_log_files_use_markdown_rendering`
+
+Alle **102 Tests** bestehen.

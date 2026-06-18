@@ -1,0 +1,26 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 15:09:56
+Change: run-finished-command
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/12: 1.1 Add `run_finished_command: String` field to `TuiConfig` in `config.rs` with `#[serde(default)]` and empty string default
+──────────────────────────────────────────────────────────────
+Alle Tasks sind implementiert und abgeschlossen. Hier eine Zusammenfassung:
+
+**Implementierte Änderungen:**
+
+1. **config.rs** - `run_finished_command: String` Feld mit `#[serde(default)]` hinzugefügt + 4 neue Tests
+2. **app.rs** - Umfassende Config-Screen-Integration:
+   - `RunFinishedCommand` Variant in `ConfigField` Enum
+   - Neues Feld in `Screen::Config`
+   - Tab-Zyklus: Command → Prompt → PostImpl → InteractiveCommand → **RunFinishedCommand** → Command
+   - Inline-Editing (wie Command-Feld)
+   - Save/Reset-Handler aktualisiert
+   - `push_config_screen` initialisiert das Feld
+   - `spawn_run_finished_command()` Methode: Fire-and-forget via `sh -c` (Unix) / `cmd /C` (Windows)
+   - Hook feuert in `poll_implementation` wenn kein neuer Run gestartet wird
+   - 8 neue Tests (Edit, Tab, Save, Reset, Hook-Verhalten)
+3. **ui.rs** - RunFinishedCommand-Feld im Config-Screen gerendert (mit `(disabled)` wenn leer, Cursor bei Editing)
+
+**Testergebnis:** 356 Tests bestanden, 0 fehlgeschlagen (12 neue Tests hinzugefügt).

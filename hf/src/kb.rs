@@ -193,6 +193,8 @@ pub enum KbTransition {
     Progress(String),
     /// `hf done` → kb status `completed`, with an evidence progress line.
     Done(String),
+    /// `hf release` (HFTASK-0038) → kb status `backlog` (revert an in-progress claim).
+    Released,
 }
 
 /// True iff `correlation_id` is shaped like a kb slug (e.g. `tasks/foo`). The seam stamps the
@@ -221,6 +223,10 @@ pub fn writeback_args(slug: &str, t: &KbTransition) -> (Vec<String>, String) {
                 format!("+progress=completed: {}", sanitize(evidence)),
             ],
             format!("handoff write-back: {slug} done → completed"),
+        ),
+        KbTransition::Released => (
+            vec!["status=backlog".to_string()],
+            format!("handoff write-back: {slug} released → backlog"),
         ),
     }
 }
@@ -302,7 +308,11 @@ mod tests {
 
     #[test]
     fn mint_target_is_fleet_when_meta_root_exists() {
-        let root = PathBuf::from("/some/meta/root");
+        let root = if cfg!(windows) {
+            PathBuf::from("C:\\some\\meta\\root")
+        } else {
+            PathBuf::from("/some/meta/root")
+        };
         let (dir, plane) = super::mint_target(Some(root.clone()));
         // FLEET tasks dir = <meta-root>/.handoff/tasks — NOT a cwd-relative path.
         assert_eq!(dir, root.join(crate::HF).join("tasks"));
@@ -378,6 +388,11 @@ mod tests {
         // progress lines append (git-kb `+field` array-add) and stay single-line
         let (sets, _) = writeback_args(slug, &KbTransition::Progress("did x\nthen y".into()));
         assert_eq!(sets, vec!["+progress=did x then y"]);
+
+        // HFTASK-0038 gap-hunt: release reverts a kb-minted card to backlog.
+        let (sets, msg) = writeback_args(slug, &KbTransition::Released);
+        assert_eq!(sets, vec!["status=backlog"]);
+        assert!(msg.contains("released → backlog"));
     }
 
     #[test]

@@ -1,0 +1,52 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 14:22:34
+Change: selectable-run-mode
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/15: 1.1 In `data.rs`, rename `DependencyConfig` to `ChangeConfig`, add `RunMode` enum (Normal/Apply with serde defaults), change file path from `dependencies.yaml` to `change-config.yaml`
+──────────────────────────────────────────────────────────────
+Alle Tasks der Gruppe 1 (Data Layer) sind erledigt. Hier ist eine Zusammenfassung der Änderungen:
+
+**Task 1.1**: `DependencyConfig` → `ChangeConfig` umbenannt, `RunMode` enum mit `Normal`/`Apply` hinzugefügt (mit serde defaults), Dateipfad von `dependencies.yaml` auf `change-config.yaml` geändert.
+
+**Task 1.2**: `read_change_config()` als neue Hauptfunktion (gibt `ChangeConfig` zurück), `write_change_config()` (nimmt `&ChangeConfig`), `read_run_mode()` Convenience-Funktion. Die alten `read_dependencies()`/`write_dependencies()` funktionieren weiterhin als Wrapper (bewahren `run_mode` beim Schreiben).
+
+**Task 1.3**: `load_change_dependencies()` nutzt intern jetzt `read_dependencies()`, welches wiederum `read_change_config()` aufruft.
+
+**Task 1.4**: Alle Tests in `data.rs` und `app.rs` von `dependencies.yaml` auf `change-config.yaml` aktualisiert.
+
+**Task 1.5**: 12 neue Tests hinzugefügt: RunMode default, ChangeConfig Deserialisierung (fehlend, explicit apply/normal, empty yaml), Roundtrip-Serialisierung, read_change_config mit run_mode, read_run_mode, write_change_config, und write_dependencies bewahrt run_mode.
+
+Alle **324 Tests** bestehen erfolgreich.
+──────────────────────────────────────────────────────────────
+Task 6/15: 2.1 Add `start_apply()` function in `runner.rs` that spawns a single subprocess with `/opsx:apply <name>` as prompt, redirects output to `implementation.log`, sends only `Finished` on completion, and supports cancellation
+──────────────────────────────────────────────────────────────
+Tasks 2.1 und 2.2 sind erledigt.
+
+**Zusammenfassung der Änderungen:**
+
+- **`start_apply()`** (`runner.rs:232`): Neue öffentliche Funktion, die einen einzelnen Subprocess mit `/opsx:apply <name>` als Prompt startet. Gibt ein `ImplState` zurück mit `completed: 0`, `total: 0` (kein Task-Tracking).
+
+- **`apply_run()`** (`runner.rs:269`): Interne Worker-Funktion, die:
+  - Einen Run-Header ins Log schreibt
+  - Einen einzelnen Subprocess über `config.build_command()` startet
+  - Nur `Finished { success }` sendet (kein `Progress`, kein `Stalled`)
+  - Cancellation via `cancel_flag` + `child_handle` unterstützt
+
+- **7 neue Tests**: Log-Pfad, Cancel-Flag, nur-Finished-Nachrichten, kein Progress/Stalled, Run-Header-Schreibung, leerer Command, Cancel-vor-Spawn.
+──────────────────────────────────────────────────────────────
+Task 8/15: 3.1 In `app.rs`, update `R` key handler in `handle_artifact_menu_input()` to read `run_mode` from `change-config.yaml` and dispatch to `start_implementation()` or `start_apply()`
+──────────────────────────────────────────────────────────────
+Alle Tasks sind abgeschlossen. Hier eine Zusammenfassung der Änderungen:
+
+**Implementierte Tasks 3.1 - 4.2:**
+
+- **3.1** `app.rs`: `R` key handler liest jetzt `run_mode` via `data::read_run_mode()` und dispatcht zu `start_implementation()` (Normal) oder `start_apply()` (Apply)
+- **3.2** `app.rs`: `advance_batch()` und `handle_run_all_selection_input()` lesen ebenfalls den `run_mode` jeder Change und dispatchen entsprechend — damit funktionieren gemischte Modi im Batch-Run
+- **3.3** `app.rs`: `DependencyView` Screen-Variant hat jetzt ein `run_mode` Feld; `M` key togglet zwischen Normal/Apply und persistiert nach `change-config.yaml`
+- **3.4** Bereits implizit erledigt — `write_dependencies()` liest intern die volle Config und erhält `run_mode`
+- **3.5** Alle Tests in `app.rs` wurden aktualisiert (6 Stellen mit `run_mode: RunMode::Normal`)
+- **3.6** 6 neue Tests hinzugefügt: R key Apply-Mode-Dispatch, R key Normal-Default, M key Toggle (beide Richtungen), M key erhält Dependencies, Enter auf Dependency-Item lädt run_mode
+- **4.1** `ui.rs`: `draw_dependency_view()` zeigt den aktuellen Run Mode im Titel (`[Mode: Normal/Apply]`) und `[M] Toggle Mode` als Key Hint
+- **4.2** UI-Tests aktualisiert für neue Titel und Key Hints
