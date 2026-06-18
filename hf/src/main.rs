@@ -10,6 +10,8 @@
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod branch;
+#[cfg(feature = "cognitum")]
+mod cognitum;
 mod contract;
 mod fleet;
 mod gates;
@@ -1857,6 +1859,16 @@ fn main() {
                 }
             }
         }
+        #[cfg(feature = "cognitum")]
+        Some("policy") if args.get(1).map(|s| s.as_str()) == Some("gate") => {
+            let action = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let task_id = args
+                .iter()
+                .position(|a| a == "--task")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str());
+            cognitum::cmd_policy_gate(action, task_id);
+        }
         Some("policy")
             if args
                 .get(1)
@@ -1904,7 +1916,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
