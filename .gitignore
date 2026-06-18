@@ -1,4 +1,5 @@
 /target
+node_modules/
 # HFTASK-0035 (ADR-0004 §3.3/§6 rev): the local ledger is gitignored (legitimate per-repo
 # source of record, never committed). `**` also covers the top-level path + grit worktrees.
 .handoff/**/ledger.db

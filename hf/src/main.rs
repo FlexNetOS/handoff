@@ -21,6 +21,7 @@ mod intake;
 mod kb;
 mod lease;
 mod policy;
+mod prompt_hub;
 mod route;
 mod routing;
 mod session;
@@ -1946,6 +1947,34 @@ fn main() {
                 }
             }
         }
+        Some("prompt-hub") => {
+            let flag = |name: &str| {
+                args.iter()
+                    .position(|a| a == name)
+                    .and_then(|i| args.get(i + 1))
+                    .map(|s| s.as_str())
+            };
+            let scope: Option<Vec<String>> = flag("--scope").map(|s| {
+                s.split(',')
+                    .map(|g| g.trim().to_string())
+                    .filter(|g| !g.is_empty())
+                    .collect()
+            });
+            let vibe = args
+                .get(1)
+                .map(|s| s.as_str())
+                .filter(|s| !s.starts_with("--"))
+                .unwrap_or("");
+            let dispatch = args.iter().any(|a| a == "--dispatch");
+            let json = args.iter().any(|a| a == "--json");
+            if vibe.is_empty() {
+                eprintln!(
+                    "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]"
+                );
+                std::process::exit(2);
+            }
+            prompt_hub::cmd_prompt_hub(vibe, scope.as_deref(), dispatch, json);
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
@@ -1958,7 +1987,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
