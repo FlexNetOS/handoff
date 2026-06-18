@@ -188,14 +188,14 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
     };
 
     let payload = serde_json::json!({
-        "pr": meta.url,
+        "pr": &meta.url,
         "number": meta.number,
-        "head": meta.head_ref_name,
-        "base": meta.base_ref_name,
+        "head": &meta.head_ref_name,
+        "base": &meta.base_ref_name,
         "verdict": verdict.as_str(),
-        "reasons": reasons,
-        "changed_files": impact.changed,
-        "impacted_files": impact.impacted,
+        "reasons": &reasons,
+        "changed_files": &impact.changed,
+        "impacted_files": &impact.impacted,
         "task_id": task_id,
     })
     .to_string();
