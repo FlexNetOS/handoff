@@ -898,6 +898,12 @@ fn capsule_field(key: &str) -> Option<String> {
     v.get(key).and_then(|x| x.as_str()).map(String::from)
 }
 
+/// HFTASK-0047: the current North-Star doctrine revision = blake3 of the capsule `northstar`.
+/// An empty/absent capsule yields an empty revision (no northstar obligation is raised).
+fn current_northstar_revision() -> String {
+    work_order::northstar_revision(&capsule_field("northstar").unwrap_or_default())
+}
+
 fn cmd_status(json: bool) {
     let tasks = load_tasks();
     let replay = current_statuses();
@@ -1107,6 +1113,7 @@ fn cmd_handoff() {
         let evidence = contract::CompletionEvidence {
             status: status_of(&active.id, &replay, active),
             checkpoints: checkpoint_count(&active.id),
+            northstar_revision: current_northstar_revision(),
         };
         match contract::prove_contract(active, &evidence) {
             Ok(p) => p,
@@ -1247,6 +1254,16 @@ fn cmd_seed() {
             role: Some("implementer".into()),
             intent_lock: WorkOrder::compute_intent_lock(obj, &path_scope, &acceptance),
         }
+    };
+    // HFTASK-0047: stamp the full 5-field lock (constraint + northstar surfaces) on freshly
+    // minted cards so policy/doctrine drift becomes hash-detectable. `hf seed` is additive, so
+    // already-seeded 3-field cards keep their legacy locks (no-downgrade); only NEW cards gain
+    // the two surfaces.
+    let ns_rev = current_northstar_revision();
+    let mk = |id: &str, title: &str, pri: Priority, obj: &str, deps: &[&str]| {
+        let mut wo = mk(id, title, pri, obj, deps);
+        wo.intent_lock = wo.full_intent_lock(&ns_rev);
+        wo
     };
     let backlog = vec![
         mk("HFTASK-0001", "Finalize naming + register kernel (Continuity Ledger Kernel)", Priority::P0,

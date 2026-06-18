@@ -64,18 +64,86 @@ pub struct WorkOrder {
 }
 
 /// blake3 hashes of the immutable contract surface — the .handoff drift-sentinel model.
+///
+/// PRD §12.2 specifies **five** lock fields. The first three (objective/path_scope/acceptance)
+/// are the original surface; `constraint_hash` (§12.1 policy/permission surface) and
+/// `northstar_revision` (the capsule doctrine the order was minted against) close the gap so
+/// constraint drift and a North-Star revision become hash-detectable.
+///
+/// No-downgrade / backward-compat: the two new fields are `#[serde(default,
+/// skip_serializing_if = "String::is_empty")]`, so a *legacy partial lock* (the three-hash
+/// form minted before HFTASK-0047) round-trips to byte-identical JSON and existing cards keep
+/// verifying unchanged. A populated 5-field lock is a strict superset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntentLock {
     pub objective_hash: String,
     pub path_scope_hash: String,
     pub acceptance_hash: String,
+    /// blake3 of the constraint surface (permission flags + dependency edges). Empty on a
+    /// legacy partial lock minted before the 5-field form existed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub constraint_hash: String,
+    /// blake3 of the North-Star doctrine this order was minted against (capsule `northstar`).
+    /// Empty on a legacy partial lock; a change here means the order predates a doctrine
+    /// revision and must be re-minted. Supplied externally (the capsule lives at the hf layer).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub northstar_revision: String,
+}
+
+/// Per-surface drift verdict (`true` = unchanged) across all five IntentLock surfaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntentComponents {
+    pub objective: bool,
+    pub path_scope: bool,
+    pub acceptance: bool,
+    pub constraint: bool,
+    pub northstar: bool,
+}
+
+impl IntentComponents {
+    /// True iff every surface is unchanged.
+    pub fn all_match(&self) -> bool {
+        self.objective && self.path_scope && self.acceptance && self.constraint && self.northstar
+    }
 }
 
 fn b3(s: &str) -> String {
     format!("blake3:{}", blake3::hash(s.as_bytes()).to_hex())
 }
 
+/// blake3 of the North-Star doctrine, in the same `blake3:<hex>` form the lock stores. Empty
+/// doctrine → empty revision (legacy/uninitialized capsule raises no northstar obligation).
+/// Single hashing impl shared by the lock and the hf layer (no second blake3 dep edge).
+pub fn northstar_revision(doctrine: &str) -> String {
+    if doctrine.is_empty() {
+        String::new()
+    } else {
+        b3(doctrine)
+    }
+}
+
+/// Canonicalize the constraint/permission surface (§12.1) into one deterministic string so it
+/// can be hashed. Order-stable: dependency lists are joined as-stored (intake order is itself
+/// deterministic). Kept as a free fn so both the struct and call sites can hash a surface.
+pub fn constraint_surface(
+    allows_network: bool,
+    allows_dependency_addition: bool,
+    dependencies: &[String],
+    blocked_by: &[String],
+) -> String {
+    format!(
+        "network={};dep_add={};dependencies={};blocked_by={}",
+        allows_network,
+        allows_dependency_addition,
+        dependencies.join(","),
+        blocked_by.join(","),
+    )
+}
+
 impl WorkOrder {
+    /// Legacy three-hash constructor (objective/path_scope/acceptance). Retained verbatim so
+    /// every existing call site is unchanged and mints a partial lock with empty constraint /
+    /// northstar fields (no-downgrade). Use [`WorkOrder::full_intent_lock`] for the 5-field form.
     pub fn compute_intent_lock(
         objective: &str,
         path_scope: &[String],
@@ -85,14 +153,61 @@ impl WorkOrder {
             objective_hash: b3(objective),
             path_scope_hash: b3(&path_scope.join("\n")),
             acceptance_hash: b3(&acceptance.join("\n")),
+            constraint_hash: String::new(),
+            northstar_revision: String::new(),
         }
+    }
+
+    /// blake3 of this order's current constraint surface (§12.1).
+    pub fn constraint_hash(&self) -> String {
+        b3(&constraint_surface(
+            self.allows_network,
+            self.allows_dependency_addition,
+            &self.dependencies,
+            &self.blocked_by,
+        ))
+    }
+
+    /// Compute the full 5-field lock from this order's live fields plus the externally-supplied
+    /// `northstar_revision` (the hash of the capsule doctrine; the capsule lives at the hf layer).
+    pub fn full_intent_lock(&self, northstar_revision: &str) -> IntentLock {
+        let mut lock =
+            Self::compute_intent_lock(&self.objective, &self.path_scope, &self.acceptance_criteria);
+        lock.constraint_hash = self.constraint_hash();
+        lock.northstar_revision = northstar_revision.to_string();
+        lock
     }
 
     /// Recompute the intent-lock from current fields and report whether it still matches
     /// (the core drift check: did objective/scope/acceptance mutate without a new order?).
+    /// Degrade-aware: only the three base hashes are compared (constraint/northstar need the
+    /// capsule and are checked by [`WorkOrder::intent_components`] / the drift gate).
     pub fn intent_unchanged(&self) -> bool {
-        Self::compute_intent_lock(&self.objective, &self.path_scope, &self.acceptance_criteria)
-            == self.intent_lock
+        let r =
+            Self::compute_intent_lock(&self.objective, &self.path_scope, &self.acceptance_criteria);
+        r.objective_hash == self.intent_lock.objective_hash
+            && r.path_scope_hash == self.intent_lock.path_scope_hash
+            && r.acceptance_hash == self.intent_lock.acceptance_hash
+    }
+
+    /// Per-component drift report against the recorded lock, including the two new surfaces.
+    /// `northstar_revision` is the current capsule doctrine hash. A component is reported
+    /// `false` (drifted) only when the recorded lock actually carries that surface — a legacy
+    /// partial lock (empty constraint/northstar) is never spuriously flagged (no-downgrade).
+    pub fn intent_components(&self, northstar_revision: &str) -> IntentComponents {
+        let rec = &self.intent_lock;
+        let red =
+            Self::compute_intent_lock(&self.objective, &self.path_scope, &self.acceptance_criteria);
+        IntentComponents {
+            objective: rec.objective_hash == red.objective_hash,
+            path_scope: rec.path_scope_hash == red.path_scope_hash,
+            acceptance: rec.acceptance_hash == red.acceptance_hash,
+            // legacy partial lock (empty) → treat as matching, never a false drift
+            constraint: rec.constraint_hash.is_empty()
+                || rec.constraint_hash == self.constraint_hash(),
+            northstar: rec.northstar_revision.is_empty()
+                || rec.northstar_revision == northstar_revision,
+        }
     }
 
     pub fn to_json(&self) -> String {
@@ -322,5 +437,74 @@ mod tests {
         let back: WorkOrder = serde_json::from_str(&j).unwrap();
         assert_eq!(back.id, o.id);
         assert_eq!(back.intent_lock, o.intent_lock);
+    }
+
+    #[test]
+    fn legacy_partial_lock_serializes_to_three_fields() {
+        // HFTASK-0047 no-downgrade: a lock minted by the 3-arg constructor must round-trip to
+        // byte-identical 3-field JSON (the new fields are skipped when empty), so existing
+        // committed cards are unaffected.
+        let lock = WorkOrder::compute_intent_lock("obj", &["a/".into()], &["does x".into()]);
+        let j = serde_json::to_string(&lock).unwrap();
+        assert!(
+            !j.contains("constraint_hash"),
+            "empty constraint must be skipped: {j}"
+        );
+        assert!(
+            !j.contains("northstar_revision"),
+            "empty northstar must be skipped: {j}"
+        );
+        // and a legacy 3-field card still deserializes
+        let back: IntentLock = serde_json::from_str(
+            r#"{"objective_hash":"a","path_scope_hash":"b","acceptance_hash":"c"}"#,
+        )
+        .unwrap();
+        assert_eq!(back.constraint_hash, "");
+        assert_eq!(back.northstar_revision, "");
+    }
+
+    #[test]
+    fn full_lock_carries_all_five_surfaces() {
+        let mut o = work_orders_from_bundle(&sample_bundle()).remove(0);
+        o.intent_lock = o.full_intent_lock("blake3:northstar-rev-1");
+        assert!(!o.intent_lock.constraint_hash.is_empty());
+        assert_eq!(o.intent_lock.northstar_revision, "blake3:northstar-rev-1");
+        // a full lock survives a JSON round-trip with all five fields
+        let back: WorkOrder = serde_json::from_str(&o.to_json()).unwrap();
+        assert_eq!(back.intent_lock, o.intent_lock);
+    }
+
+    #[test]
+    fn constraint_drift_is_detected_only_on_a_full_lock() {
+        let mut o = work_orders_from_bundle(&sample_bundle()).remove(0);
+        // legacy partial lock: constraint surface is never spuriously flagged
+        assert!(
+            o.intent_components("ns").constraint,
+            "legacy lock must not flag constraint"
+        );
+        // promote to a full lock, then mutate the permission surface
+        o.intent_lock = o.full_intent_lock("ns");
+        assert!(o.intent_components("ns").all_match());
+        o.allows_network = !o.allows_network; // policy/constraint drift
+        let c = o.intent_components("ns");
+        assert!(
+            !c.constraint,
+            "constraint drift must be detected on a full lock"
+        );
+        assert!(
+            c.objective && c.path_scope && c.acceptance,
+            "base surfaces unchanged"
+        );
+    }
+
+    #[test]
+    fn northstar_revision_drift_is_detected() {
+        let mut o = work_orders_from_bundle(&sample_bundle()).remove(0);
+        o.intent_lock = o.full_intent_lock("blake3:rev-A");
+        assert!(o.intent_components("blake3:rev-A").northstar);
+        assert!(
+            !o.intent_components("blake3:rev-B").northstar,
+            "a doctrine revision must mark the order's northstar surface drifted"
+        );
     }
 }
