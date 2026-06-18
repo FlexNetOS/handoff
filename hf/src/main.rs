@@ -389,21 +389,56 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
         std::process::exit(1);
     };
     let resource = lease::claim_resource(id);
+    let mut degraded = false;
     match lease::gate(leaser.reserve(&resource, CLAIM_TTL_SECS, &format!("hf claim {id}"))) {
         lease::ClaimGate::Refuse(reason) => {
             eprintln!("hf claim: {id} BLOCKED — {resource} is held by another peer ({reason}); not claiming");
             return false;
         }
         lease::ClaimGate::ProceedDegraded => {
+            degraded = true;
             eprintln!(
-                "hf claim: weave lease unavailable — proceeding ledger-only (no mesh coordination)"
+                "hf claim: weave lease unavailable — falling back to the atomic in-ledger lease"
             );
         }
         lease::ClaimGate::Proceed => {
             println!("hf claim: reserved weave lease {resource} (ttl {CLAIM_TTL_SECS}s)");
         }
     }
+
+    // HFTASK-0048: acquire the atomic in-ledger lease as a no-downgrade SUPERSET of the weave
+    // lease — it gives real mutual exclusion even in the degraded (weave-absent) path, which
+    // previously had none. The whole check-then-write is one BEGIN IMMEDIATE tx, so concurrent
+    // claimers serialize and exactly one wins.
+    let holder = lease::local_holder();
+    let now = now_ns();
     let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    match led.try_acquire_lease(&resource, &holder, CLAIM_TTL_SECS, now) {
+        Ok(ledger::LeaseOutcome::Conflict { holder: other }) => {
+            eprintln!(
+                "hf claim: {id} BLOCKED — in-ledger lease {resource} is held by '{other}'; not claiming"
+            );
+            // Don't orphan a weave lease we just took for a claim we're now refusing.
+            if !degraded {
+                lease::WeaveCli::from_env().release(&resource);
+            }
+            return false;
+        }
+        Ok(ledger::LeaseOutcome::Acquired { .. }) => {
+            lease::write_lockfile(&resource, &holder, CLAIM_TTL_SECS, now);
+            println!("hf claim: acquired in-ledger lease {resource} (holder '{holder}', ttl {CLAIM_TTL_SECS}s)");
+        }
+        Ok(ledger::LeaseOutcome::Heartbeat { .. }) => {
+            lease::write_lockfile(&resource, &holder, CLAIM_TTL_SECS, now);
+            println!("hf claim: extended in-ledger lease {resource} (holder '{holder}')");
+        }
+        Err(e) => {
+            // Lease bookkeeping failure must not silently drop exclusion — fail closed.
+            eprintln!("hf claim: {id} BLOCKED — in-ledger lease error: {e}");
+            return false;
+        }
+    }
+
     led.record_transition(&wo, Status::Claimed, now_ns())
         .unwrap();
     println!("hf claim: {id} -> claimed");
@@ -429,8 +464,22 @@ fn cmd_release(id: &str) {
     if lease::WeaveCli::from_env().release(&resource) {
         println!("hf release: freed weave lease {resource}");
     } else {
-        eprintln!("hf release: no active lease {resource} held by you (or weave unavailable)");
+        eprintln!(
+            "hf release: no active weave lease {resource} held by you (or weave unavailable)"
+        );
     }
+    // HFTASK-0048: release the atomic in-ledger lease + drop its lockfile mirror, so the
+    // resource is genuinely free for the next claimer (the weave release alone left the
+    // in-ledger lease live until TTL).
+    let holder = lease::local_holder();
+    if let Ok((ledger_path, _)) = route::route_for_task(id) {
+        if let Ok(mut led) = Ledger::open(&ledger_path.to_string_lossy()) {
+            if led.release_lease(&resource, &holder, now_ns()).is_ok() {
+                println!("hf release: freed in-ledger lease {resource}");
+            }
+        }
+    }
+    lease::remove_lockfile(&resource);
     // Un-claim: only revert an in-progress claim (never Review/Done/Backlog).
     let status = current_statuses()
         .into_iter()
@@ -451,6 +500,46 @@ fn cmd_release(id: &str) {
             .is_ok()
         {
             println!("hf release: {id} -> backlog (un-claimed)");
+        }
+    }
+}
+
+/// `hf lease` (HFTASK-0048) — list the currently-held atomic in-ledger leases (resource →
+/// holder), resolved live over the witnessed history with TTL/release applied. Read-only.
+fn cmd_lease(json: bool) {
+    let ledger = ledger_path();
+    let Ok(led) = Ledger::open(&ledger) else {
+        eprintln!("hf lease: ledger unavailable at {ledger}");
+        std::process::exit(1);
+    };
+    let now = now_ns();
+    let mut resources: Vec<String> = vec![];
+    if let Ok(events) = led.all_events() {
+        for e in events {
+            if (e.event_type == "lease_acquired" || e.event_type == "lease_released")
+                && !resources.contains(&e.work_order_id)
+            {
+                resources.push(e.work_order_id);
+            }
+        }
+    }
+    let held: Vec<(String, String)> = resources
+        .into_iter()
+        .filter_map(|r| led.lease_holder(&r, now).ok().flatten().map(|h| (r, h)))
+        .collect();
+    if json {
+        let out = serde_json::json!({
+            "schema": "handoff.leases.v1",
+            "now_ns": now,
+            "held": held.iter().map(|(r, h)| serde_json::json!({"resource": r, "holder": h})).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    } else if held.is_empty() {
+        println!("hf lease: no active in-ledger leases");
+    } else {
+        println!("hf lease: {} active in-ledger lease(s):", held.len());
+        for (r, h) in &held {
+            println!("  🔒 {r}  →  {h}");
         }
     }
 }
@@ -1589,6 +1678,7 @@ fn main() {
         Some("doctor") => cmd_doctor(args.iter().any(|a| a == "--json")),
         Some("reconcile") => cmd_reconcile(),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
         Some("checkpoint") => {
             let auto = args.iter().any(|a| a == "--auto");
             let quiet = args.iter().any(|a| a == "--quiet");
