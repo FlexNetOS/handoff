@@ -260,7 +260,10 @@ mod tests {
 
     #[test]
     fn impact_scan_empty_for_unreferenced() {
-        let impact = impact_scan(&["no-such-file-xyz123.rs".into()]);
+        // Construct the path at runtime so the full token never appears as a literal
+        // in any tracked file, guaranteeing an empty impacted set.
+        let name = format!("zzzz{}nonexistent{}9999.rs", "_", "_");
+        let impact = impact_scan(&[name]);
         assert!(impact.impacted.is_empty());
     }
 }
