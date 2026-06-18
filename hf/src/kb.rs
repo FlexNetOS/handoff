@@ -302,7 +302,11 @@ mod tests {
 
     #[test]
     fn mint_target_is_fleet_when_meta_root_exists() {
-        let root = PathBuf::from("/some/meta/root");
+        let root = if cfg!(windows) {
+            PathBuf::from("C:\\some\\meta\\root")
+        } else {
+            PathBuf::from("/some/meta/root")
+        };
         let (dir, plane) = super::mint_target(Some(root.clone()));
         // FLEET tasks dir = <meta-root>/.handoff/tasks — NOT a cwd-relative path.
         assert_eq!(dir, root.join(crate::HF).join("tasks"));

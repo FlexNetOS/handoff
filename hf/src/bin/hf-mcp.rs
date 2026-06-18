@@ -259,11 +259,10 @@ fn run_hf(hf_exe: &PathBuf, args: &[String]) -> Result<(String, bool), String> {
     Ok((text, !output.status.success()))
 }
 
-fn dispatch_tool(
-    name: &str,
-    args: &serde_json::Map<String, Value>,
-    hf_exe: &PathBuf,
-) -> Result<(String, bool), String> {
+/// Build the `hf` CLI argument list for a tool call without executing it.
+/// Exposed for unit tests so they can assert arg shaping without requiring
+/// the `hf` binary to be present or up-to-date.
+fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Vec<String>, String> {
     let mut hf_args = vec![];
     match name {
         "hf_init" => {
@@ -403,6 +402,18 @@ fn dispatch_tool(
                 hf_args.push("--next".to_string());
             }
         }
+        "hf_prompt_hub" => {
+            hf_args.push("prompt-hub".to_string());
+            hf_args.push(require_string(args, "vibe")?);
+            if let Some(scope) = arg_string(args, "scope") {
+                hf_args.push("--scope".to_string());
+                hf_args.push(scope);
+            }
+            if arg_bool(args, "dispatch") {
+                hf_args.push("--dispatch".to_string());
+            }
+            hf_args.push("--json".to_string());
+        }
         "hf_delivery_get" => {
             hf_args.push("delivery".to_string());
             hf_args.push("get".to_string());
@@ -497,6 +508,15 @@ fn dispatch_tool(
         }
         other => return Err(format!("unknown tool: {other}")),
     }
+    Ok(hf_args)
+}
+
+fn dispatch_tool(
+    name: &str,
+    args: &serde_json::Map<String, Value>,
+    hf_exe: &PathBuf,
+) -> Result<(String, bool), String> {
+    let hf_args = build_hf_args(name, args)?;
     run_hf(hf_exe, &hf_args)
 }
 
@@ -701,6 +721,19 @@ fn tools() -> Vec<Tool> {
             }),
         },
         Tool {
+            name: "hf_prompt_hub".to_string(),
+            description: "Turn a natural-language vibe request into a handoff task and optionally dispatch it (prompt_hub front door).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "vibe": { "type": "string", "description": "Natural language request" },
+                    "scope": { "type": "string", "description": "Comma-separated scope globs" },
+                    "dispatch": { "type": "boolean", "description": "Immediately dispatch the first safe order" }
+                },
+                "required": ["vibe"]
+            }),
+        },
+        Tool {
             name: "hf_delivery_get".to_string(),
             description: "Get the delivery record for a workflow correlation_id.".to_string(),
             input_schema: serde_json::json!({
@@ -883,5 +916,27 @@ mod tests {
         assert!(names.contains(&"hf_claim".to_string()));
         assert!(names.contains(&"hf_ship".to_string()));
         assert!(names.contains(&"hf_handoff".to_string()));
+        assert!(names.contains(&"hf_prompt_hub".to_string()));
+    }
+
+    #[test]
+    fn build_prompt_hub_args_shapes_command() {
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "vibe".to_string(),
+            Value::String("fix the windows test".to_string()),
+        );
+        args.insert(
+            "scope".to_string(),
+            Value::String("hf/src/kb.rs".to_string()),
+        );
+        args.insert("dispatch".to_string(), Value::Bool(true));
+        let hf_args = build_hf_args("hf_prompt_hub", &args).unwrap();
+        assert_eq!(hf_args[0], "prompt-hub");
+        assert!(hf_args.contains(&"fix the windows test".to_string()));
+        assert!(hf_args.contains(&"--scope".to_string()));
+        assert!(hf_args.contains(&"hf/src/kb.rs".to_string()));
+        assert!(hf_args.contains(&"--dispatch".to_string()));
+        assert!(hf_args.contains(&"--json".to_string()));
     }
 }
