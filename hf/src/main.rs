@@ -810,25 +810,29 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         std::process::exit(1);
     }
     led.record_transition(&wo, Status::Done, now_ns()).unwrap();
-    if let Some(p) = pr {
+    // HFTASK-0052 gap-hunt: auto-detect the merged PR from a prior `pr_opened` event if the
+    // user did not pass `--pr N`. This gives every merged task a `pr_merged` ledger marker.
+    let resolved_pr = pr.map(String::from).or_else(|| latest_pr_opened(&led, id));
+    if let Some(ref p) = resolved_pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
         let _ = led.append("pr_merged", id, &payload, now_ns());
         // HFTASK-0021: round-trip the merged result to the originating prompt_hub workflow
         // via the correlation_id carried on the WorkOrder.
         delivery::emit_delivery(&mut led, &wo, p, now_ns());
-        // HFTASK-0044: a `--pr` done is the post-merge signal — the trunk now has the merge,
+        // HFTASK-0044: a merged done is the post-merge signal — the trunk now has the merge,
         // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
         sync_develop_to_trunk(&mut led, id);
     }
     // ADR-0003 rule 3 (HFTASK-0042): flip the kb plan to completed with evidence (no-op for
     // non-kb cards). One-way: planning is informed by execution, never read back.
-    let evidence = pr
+    let evidence = resolved_pr
+        .as_ref()
         .map(|p| format!("pr {p} merged"))
         .unwrap_or_else(|| "done".to_string());
     if kb::write_back(&wo.correlation_id, &kb::KbTransition::Done(evidence)) {
         println!("hf done: kb {} → completed (write-back)", wo.correlation_id);
     }
-    if let Some(p) = pr {
+    if let Some(ref p) = resolved_pr {
         println!("hf done: {id} -> done (pr {p})");
         println!(
             "hf done: delivery -> {} (workflow {})",
@@ -901,6 +905,22 @@ fn latest_test_passed(led: &Ledger, id: &str) -> Option<bool> {
             serde_json::from_str::<serde_json::Value>(&e.payload_json)
                 .ok()
                 .and_then(|v| v["passed"].as_bool())
+        })
+}
+
+/// HFTASK-0052 gap-hunt: if `hf done` is run after `hf ship` recorded a `pr_opened` event,
+/// derive the merged PR automatically so the ledger gets a `pr_merged` marker even when the
+/// user forgets `--pr N`. Returns `None` if no `pr_opened` event exists.
+fn latest_pr_opened(led: &Ledger, id: &str) -> Option<String> {
+    led.all_events()
+        .ok()?
+        .iter()
+        .rev()
+        .find(|e| e.event_type == "pr_opened" && e.work_order_id == id)
+        .and_then(|e| {
+            serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                .ok()
+                .and_then(|v| v["pr"].as_str().map(String::from))
         })
 }
 
@@ -2316,6 +2336,30 @@ mod tests {
         );
         // a verdict for a different task must never bleed through
         assert_eq!(latest_test_passed(&led, "HFTASK-0001"), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn latest_pr_opened_derives_merged_pr_for_done() {
+        let path = std::env::temp_dir().join(format!("hf-pr-opened-{}.db", now_ns()));
+        let p = path.to_string_lossy().to_string();
+        let mut led = Ledger::open(&p).unwrap();
+        let id = "HFTASK-9999";
+        assert_eq!(latest_pr_opened(&led, id), None, "no pr_opened yet");
+        led.append(
+            "pr_opened",
+            id,
+            &serde_json::json!({ "id": id, "branch": "feat/x", "pr": "https://github.com/FlexNetOS/handoff/pull/42", "base": "develop" }).to_string(),
+            now_ns(),
+        )
+        .unwrap();
+        assert_eq!(
+            latest_pr_opened(&led, id),
+            Some("https://github.com/FlexNetOS/handoff/pull/42".to_string()),
+            "extracts the pr url from the latest pr_opened event"
+        );
+        // a pr_opened for a different task must not bleed through
+        assert_eq!(latest_pr_opened(&led, "HFTASK-0001"), None);
         let _ = std::fs::remove_file(&path);
     }
     use work_order::{work_orders_from_bundle, SwarmBundle};

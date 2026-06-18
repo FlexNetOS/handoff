@@ -43,8 +43,8 @@ fail_mode = "block"
 
 [[hooks]]
 event = "SessionStop"
-command = "hf checkpoint --auto && hf handoff --auto"
-timeout_seconds = 60
+command = "hf checkpoint --auto && hf handoff && hf sync --auto"
+timeout_seconds = 90
 fail_mode = "warn"
 
 # --- Loop v2 additions (ADR-0001) ---
