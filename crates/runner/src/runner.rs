@@ -765,12 +765,27 @@ mod tests {
     fn shell_path(path: &Path) -> String {
         #[cfg(windows)]
         {
-            path.to_string_lossy().replace('\\', "/")
+            let path = path.to_string_lossy().replace('\\', "/");
+            let path = path.strip_prefix("//?/").unwrap_or(&path);
+            if let Some((drive, rest)) = path.split_once(":/") {
+                format!("/{}/{}", drive.to_ascii_lowercase(), rest)
+            } else {
+                path
+            }
         }
         #[cfg(not(windows))]
         {
             path.to_string_lossy().into_owned()
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_shell_path_converts_drive_letter_for_bash() {
+        assert_eq!(
+            shell_path(Path::new(r"C:\temp\runner\mark_task.sh")),
+            "/c/temp/runner/mark_task.sh"
+        );
     }
 
     #[test]
