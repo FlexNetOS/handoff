@@ -1,0 +1,24 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 11:19:03
+Change: injectable-config-path
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/7: 1.1 `CONFIG_PATH` in `config.rs` auf `pub` ändern, damit `app.rs` darauf zugreifen kann
+──────────────────────────────────────────────────────────────
+Alle Tasks sind erledigt. Zusammenfassung der Änderungen:
+
+**`src/config.rs`**: `CONFIG_PATH` von `const` auf `pub const` geändert (Zeile 5)
+
+**`src/app.rs`**:
+- `config_path: PathBuf` Feld zur `App`-Struct hinzugefügt (Zeile 101)
+- `App::new()` nutzt jetzt `TuiConfig::load_from(&config_path)` statt `TuiConfig::load()` (Zeile 126-127)
+- Save-Handler nutzt `save_to(&self.config_path)` statt `save()` (Zeile 553)
+- `make_config_app()` nutzt `std::env::temp_dir()` als Config-Pfad
+- Alle ~30 Test-Konstruktoren mit `config_path` ergänzt
+
+**`src/ui.rs`**: 3 Test-Konstruktoren mit `config_path` ergänzt
+
+**`openspec/tui-config.yaml`**: Datei mit Testdaten (`Xtest-tool`) gelöscht — Defaults greifen automatisch
+
+Alle 278 Tests bestanden.

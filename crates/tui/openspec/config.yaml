@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Rust (Edition 2024), Ratatui 0.30, Crossterm 0.29
+  Serialization: serde + serde_yaml + serde_json
+  Markdown rendering: tui-markdown (with code highlighting)
+
+  Architecture:
+  - TEA pattern (The Elm Architecture): App struct holds state,
+    Screen enum defines views, stateless draw() in ui.rs
+  - Screen-based navigation with push/pop screen stack
+  - Input handling via handle_*_input() methods on App
+  - Data layer calls openspec CLI as subprocess (data.rs)
+  - Background processes via mpsc channels + Arc<AtomicBool> (runner.rs)
+  - Config stored as YAML via serde (config.rs)
+
+  Modules: main (event loop), app (state + input), ui (rendering),
+           data (openspec CLI + filesystem), config (TUI settings),
+           runner (implementation process management)
+
+  Conventions:
+  - All new features must include unit tests
+  - Tests use tempdir for filesystem operations
+  - Cross-platform support (Windows cmd wrapper for openspec CLI)
+  - No async runtime — uses threads + mpsc for concurrency
+  - The project must compile without warnings
+  - Clippy must always pass without warnings
+
+rules:
+  proposal:
+    - Keep scope focused on a single TUI concern
+  design:
+    - Reference existing modules (app, ui, data, config, runner)
+    - Follow the TEA pattern: state in App, rendering in ui.rs
+    - New screens are variants of the Screen enum
+  specs:
+    - Describe user-visible behavior (key bindings, screen layout)
+  tasks:
+    - Each task should map to changes in one or two modules
+    - Include a test task for each functional task

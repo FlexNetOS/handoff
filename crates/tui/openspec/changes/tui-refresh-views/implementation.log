@@ -1,0 +1,38 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 14:37:59
+Change: tui-refresh-views
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/14: 1.1 Add `file_path: Option<PathBuf>` field to `Screen::ArtifactView` variant in `src/app.rs`
+──────────────────────────────────────────────────────────────
+Alle Tasks der `tui-refresh-views` Change sind implementiert und getestet. Hier ist eine Zusammenfassung:
+
+## Zusammenfassung der Änderungen
+
+### 1. `file_path` zu `ArtifactView` hinzugefügt (Tasks 1.1–1.3)
+- `file_path: Option<PathBuf>` als neues Feld in `Screen::ArtifactView` in `src/app.rs`
+- Alle 3 Produktionsstellen aktualisiert: Artifact-Öffnung per Enter, Implementation Log via `L`, und Implementierung via `R` — jeweils mit dem korrekten Dateipfad
+- Alle 4 Teststellen mit `file_path: None` aktualisiert
+- `ui.rs` Pattern-Match mit `..` ergänzt
+- 2 neue Tests: `test_artifact_view_constructed_with_file_path` und `test_artifact_view_log_has_file_path`
+
+### 2. `refresh_screen()` Methode implementiert (Tasks 2.1–2.9)
+- Zentrale `App::refresh_screen()` Methode die per `match` auf `self.screen` die Daten für jeden Screen-Typ neu lädt:
+  - **ChangeList**: Lädt Changes neu, baut `change_deps` neu auf
+  - **ArtifactMenu**: Ruft `get_change_status()` erneut auf, baut Menu-Items neu
+  - **ArtifactView**: Liest Dateiinhalt über gespeicherten `file_path` neu ein
+  - **DependencyView**: Liest Dependencies und RunMode neu
+  - **DependencyGraph**: Lädt Changes + Deps neu, regeneriert Graph-Text
+  - **RunAllSelection**: Baut Einträge aus frischer Change-Liste neu
+  - **DependencyAdd**: Lädt verfügbare Changes neu
+  - **Config**: No-op
+- Selection-Clamping bei allen listenbasierten Screens
+- 5 neue Tests für refresh_screen
+
+### 3. `r` Key im Event Loop (Tasks 3.1–3.2)
+- `KeyCode::Char('r')` als globaler Key in `run_app()` in `src/main.rs` — nach `q` und `S`, vor dem screen-spezifischen Match
+- Config-Screen ist automatisch ausgeschlossen, da er einen eigenen Handler hat, der vor den globalen Keys ausgeführt wird
+- Test `test_refresh_screen_config_is_noop` verifiziert, dass Config-Screen nicht refreshed wird
+
+**Alle 344 Tests bestanden.**
