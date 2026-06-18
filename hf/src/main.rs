@@ -433,11 +433,64 @@ fn cmd_done(id: &str, pr: Option<&str>) {
     if let Some(p) = pr {
         let payload = serde_json::json!({ "id": id, "pr": p }).to_string();
         let _ = led.append("pr_merged", id, &payload, now_ns());
+        // HFTASK-0044: a `--pr` done is the post-merge signal — the trunk now has the merge,
+        // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
+        sync_develop_to_trunk(&mut led, id);
     }
     println!(
         "hf done: {id} -> done{}",
         pr.map(|p| format!(" (pr {p})")).unwrap_or_default()
     );
+}
+
+/// HFTASK-0044: fast-forward the base branch (develop) to the trunk after a merge, per the
+/// `develop_mirrors_trunk` policy. Runs only post-merge (called from `hf done --pr`). The push
+/// is ff-only (git rejects a non-ff push), so develop can never be force-moved; a non-ff/diverged
+/// develop is reported and SKIPPED (non-fatal — the PR already merged, a develop hiccup must not
+/// fail completion). Emits a witnessed `develop_synced` / `develop_sync_skipped` event.
+fn sync_develop_to_trunk(led: &mut Ledger, id: &str) {
+    let policy = policy::Policy::load(Path::new(HF));
+    let Ok(bp) = branch::BranchPolicy::resolve(&policy.remote) else {
+        return;
+    };
+    let Some(refspec) = bp.develop_sync_refspec() else {
+        return; // rule doesn't apply (no distinct base/trunk, or fork model)
+    };
+    // Refresh origin/<trunk> so the local ref reflects the just-merged PR before we push it.
+    if let Err(e) = run_out("git", &["fetch", "origin", &bp.trunk]) {
+        eprintln!("hf done: develop sync skipped — fetch failed: {e}");
+        let _ = led.append(
+            "develop_sync_skipped",
+            id,
+            &serde_json::json!({ "id": id, "reason": format!("fetch failed: {e}") }).to_string(),
+            now_ns(),
+        );
+        return;
+    }
+    match run_out("git", &["push", "origin", &refspec]) {
+        Ok(_) => {
+            println!("hf done: synced '{}' to '{}' (ff)", bp.base, bp.trunk);
+            let _ = led.append(
+                "develop_synced",
+                id,
+                &serde_json::json!({ "id": id, "base": bp.base, "trunk": bp.trunk }).to_string(),
+                now_ns(),
+            );
+        }
+        Err(e) => {
+            // Non-ff (develop diverged) or no push perms — report, don't fail completion.
+            eprintln!(
+                "hf done: develop sync skipped — '{}' could not fast-forward to '{}': {e}",
+                bp.base, bp.trunk
+            );
+            let _ = led.append(
+                "develop_sync_skipped",
+                id,
+                &serde_json::json!({ "id": id, "reason": e }).to_string(),
+                now_ns(),
+            );
+        }
+    }
 }
 
 /// HFTASK-0045: the most recent `test_result` verdict for `id`, or `None` if the task has
@@ -627,7 +680,7 @@ fn cmd_ship(id: &str, base: &str) {
     }
     if bp.should_sync_develop_trunk() {
         println!(
-            "hf ship: note — develop_mirrors_trunk; sync '{}' to '{}' after merge",
+            "hf ship: note — develop_mirrors_trunk; '{}' fast-forwards to '{}' at `hf done --pr` (post-merge)",
             bp.base, bp.trunk
         );
     }

@@ -100,6 +100,15 @@ impl BranchPolicy {
     pub fn should_sync_develop_trunk(&self) -> bool {
         self.develop_mirrors_trunk && self.model == RemoteModel::Clone && self.base != self.trunk
     }
+
+    /// HFTASK-0044: the git push refspec that fast-forwards the base branch (develop) to the
+    /// trunk after a merge, honoring `develop_mirrors_trunk`. `None` when the rule doesn't
+    /// apply. Pushing `origin/<trunk>:refs/heads/<base>` is **fast-forward-only by default** —
+    /// git rejects a non-ff push — so develop can never be force-moved or diverged by this.
+    pub fn develop_sync_refspec(&self) -> Option<String> {
+        self.should_sync_develop_trunk()
+            .then(|| format!("origin/{}:refs/heads/{}", self.trunk, self.base))
+    }
 }
 
 #[cfg(test)]
@@ -187,6 +196,31 @@ mod tests {
             !BranchPolicy::resolve(&remote("clone", "master", "master", true))
                 .unwrap()
                 .should_sync_develop_trunk()
+        );
+    }
+
+    #[test]
+    fn develop_sync_refspec_is_ff_only_and_directional() {
+        // HFTASK-0044: the refspec pushes origin/<trunk> onto <base> (develop ff's to trunk),
+        // which is fast-forward-only by default. Present only when the rule applies.
+        let bp = BranchPolicy::resolve(&remote("clone", "develop", "master", true)).unwrap();
+        assert_eq!(
+            bp.develop_sync_refspec().as_deref(),
+            Some("origin/master:refs/heads/develop")
+        );
+        // mirror off → no refspec.
+        assert!(
+            BranchPolicy::resolve(&remote("clone", "develop", "master", false))
+                .unwrap()
+                .develop_sync_refspec()
+                .is_none()
+        );
+        // fork model → no refspec.
+        assert!(
+            BranchPolicy::resolve(&remote("fork", "develop", "master", true))
+                .unwrap()
+                .develop_sync_refspec()
+                .is_none()
         );
     }
 }
