@@ -403,6 +403,21 @@ fn dispatch_tool(
                 hf_args.push("--next".to_string());
             }
         }
+        "hf_delivery_get" => {
+            hf_args.push("delivery".to_string());
+            hf_args.push("get".to_string());
+            hf_args.push(require_string(args, "correlation_id")?);
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
+        }
+        "hf_delivery_list" => {
+            hf_args.push("delivery".to_string());
+            hf_args.push("list".to_string());
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
+        }
         "hf_task_mint" => {
             hf_args.push("task".to_string());
             hf_args.push("mint".to_string());
@@ -683,6 +698,28 @@ fn tools() -> Vec<Tool> {
                     "next": { "type": "boolean", "description": "Only dispatch the next order" }
                 },
                 "required": ["workflow_id"]
+            }),
+        },
+        Tool {
+            name: "hf_delivery_get".to_string(),
+            description: "Get the delivery record for a workflow correlation_id.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "correlation_id": { "type": "string", "description": "Workflow correlation_id (SwarmBundle.workflow_id)" },
+                    "json": { "type": "boolean", "description": "Return JSON output" }
+                },
+                "required": ["correlation_id"]
+            }),
+        },
+        Tool {
+            name: "hf_delivery_list".to_string(),
+            description: "List all workflow deliveries.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "json": { "type": "boolean", "description": "Return JSON output" }
+                }
             }),
         },
         Tool {
