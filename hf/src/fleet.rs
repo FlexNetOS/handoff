@@ -91,6 +91,9 @@ struct Row {
     /// HFTASK-0034: a continuity member (has `.handoff`) whose `.gitignore` lacks the
     /// `.handoff/**/ledger.db` residency guard — its local ledger could be committed.
     ledger_guard_missing: bool,
+    /// HFTASK-0035 upgrade: a continuity member (has `.handoff`) whose `.gitignore` lacks the
+    /// `.handoff/**/*.db-wal` / `.handoff/**/*.db-shm` side-car guard.
+    walshm_guard_missing: bool,
     /// HFTASK-0033: this member's own per-repo ledger chain, verified independently of the
     /// central rollup. `Some((events, witnessed))` when `<member>/.handoff/ledger.db` exists
     /// and its witness chain was checked; `None` when the member carries no local ledger.
@@ -163,6 +166,22 @@ fn ledger_guard_present(repo: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// HFTASK-0035 upgrade (ADR-0004 §3.3/§6 rev): the ledger side-car files (`*.db-wal`,
+/// `*.db-shm`) must also be gitignored. `git check-ignore -q .handoff/ledger.db-wal`
+/// (and `-shm`) is true when the standard `.handoff/**/*.db-wal` / `.handoff/**/*.db-shm`
+/// patterns are present.
+fn walshm_guard_present(repo: &Path) -> bool {
+    [".handoff/ledger.db-wal", ".handoff/ledger.db-shm"]
+        .iter()
+        .all(|path| {
+            Command::new("git")
+                .args(["-C", &repo.to_string_lossy(), "check-ignore", "-q", path])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        })
+}
+
 fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
     members
         .iter()
@@ -175,6 +194,10 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
             // that carries a .handoff continuity layer.
             let tracked_ledger = present && git_tracks_handoff_db(&repo);
             let ledger_guard_missing = present && has_handoff && !ledger_guard_present(&repo);
+            let walshm_guard_missing = present
+                && has_handoff
+                && ledger_guard_present(&repo)
+                && !walshm_guard_present(&repo);
             Row {
                 name: name.clone(),
                 present,
@@ -185,6 +208,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 plane: capsule_field(&repo, "plane"),
                 tracked_ledger,
                 ledger_guard_missing,
+                walshm_guard_missing,
                 per_repo_chain: per_repo_chain_stats(&repo),
             }
         })
@@ -251,6 +275,12 @@ pub fn cmd_fleet_status(json: bool) {
             r.name
         ));
     }
+    for r in rows.iter().filter(|r| r.walshm_guard_missing) {
+        warnings.push(format!(
+            "{}: missing the `.handoff/**/*.db-wal` / `.handoff/**/*.db-shm` .gitignore guard (ADR-0004 §6; HFTASK-0035); WAL/SHM sidecars could be committed",
+            r.name
+        ));
+    }
     // HFTASK-0033: a broken provenance bridge is an integrity alarm, not a style nit —
     // surface it as a warning so the loop's drift/gate sees it.
     if let Some(p) = &provenance {
@@ -297,6 +327,7 @@ pub fn cmd_fleet_status(json: bool) {
                 "plane": r.plane,
                 "tracked_ledger": r.tracked_ledger,
                 "ledger_guard_missing": r.ledger_guard_missing,
+                "walshm_guard_missing": r.walshm_guard_missing,
                 // HFTASK-0033 (ii): this member's own ledger chain, verified standalone.
                 "per_repo_chain": r.per_repo_chain.as_ref().map(|c| serde_json::json!({
                     "events": c.events,
@@ -365,11 +396,16 @@ pub fn cmd_fleet_status(json: bool) {
             (Some(role), None) => role.clone(),
             _ => r.project_name.clone().unwrap_or_default(),
         };
-        // HFTASK-0034 (ADR-0004 §6 rev): flag a git-TRACKED ledger and/or a missing guard.
-        let flag = match (r.tracked_ledger, r.ledger_guard_missing) {
-            (true, _) => "  ⚠ tracked ledger.db (P7)",
-            (false, true) => "  ⚠ no ledger .gitignore guard (P7)",
-            (false, false) => "",
+        // HFTASK-0034/0035 (ADR-0004 §6 rev): flag a git-TRACKED ledger and/or missing guards.
+        let flag = match (
+            r.tracked_ledger,
+            r.ledger_guard_missing,
+            r.walshm_guard_missing,
+        ) {
+            (true, _, _) => "  ⚠ tracked ledger.db (P7)",
+            (false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
+            (false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
+            (false, false, false) => "",
         };
         // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
         let chain = match &r.per_repo_chain {
@@ -651,18 +687,34 @@ other:
         assert!(!super::git_tracks_handoff_db(&repo));
         assert!(
             !super::ledger_guard_present(&repo),
-            "no .gitignore yet → guard absent"
+            "no .gitignore yet → ledger guard absent"
+        );
+        assert!(
+            !super::walshm_guard_present(&repo),
+            "no .gitignore yet → WAL/SHM guard absent"
         );
 
-        // Add the residency guard; the `**` pattern also covers the top-level path.
+        // Add only the ledger.db guard (pre-HFTASK-0035 state). The `**` pattern also covers
+        // the top-level path.
+        std::fs::write(repo.join(".gitignore"), ".handoff/**/ledger.db\n").unwrap();
+        assert!(
+            super::ledger_guard_present(&repo),
+            "ledger guard present after writing .gitignore"
+        );
+        assert!(
+            !super::walshm_guard_present(&repo),
+            "WAL/SHM guard still absent (only ledger.db guard present)"
+        );
+
+        // Add the WAL/SHM side-car guards (HFTASK-0035 upgrade).
         std::fs::write(
             repo.join(".gitignore"),
             ".handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n",
         )
         .unwrap();
         assert!(
-            super::ledger_guard_present(&repo),
-            "guard present after writing .gitignore"
+            super::walshm_guard_present(&repo),
+            "WAL/SHM guard present after writing patterns"
         );
 
         // A gitignored ledger present on disk is LEGITIMATE — not tracked.

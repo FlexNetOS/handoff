@@ -57,21 +57,31 @@ role_for() {
 # HFTASK-0035 (ADR-0004 §3.3/§6 rev): ensure the repo's .gitignore guards the local ledger
 # so the per-repo `.handoff/**/ledger.db` (+ wal/shm sidecars, incl. grit worktrees) is never
 # committed — the one good half of the old rule, kept while the gitignored local ledger is now
-# legitimate. Idempotent: returns 0 if it ADDED the guard, 1 if git already ignores the ledger
-# (any rule). `hf fleet status` (HFTASK-0034) gates on exactly this guard's presence.
+# legitimate. Idempotent: returns 0 if it ADDED any missing guard, 1 if all are already present.
+# `hf fleet status` (HFTASK-0034) gates on tracked DBs and missing guards.
 ensure_ledger_guard() {
   local dir="$1"
-  if git -C "$dir" check-ignore -q .handoff/ledger.db 2>/dev/null; then
-    return 1   # already guarded (idempotent no-op)
-  fi
-  {
-    echo ""
-    echo "# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)"
-    echo ".handoff/**/ledger.db"
-    echo ".handoff/**/*.db-wal"
-    echo ".handoff/**/*.db-shm"
-  } >> "$dir/.gitignore"
-  return 0   # guard added
+  local changed=0
+  local need_header=1
+  add_if_missing() {
+    local path="$1"
+    if git -C "$dir" check-ignore -q "$path" 2>/dev/null; then
+      return
+    fi
+    if [ "$need_header" = 1 ]; then
+      {
+        echo ""
+        echo "# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)"
+      } >> "$dir/.gitignore"
+      need_header=0
+    fi
+    echo "$path" >> "$dir/.gitignore"
+    changed=1
+  }
+  add_if_missing ".handoff/**/ledger.db"
+  add_if_missing ".handoff/**/*.db-wal"
+  add_if_missing ".handoff/**/*.db-shm"
+  return $((1 - changed))
 }
 
 GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0
