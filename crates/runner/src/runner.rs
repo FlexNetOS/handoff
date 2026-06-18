@@ -762,6 +762,17 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
+    fn shell_path(path: &Path) -> String {
+        #[cfg(windows)]
+        {
+            path.to_string_lossy().replace('\\', "/")
+        }
+        #[cfg(not(windows))]
+        {
+            path.to_string_lossy().into_owned()
+        }
+    }
+
     #[test]
     fn test_impl_state_creation() {
         let (tx, rx) = mpsc::channel();
@@ -1503,8 +1514,8 @@ mod tests {
         .unwrap();
 
         let config = TuiConfig {
-            command: format!("bash {} {{prompt}}", script_path.display()),
-            prompt: tasks_path.to_str().unwrap().to_string(),
+            command: format!("bash {} {{prompt}}", shell_path(&script_path)),
+            prompt: shell_path(&tasks_path),
             ..Default::default()
         };
 
@@ -1590,8 +1601,8 @@ mod tests {
         .unwrap();
 
         let config = TuiConfig {
-            command: format!("bash {} {{prompt}}", script_path.display()),
-            prompt: tasks_path.to_str().unwrap().to_string(),
+            command: format!("bash {} {{prompt}}", shell_path(&script_path)),
+            prompt: shell_path(&tasks_path),
             ..Default::default()
         };
 
