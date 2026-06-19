@@ -313,7 +313,8 @@ mod tests {
                       prompt: do {name} stuff\n\
                       post_implementation_prompt: commit {name}\n\
                       interactive_command: claude-i\n\
-                      run_finished_command: notify done\n";
+                      run_finished_command: notify done\n\
+                      retry_on_failure: 1\n";
         assert_eq!(serde_norway::to_string(&config).unwrap(), golden);
         // And it round-trips back to the same struct.
         let back: TuiConfig = serde_norway::from_str(golden).unwrap();
@@ -325,6 +326,7 @@ mod tests {
         );
         assert_eq!(back.interactive_command, config.interactive_command);
         assert_eq!(back.run_finished_command, config.run_finished_command);
+        assert_eq!(back.retry_on_failure, config.retry_on_failure);
     }
 
     mod placeholder_tests {

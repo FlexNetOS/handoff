@@ -166,6 +166,7 @@ impl Ledger {
                 .unwrap_or(usize::MAX)
         });
         Ok(rows)
+    }
 
     // ------------------------------------------------------------------
     // Delegated v1 API (authoritative structured storage / witness / lease)

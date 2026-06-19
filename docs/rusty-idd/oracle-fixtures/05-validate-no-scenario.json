@@ -1,0 +1,37 @@
+{
+  "items": [
+    {
+      "id": "no-scenario",
+      "type": "spec",
+      "valid": false,
+      "issues": [
+        {
+          "level": "ERROR",
+          "path": "requirements.0.scenarios",
+          "message": "Requirement must have at least one scenario"
+        },
+        {
+          "level": "WARNING",
+          "path": "requirements[0].scenarios",
+          "message": "Requirement must have at least one scenario. Scenarios must use level-4 headers. Convert bullet lists into:\n#### Scenario: Short name\n- **WHEN** ...\n- **THEN** ...\n- **AND** ..."
+        }
+      ],
+      "durationMs": 2
+    }
+  ],
+  "summary": {
+    "totals": {
+      "items": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "byType": {
+      "spec": {
+        "items": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    }
+  },
+  "version": "1.0"
+}

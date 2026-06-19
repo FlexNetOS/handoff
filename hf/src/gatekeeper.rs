@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::{ledger_path, now_ns, route::route_for_task, run_out, Ledger};
+use crate::{ledger_path, now_ns, route::route_for_task, run_out, GhPrView, Ledger};
 
 /// The result of a lightweight impact scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +145,10 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
         eprintln!("hf gatekeeper: cannot read PR {pr}: {e}");
         std::process::exit(1);
     });
+    let meta: GhPrView = serde_json::from_str(&meta_json).unwrap_or_else(|e| {
+        eprintln!("hf gatekeeper: malformed gh output: {e}");
+        std::process::exit(1);
+    });
 
     // Determine ledger target.
     let ledger = match task_id {
@@ -235,6 +239,9 @@ mod tests {
 
     #[test]
     fn impact_scan_detects_reference() {
+        // `impact_scan` runs `git grep` relative to the process cwd, so it must not race
+        // the cwd-mutating tests (route/delivery) — hold the shared cwd lock.
+        let _g = crate::test_support::cwd_lock();
         // main.rs declares `mod route;`, so changing route.rs should show main.rs in the
         // impacted set when we grep for the module name.
         let impact = impact_scan(&["src/route.rs".into()]);
@@ -247,6 +254,7 @@ mod tests {
 
     #[test]
     fn impact_scan_empty_for_unreferenced() {
+        let _g = crate::test_support::cwd_lock();
         // Construct the path at runtime so the full token never appears as a literal
         // in any tracked file, guaranteeing an empty impacted set.
         let name = format!("zzzz{}nonexistent{}9999.rs", "_", "_");

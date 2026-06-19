@@ -67,6 +67,7 @@ pub struct Merge {
     /// Paths/prefixes that block automatic review/merge unless explicitly cleared.
     /// A file matches if it equals a pattern or starts with a pattern.
     /// Directory patterns should end in '/' to avoid false positives.
+    pub protected_files: Vec<String>,
 }
 impl Default for Merge {
     fn default() -> Self {

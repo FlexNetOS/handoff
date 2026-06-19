@@ -1,8 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["work-order", "ledger", "hf", "cli", "core", "runner", "spec", "tui"]
+members = ["work-order", "ledger", "hf", "crates/cli", "crates/core", "crates/runner", "crates/spec", "crates/tui"]
 
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
 license = "Apache-2.0 OR MIT"
+authors = ["FlexNetOS <team@flexnetos.com>"]
+homepage = "https://github.com/FlexNetOS/handoff"
+repository = "https://github.com/FlexNetOS/handoff"
+documentation = "https://docs.rs/handoff"

@@ -54,13 +54,12 @@ pub(crate) fn now_ns() -> u64 {
 fn tasks_dir() -> PathBuf {
     Path::new(HF).join("tasks")
 }
-pub(crate) fn ledger_path() -> String {
 /// HFTASK-0054: ledger location is overridable via `--ledger <path>` or the `HANDOFF_LEDGER`
 /// environment variable. This lets a member repo render its Tier-A packet (`hf resume`/`hf
 /// handoff`) against a shared ledger (e.g. `$META_ROOT/.handoff/ledger.db`) from its own CWD
 /// without requiring a per-repo ledger.db. When unset, the default remains the local
 /// `<cwd>/.handoff/ledger.db`.
-fn ledger_path() -> String {
+pub(crate) fn ledger_path() -> String {
     if let Ok(p) = std::env::var("HANDOFF_LEDGER") {
         if !p.is_empty() {
             return p;
@@ -1358,9 +1357,7 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
         .unwrap();
     println!(
         "hf review request: PR #{} ({}) queued for {} review",
-        meta.number,
-        meta.url,
-        policy.merge.reviewer
+        meta.number, meta.url, policy.merge.reviewer
     );
     println!("  Run `/code-review ultra` in the IDE on this PR to produce a verdict.");
     println!(
