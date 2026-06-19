@@ -762,20 +762,14 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
+    #[cfg(windows)]
     fn shell_path(path: &Path) -> String {
-        #[cfg(windows)]
-        {
-            let path = path.to_string_lossy().replace('\\', "/");
-            let path = path.strip_prefix("//?/").unwrap_or(&path);
-            if let Some((drive, rest)) = path.split_once(":/") {
-                format!("/{}/{}", drive.to_ascii_lowercase(), rest)
-            } else {
-                path.to_owned()
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            path.to_string_lossy().into_owned()
+        let path = path.to_string_lossy().replace('\\', "/");
+        let path = path.strip_prefix("//?/").unwrap_or(&path);
+        if let Some((drive, rest)) = path.split_once(":/") {
+            format!("/{}/{}", drive.to_ascii_lowercase(), rest)
+        } else {
+            path.to_owned()
         }
     }
 
@@ -1502,35 +1496,27 @@ mod tests {
         std::fs::write(&tasks_path, "- [ ] Task one\n- [ ] Task two\n").unwrap();
         let log_path = dir.join("test.log");
 
-        let script_path = dir.join("mark_task.sh");
+        let script_path = dir.join("mark_task.py");
+        // Use Python for cross-platform file I/O (bash mv is unreliable on Windows).
+        // Indentation is embedded inside \n sequences to avoid Rust string-continuation
+        // stripping leading whitespace (a `\n\` escape discards the following spaces).
         std::fs::write(
             &script_path,
-            "#!/bin/bash\n\
-             TASKS_FILE=\"$1\"\n\
-             COUNTER_FILE=\"${TASKS_FILE}.counter\"\n\
-             count=0\n\
-             if [ -f \"$COUNTER_FILE\" ]; then count=$(cat \"$COUNTER_FILE\"); fi\n\
-             count=$((count + 1))\n\
-             echo $count > \"$COUNTER_FILE\"\n\
-             if [ \"$count\" -eq 2 ]; then\n\
-                tmp_file=\"${TASKS_FILE}.tmp\"\n\
-                done=0\n\
-                : > \"$tmp_file\"\n\
-                while IFS= read -r line || [ -n \"$line\" ]; do\n\
-                    if [ \"$done\" -eq 0 ] && [ \"${line#- \\[ \\]}\" != \"$line\" ]; then\n\
-                        line=\"- [x]${line#- \\[ \\]}\"\n\
-                        done=1\n\
-                    fi\n\
-                    printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
-                done < \"$TASKS_FILE\"\n\
-                mv \"$tmp_file\" \"$TASKS_FILE\"\n\
-             fi\n",
+            "import sys\nimport os\ntasks_file = sys.argv[1]\ncounter_file = tasks_file + '.counter'\ncount = 0\nif os.path.exists(counter_file):\n    with open(counter_file) as f:\n        try:\n            count = int(f.read().strip())\n        except Exception:\n            pass\ncount += 1\nwith open(counter_file, 'w') as f:\n    f.write(str(count) + '\\n')\nif count == 2:\n    with open(tasks_file, 'r') as f:\n        lines = f.readlines()\n    done = False\n    new_lines = []\n    for line in lines:\n        if not done and line.startswith('- [ ]'):\n            line = '- [x]' + line[5:]\n            done = True\n        new_lines.append(line)\n    with open(tasks_file, 'w', newline='') as f:\n        f.writelines(new_lines)\n",
         )
         .unwrap();
 
+        #[cfg(windows)]
+        let python = "python";
+        #[cfg(not(windows))]
+        let python = "python3";
+
+        let script_str = script_path.to_string_lossy().replace('\\', "/");
+        let tasks_str = tasks_path.to_string_lossy().replace('\\', "/");
+
         let config = TuiConfig {
-            command: format!("bash {} {{prompt}}", shell_path(&script_path)),
-            prompt: shell_path(&tasks_path),
+            command: format!("{} {} {{prompt}}", python, script_str),
+            prompt: tasks_str,
             ..Default::default()
         };
 
@@ -1589,35 +1575,27 @@ mod tests {
         std::fs::write(&tasks_path, "- [ ] Task one\n").unwrap();
         let log_path = dir.join("test.log");
 
-        let script_path = dir.join("mark_task_late.sh");
+        let script_path = dir.join("mark_task_late.py");
+        // Use Python for cross-platform file I/O (bash mv is unreliable on Windows).
+        // Indentation is embedded inside \n sequences to avoid Rust string-continuation
+        // stripping leading whitespace (a `\n\` escape discards the following spaces).
         std::fs::write(
             &script_path,
-            "#!/bin/bash\n\
-             TASKS_FILE=\"$1\"\n\
-             COUNTER_FILE=\"${TASKS_FILE}.counter\"\n\
-             count=0\n\
-             if [ -f \"$COUNTER_FILE\" ]; then count=$(cat \"$COUNTER_FILE\"); fi\n\
-             count=$((count + 1))\n\
-             echo $count > \"$COUNTER_FILE\"\n\
-             if [ \"$count\" -ge 3 ]; then\n\
-                tmp_file=\"${TASKS_FILE}.tmp\"\n\
-                done=0\n\
-                : > \"$tmp_file\"\n\
-                while IFS= read -r line || [ -n \"$line\" ]; do\n\
-                    if [ \"$done\" -eq 0 ] && [ \"${line#- \\[ \\]}\" != \"$line\" ]; then\n\
-                        line=\"- [x]${line#- \\[ \\]}\"\n\
-                        done=1\n\
-                    fi\n\
-                    printf '%s\\n' \"$line\" >> \"$tmp_file\"\n\
-                done < \"$TASKS_FILE\"\n\
-                mv \"$tmp_file\" \"$TASKS_FILE\"\n\
-             fi\n",
+            "import sys\nimport os\ntasks_file = sys.argv[1]\ncounter_file = tasks_file + '.counter'\ncount = 0\nif os.path.exists(counter_file):\n    with open(counter_file) as f:\n        try:\n            count = int(f.read().strip())\n        except Exception:\n            pass\ncount += 1\nwith open(counter_file, 'w') as f:\n    f.write(str(count) + '\\n')\nif count >= 3:\n    with open(tasks_file, 'r') as f:\n        lines = f.readlines()\n    done = False\n    new_lines = []\n    for line in lines:\n        if not done and line.startswith('- [ ]'):\n            line = '- [x]' + line[5:]\n            done = True\n        new_lines.append(line)\n    with open(tasks_file, 'w', newline='') as f:\n        f.writelines(new_lines)\n",
         )
         .unwrap();
 
+        #[cfg(windows)]
+        let python = "python";
+        #[cfg(not(windows))]
+        let python = "python3";
+
+        let script_str = script_path.to_string_lossy().replace('\\', "/");
+        let tasks_str = tasks_path.to_string_lossy().replace('\\', "/");
+
         let config = TuiConfig {
-            command: format!("bash {} {{prompt}}", shell_path(&script_path)),
-            prompt: shell_path(&tasks_path),
+            command: format!("{} {} {{prompt}}", python, script_str),
+            prompt: tasks_str,
             ..Default::default()
         };
 
