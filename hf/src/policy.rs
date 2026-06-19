@@ -64,6 +64,10 @@ pub struct Merge {
     pub reviewer: String,
     pub auto_merge: String,
     pub permission_gate: bool,
+    /// Paths/prefixes that block automatic review/merge unless explicitly cleared.
+    /// A file matches if it equals a pattern or starts with a pattern.
+    /// Directory patterns should end in '/' to avoid false positives.
+    pub protected_files: Vec<String>,
 }
 impl Default for Merge {
     fn default() -> Self {
@@ -72,6 +76,16 @@ impl Default for Merge {
             reviewer: "cloud_ultra".into(),
             auto_merge: "on_approve".into(),
             permission_gate: true,
+            protected_files: vec![
+                ".github/".into(),
+                ".handoff/policy.toml".into(),
+                "docs/adr-".into(),
+                "schemas/".into(),
+                "Cargo.lock".into(),
+                "Cargo.toml".into(),
+                ".agent/".into(),
+                ".claude/rules/".into(),
+            ],
         }
     }
 }
@@ -110,6 +124,25 @@ impl Default for Sync {
             ],
             meta_register: true,
         }
+    }
+}
+
+impl Merge {
+    /// Return the subset of `files` that match the protected-files denylist.
+    /// A file matches a pattern if it equals the pattern or starts with the pattern.
+    /// Directory patterns should end in '/' to avoid false positives.
+    pub fn protected_hits(&self, files: &[String]) -> Vec<String> {
+        files
+            .iter()
+            .filter(|f| {
+                self.protected_files.iter().any(|pat| {
+                    let file = f.as_str();
+                    let pat = pat.as_str();
+                    file == pat || file.starts_with(pat)
+                })
+            })
+            .cloned()
+            .collect()
     }
 }
 
@@ -166,5 +199,47 @@ mod tests {
         let toml = "[loop]\nworktree_prefix = \"x-\"\n";
         let p: Policy = toml::from_str(toml).unwrap();
         assert_eq!(p.loop_cfg.worktree_prefix, "x-");
+    }
+
+    #[test]
+    fn merge_default_protected_files_is_non_empty() {
+        let p = Policy::default();
+        assert!(!p.merge.protected_files.is_empty());
+        assert!(p.merge.protected_files.contains(&".github/".into()));
+        assert!(p
+            .merge
+            .protected_files
+            .contains(&".handoff/policy.toml".into()));
+    }
+
+    #[test]
+    fn protected_files_prefix_and_exact_matching() {
+        let p = Policy::default();
+        let hits = p.merge.protected_hits(&[
+            "src/main.rs".into(),
+            ".github/workflows/ci.yml".into(),
+            ".handoff/policy.toml".into(),
+            "docs/adr-0001-keystone.md".into(),
+            "docs/README.md".into(),
+            "Cargo.lock".into(),
+        ]);
+        assert_eq!(hits.len(), 4);
+        assert!(hits.contains(&".github/workflows/ci.yml".into()));
+        assert!(hits.contains(&".handoff/policy.toml".into()));
+        assert!(hits.contains(&"docs/adr-0001-keystone.md".into()));
+        assert!(hits.contains(&"Cargo.lock".into()));
+    }
+
+    #[test]
+    fn protected_files_configurable_via_toml() {
+        let toml = r#"
+            [merge]
+            protected_files = ["SECRET", "vault/"]
+        "#;
+        let p: Policy = toml::from_str(toml).unwrap();
+        let hits =
+            p.merge
+                .protected_hits(&["SECRET".into(), "vault/key.pem".into(), "src/lib.rs".into()]);
+        assert_eq!(hits.len(), 2);
     }
 }

@@ -1305,6 +1305,9 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "rvf-crypto",
+ "rvf-index",
+ "rvf-runtime",
+ "rvf-types",
  "serde",
  "serde_json",
  "sha3",
@@ -2275,6 +2278,27 @@ dependencies = [
  "ed25519-dalek",
  "rvf-types",
  "sha3",
+]
+
+[[package]]
+name = "rvf-index"
+version = "0.2.0"
+
+[[package]]
+name = "rvf-quant"
+version = "0.2.0"
+dependencies = [
+ "rvf-types",
+]
+
+[[package]]
+name = "rvf-runtime"
+version = "0.3.0"
+dependencies = [
+ "crc32fast",
+ "rvf-index",
+ "rvf-quant",
+ "rvf-types",
 ]
 
 [[package]]

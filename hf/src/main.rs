@@ -6,7 +6,7 @@
 //! handoff.task.v1 envelope) + `ledger` (rusqlite event store + rvf-crypto witness) crates.
 //!
 //! Verbs: init · seed · status · claim <id> · release <id> · checkpoint <id> [note] · handoff · resume [--json]
-//!        · ship <id> [--base BRANCH] · review verdict <id> <pr> <approve|deny> [--by WHO]
+//!        · ship <id> [--base BRANCH] · review request <pr> [--task <id>] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
 mod branch;
@@ -15,6 +15,7 @@ mod cognitum;
 mod contract;
 mod delivery;
 mod fleet;
+mod gatekeeper;
 mod gates;
 mod hooks;
 mod intake;
@@ -24,6 +25,8 @@ mod policy;
 mod prompt_hub;
 mod route;
 mod routing;
+#[cfg(feature = "secrets")]
+mod secrets;
 mod session;
 mod sync;
 #[cfg(test)]
@@ -37,12 +40,12 @@ use lease::Leaser;
 use ledger::Ledger;
 use work_order::{Priority, Status, WorkOrder};
 
-const HF: &str = ".handoff";
+pub(crate) const HF: &str = ".handoff";
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
 /// (heartbeat) extends it; `hf release` or expiry frees it.
 const CLAIM_TTL_SECS: u64 = 3600;
 
-fn now_ns() -> u64 {
+pub(crate) fn now_ns() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
@@ -56,7 +59,7 @@ fn tasks_dir() -> PathBuf {
 /// handoff`) against a shared ledger (e.g. `$META_ROOT/.handoff/ledger.db`) from its own CWD
 /// without requiring a per-repo ledger.db. When unset, the default remains the local
 /// `<cwd>/.handoff/ledger.db`.
-fn ledger_path() -> String {
+pub(crate) fn ledger_path() -> String {
     if let Ok(p) = std::env::var("HANDOFF_LEDGER") {
         if !p.is_empty() {
             return p;
@@ -1014,7 +1017,7 @@ fn sync_cards() -> usize {
 
 /// Run a subprocess with explicit argv (no shell), capturing trimmed stdout.
 /// Mirrors the lease::WeaveCli discipline (ADR-0002): no shell, explicit args.
-fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
     match std::process::Command::new(bin).args(args).output() {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
         Ok(o) => Err(format!(
@@ -1205,6 +1208,162 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     led.append("review_verdict", id, &payload, now_ns())
         .unwrap();
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
+}
+
+/// PR metadata fields we need from `gh pr view --json`.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(crate) struct GhPrView {
+    pub(crate) url: String,
+    pub(crate) number: u64,
+    #[serde(rename = "headRefName")]
+    pub(crate) head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    pub(crate) base_ref_name: String,
+    #[serde(rename = "isDraft")]
+    pub(crate) is_draft: bool,
+}
+
+/// Fetch the list of changed file paths for a PR using `gh pr diff --name-only`.
+fn review_changed_files(pr: &str) -> Result<Vec<String>, String> {
+    let out = run_out("gh", &["pr", "diff", pr, "--name-only"])?;
+    Ok(out
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
+}
+
+/// HFTASK-0010 Phase 1: request a cloud_ultra review for PR `pr`.
+///
+/// Guardrails enforced locally:
+/// - Draft PRs are refused.
+/// - Files matching `[merge].protected_files` are refused.
+///
+/// On refusal a `review_refused_*` event is recorded; on approval a `review_requested`
+/// event is recorded. The actual /code-review ultra invocation is intentionally left to
+/// the reviewer (it is an IDE slash command, not a CLI tool).
+fn cmd_review_request(pr: &str, task_id: Option<&str>) {
+    if pr.is_empty() {
+        eprintln!("usage: hf review request <pr> [--task <id>]");
+        std::process::exit(2);
+    }
+
+    let policy = policy::Policy::load(Path::new(HF));
+
+    // Resolve PR metadata.
+    let meta_json = match run_out(
+        "gh",
+        &[
+            "pr",
+            "view",
+            pr,
+            "--json",
+            "url,number,headRefName,baseRefName,isDraft",
+        ],
+    ) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("hf review request: cannot read PR {pr}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let meta: GhPrView = match serde_json::from_str(&meta_json) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("hf review request: malformed gh output: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Determine which ledger to write to.
+    let ledger = match task_id {
+        Some(id) => match route::route_for_task(id) {
+            Ok((ledger, _tasks)) => ledger,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
+        None => PathBuf::from(ledger_path()),
+    };
+
+    let mut led = match Ledger::open(&ledger.to_string_lossy()) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("hf review request: cannot open ledger: {e}");
+            std::process::exit(1);
+        }
+    };
+    let work_order_id = task_id.unwrap_or("review");
+
+    // Guardrail (e): refuse draft PRs.
+    if meta.is_draft {
+        let payload = serde_json::json!({
+            "pr": meta.url,
+            "number": meta.number,
+            "reason": "draft PR",
+            "task_id": task_id,
+        })
+        .to_string();
+        led.append("review_refused_draft", work_order_id, &payload, now_ns())
+            .unwrap();
+        eprintln!("hf review request: refusing draft PR #{}", meta.number);
+        std::process::exit(1);
+    }
+
+    // Guardrail (d): protected-files denylist.
+    let files = match review_changed_files(pr) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("hf review request: cannot list changed files: {e}");
+            std::process::exit(1);
+        }
+    };
+    let hits = policy.merge.protected_hits(&files);
+    if !hits.is_empty() {
+        let payload = serde_json::json!({
+            "pr": meta.url,
+            "number": meta.number,
+            "reason": "protected files touched",
+            "protected_files": &hits,
+            "task_id": task_id,
+        })
+        .to_string();
+        led.append(
+            "review_refused_protected_files",
+            work_order_id,
+            &payload,
+            now_ns(),
+        )
+        .unwrap();
+        eprintln!(
+            "hf review request: refusing PR #{} — touches protected files: {:?}",
+            meta.number, hits
+        );
+        std::process::exit(1);
+    }
+
+    let payload = serde_json::json!({
+        "pr": &meta.url,
+        "number": meta.number,
+        "head": &meta.head_ref_name,
+        "base": &meta.base_ref_name,
+        "reviewer": policy.merge.reviewer.as_str(),
+        "task_id": task_id,
+        "changed_files": files,
+    })
+    .to_string();
+    led.append("review_requested", work_order_id, &payload, now_ns())
+        .unwrap();
+    println!(
+        "hf review request: PR #{} ({}) queued for {} review",
+        meta.number, meta.url, policy.merge.reviewer
+    );
+    println!("  Run `/code-review ultra` in the IDE on this PR to produce a verdict.");
+    println!(
+        "  Then record it with: hf review verdict {} {} approve|deny",
+        work_order_id, meta.url
+    );
 }
 
 /// Read a top-level string field from the context capsule (best-effort).
@@ -2049,6 +2208,15 @@ fn main() {
                 .unwrap_or("");
             cmd_ship(id, base);
         }
+        Some("review") if args.get(1).map(|s| s.as_str()) == Some("request") => {
+            let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let task_id = args
+                .iter()
+                .position(|a| a == "--task")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str());
+            cmd_review_request(pr, task_id);
+        }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("verdict") => {
             let by = args
                 .iter()
@@ -2062,6 +2230,47 @@ fn main() {
                 args.get(4).map(|s| s.as_str()).unwrap_or(""),
                 by,
             );
+        }
+        Some("gatekeeper") if args.get(1).map(|s| s.as_str()) == Some("check") => {
+            let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let task_id = args
+                .iter()
+                .position(|a| a == "--task")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str());
+            gatekeeper::cmd_gatekeeper_check(pr, task_id);
+        }
+        #[cfg(feature = "secrets")]
+        Some("secret") if args.get(1).map(|s| s.as_str()) == Some("gate-check") => {
+            let method = args
+                .iter()
+                .position(|a| a == "--method")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("GET");
+            let host = args
+                .iter()
+                .position(|a| a == "--host")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("api.github.com");
+            let path = args
+                .iter()
+                .position(|a| a == "--path")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| s.as_str())
+                .unwrap_or("/");
+            match secrets::github_merge_gate(method, host, path) {
+                Ok(true) => println!("allow"),
+                Ok(false) => {
+                    println!("deny");
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("hf secret gate-check: {e}");
+                    std::process::exit(2);
+                }
+            }
         }
         Some("session") => session::cmd_session(&args[1..]),
         Some("drift") => gates::cmd_drift(args.iter().any(|a| a == "--json")),
@@ -2586,5 +2795,34 @@ mod tests {
         );
         assert!(ok, "a successful claim must return true (CLI exits 0)");
         let _ = fs::remove_dir_all(tmp);
+    }
+
+    // --- HFTASK-0010 review request ---------------------------------------------------
+
+    #[test]
+    fn gh_pr_view_json_parses() {
+        let json = r#"{
+            "url": "https://github.com/FlexNetOS/handoff/pull/42",
+            "number": 42,
+            "headRefName": "feature/x",
+            "baseRefName": "master",
+            "isDraft": false
+        }"#;
+        let meta: GhPrView = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.number, 42);
+        assert_eq!(meta.head_ref_name, "feature/x");
+        assert_eq!(meta.base_ref_name, "master");
+        assert!(!meta.is_draft);
+    }
+
+    #[test]
+    fn review_changed_files_splits_lines() {
+        let out = "src/main.rs\nhf/src/policy.rs\n\n";
+        let files: Vec<String> = out
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(files, vec!["src/main.rs", "hf/src/policy.rs"]);
     }
 }

@@ -1487,7 +1487,7 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -eq 2 ]; then\n\
-                 sed -i '0,/- \\[ \\]/s//- [x]/' \"$TASKS_FILE\"\n\
+                 perl -i -pe 'if (!$seen && s/- \\[ \\]/- [x]/) { $seen = 1 }' \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
@@ -1564,7 +1564,7 @@ mod tests {
              count=$((count + 1))\n\
              echo $count > \"$COUNTER_FILE\"\n\
              if [ \"$count\" -ge 3 ]; then\n\
-                 sed -i '0,/- \\[ \\]/s//- [x]/' \"$TASKS_FILE\"\n\
+                 perl -i -pe 'if (!$seen && s/- \\[ \\]/- [x]/) { $seen = 1 }' \"$TASKS_FILE\"\n\
              fi\n",
         )
         .unwrap();
