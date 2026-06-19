@@ -1,0 +1,4 @@
+# Normalise line endings to LF for all text files.
+# This prevents git on Windows (core.autocrlf=true) from converting LF → CRLF
+# on checkout, which would break include_str!() oracle-fixture byte comparisons.
+* text=auto eol=lf

@@ -1,0 +1,37 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 11:23:53
+Change: post-implementation-hook
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/13: 1.1 Add `post_implementation_prompt` field to `TuiConfig` with `#[serde(default)]` defaulting to empty string
+──────────────────────────────────────────────────────────────
+Alle Tasks sind implementiert und als erledigt markiert. Hier eine Zusammenfassung der Änderungen:
+
+## Zusammenfassung
+
+### 1. Config Extension (`config.rs`)
+- Neues Feld `post_implementation_prompt: String` mit `#[serde(default)]` auf `TuiConfig`
+- Neue Methode `render_post_prompt(&self, name: &str) -> Option<String>` — gibt `None` zurück wenn leer, sonst ersetzt `{name}`
+- 7 neue Tests (Serialisierung, Deserialisierung-Defaults, render_post_prompt Varianten)
+
+### 2. ImplUpdate & Implementation Loop (`runner.rs`)
+- `ImplUpdate::Finished` → `ImplUpdate::Finished { success: bool }`
+- Refactored `implementation_loop()`: Tracking-Variablen für Exit-Grund, Post-Hook-Ausführung nach erfolgreicher Task-Completion
+- Post-Hook nutzt gleiche Log-Datei, Cancel-Flag und Child-Handle
+- `Finished { success: true }` nur bei Task- UND Hook-Erfolg
+
+### 3. App Integration (`app.rs`)
+- `poll_implementation()` extrahiert `success` aus `Finished { success }`, Stalled → `false`
+- `advance_batch(success: bool)` akzeptiert Erfolg direkt statt Disk-Read
+- 6 neue Tests (Config Screen Post-Prompt, advance_batch success/failure)
+
+### 4. Config Screen UI (`app.rs`, `ui.rs`, `main.rs`)
+- Neue `ConfigField::PostImplementationPrompt` Variante
+- 3-Feld Tab-Navigation: Command → Prompt → PostImplementationPrompt → Command
+- Enter auf PostImplementationPrompt öffnet `$EDITOR` (wie Prompt)
+- Save/Load/Reset inkludiert neues Feld
+- Anzeige "(disabled)" wenn leer
+- 3 neue UI-Tests
+
+**294 Tests bestanden** (vorher 278, +16 neue).

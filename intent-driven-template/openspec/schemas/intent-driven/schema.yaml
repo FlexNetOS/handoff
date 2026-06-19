@@ -1,0 +1,43 @@
+name: intent-driven
+version: 1
+description: Intent-driven development workflow — proposal through tasks.
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Change proposal describing goals, capabilities, and impact.
+    template: proposal
+    instruction: Describe the change, its goals, capabilities, and impact.
+  - id: specs
+    generates: specs/**/*.md
+    description: Delta specs for each capability introduced or modified.
+    template: spec
+    instruction: For each capability in the proposal, write a delta spec.
+    requires:
+      - proposal
+  - id: design
+    generates: design.md
+    description: Technical design document for the change.
+    template: design
+    instruction: Document the technical design for the change.
+    requires:
+      - proposal
+  - id: adr
+    generates: ../../../adr/*.md
+    description: Architecture Decision Record for any architectural decisions.
+    template: adr
+    instruction: Record any architectural decisions made during this change.
+    requires:
+      - design
+  - id: tasks
+    generates: tasks.md
+    description: Implementation task list derived from specs and design.
+    template: tasks
+    instruction: Break down the change into concrete implementation tasks.
+    requires:
+      - specs
+      - adr
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: Check off tasks as you implement the change.

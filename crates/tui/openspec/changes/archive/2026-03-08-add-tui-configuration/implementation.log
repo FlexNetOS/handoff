@@ -1,0 +1,83 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 08:00:34
+Change: add-tui-configuration
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/28: 1.1 Add `serde_yaml` dependency to Cargo.toml
+──────────────────────────────────────────────────────────────
+**Task 1.1 erledigt.** `serde_yaml = "0.9"` wurde zu `Cargo.toml` hinzugefügt und das Projekt kompiliert erfolgreich.
+──────────────────────────────────────────────────────────────
+Task 2/28: 1.2 Create `TuiConfig` struct with `command` and `prompt` fields, with `Default` implementation using current hardcoded values
+──────────────────────────────────────────────────────────────
+**Task 1.2 erledigt.** 
+
+Erstellt: `src/config.rs` mit:
+- `TuiConfig` struct mit `command` und `prompt` Feldern
+- `Default` Implementation mit den aktuell hartkodierten Werten aus `runner.rs`
+- `Serialize`/`Deserialize` mit `#[serde(default)]` für partielle YAML-Dateien
+- 7 Tests (Default-Werte, Clone, Serialisierung/Deserialisierung, partielle Felder)
+
+Registriert als `mod config` in `main.rs`. Alle Tests bestanden.
+──────────────────────────────────────────────────────────────
+Task 3/28: 1.3 Implement `TuiConfig::load()` to read from `openspec/tui-config.yaml` with fallback to defaults for missing fields
+──────────────────────────────────────────────────────────────
+Fertig. Hier eine Zusammenfassung der implementierten Aufgaben:
+
+**Tasks 1.3, 1.4, 1.5 erledigt:**
+
+- **`TuiConfig::load()`** – Liest Config aus `openspec/tui-config.yaml`, gibt Defaults zurück wenn die Datei fehlt. Dank `#[serde(default)]` werden auch fehlende einzelne Felder mit Defaults aufgefüllt.
+- **`TuiConfig::save()`** – Schreibt Config als YAML, erstellt das Verzeichnis bei Bedarf.
+- **`load_from(path)`/`save_to(path)`** – Pfadbasierte Varianten für Testbarkeit (vermeiden `set_current_dir`-Race-Conditions bei parallelen Tests).
+- **5 neue Tests**: Fehlende Datei → Defaults, volle Datei, partielle Felder → Defaults, Speichern erstellt Datei, Save/Load-Roundtrip.
+
+Alle 12 Config-Tests bestehen.
+──────────────────────────────────────────────────────────────
+Task 6/28: 2.1 Implement `TuiConfig::render_prompt(name: &str)` that replaces `{name}` in the prompt template
+──────────────────────────────────────────────────────────────
+Abschnitt 2 (Placeholder Substitution) ist abgeschlossen. Hier eine Zusammenfassung:
+
+**Implementiert in `src/config.rs`:**
+
+- **`render_prompt(name: &str)`** — Ersetzt alle `{name}`-Platzhalter im Prompt-Template durch den übergebenen Change-Namen
+- **`build_command(prompt: &str)`** — Ersetzt `{prompt}` im Command-Template, splittet auf Whitespace und gibt `(binary, args)` zurück. Gibt `None` zurück bei leerem Command-String
+
+**10 neue Tests** in `config::tests::placeholder_tests`:
+- `render_prompt`: einfache Ersetzung, mehrfache Vorkommen, kein Platzhalter, Default-Template
+- `build_command`: Standard-Aufruf, Default-Config, benutzerdefiniertes Tool, kein Prompt-Platzhalter, leerer Command, einzelnes Binary
+
+Alle 22 Config-Tests bestehen.
+──────────────────────────────────────────────────────────────
+Task 9/28: 3.1 Add `TuiConfig` parameter to `start_implementation()` and the runner loop
+──────────────────────────────────────────────────────────────
+Alle Task-Gruppe 3 (Runner Integration) ist abgeschlossen. Hier eine Zusammenfassung:
+
+**Implementierte Änderungen (Tasks 3.1–3.5 + 5.4, 6.1, 6.2):**
+
+1. **`runner.rs`**: `start_implementation()` und `implementation_loop()` nehmen jetzt einen `&TuiConfig` Parameter
+2. **`runner.rs`**: `build_prompt()` entfernt, durch `config.render_prompt(change_name)` ersetzt
+3. **`runner.rs`**: `data::claude_command()` durch `config.build_command(&prompt)` ersetzt — der Runner nutzt jetzt `std::process::Command::new()` mit den aus der Config gewonnenen Binary/Args
+4. **`data.rs`**: `claude_command()` (inkl. Windows-Variante) und zugehörigem Test entfernt
+5. **`app.rs`**: `TuiConfig` Feld in `App` struct hinzugefügt, Config wird beim Start via `TuiConfig::load()` geladen, und an `start_implementation()` übergeben
+6. **Tests**: 3 neue Tests (`test_loop_uses_custom_config_command`, `test_loop_uses_custom_config_prompt`, `test_loop_finishes_when_command_empty`), bestehende Tests angepasst
+
+Alle **126 Tests** bestehen.
+──────────────────────────────────────────────────────────────
+Task 14/28: 4.1 Add `Screen::Config` variant with fields for command text, prompt text, cursor position, and focused field
+──────────────────────────────────────────────────────────────
+Alle Aufgaben sind erledigt. Hier eine Zusammenfassung der Implementierung:
+
+## Implementierte Aufgaben (4.1-4.8, 5.1-5.3, 6.3)
+
+### Geänderte Dateien:
+- **`src/app.rs`**: `ConfigField` enum, `Screen::Config` Variante, `push_config_screen()`, `handle_config_input()` (mit Rückgabewert für Editor-Signal), `set_config_prompt()`, `C`-Keybinding in allen drei Screen-Handlern, 20+ Tests
+- **`src/ui.rs`**: `draw_config_screen()` mit Command-Eingabefeld (Cursor-Anzeige), Prompt-Vorschau, Keybinding-Hints und `{prompt}`-Warnung. Bottom-Title-Hints in ChangeList, ArtifactMenu und ArtifactView. 9 Tests
+- **`src/main.rs`**: Config-Screen-Input-Handling mit Editor-Integration (`$EDITOR`/`vi`), `edit_in_external_editor()` Funktion (TUI suspend/restore)
+- **`Cargo.toml`**: `tempfile` von dev-dependency zu regulärer dependency verschoben
+
+### Funktionalität:
+- **`C`** von jedem Screen → öffnet Config-Screen mit geklonten Werten
+- **Command-Feld**: Inline-Textbearbeitung (Eingabe, Cursor, Backspace, Delete, Home, End)
+- **Prompt-Feld**: Vorschau mit Enter → `$EDITOR` öffnen
+- **`Tab`**: Fokus wechseln | **`S`**: Speichern | **`Esc`**: Verwerfen | **`D`**: Defaults
+- **156 Tests bestanden** (alle 30 neuen Tests + alle 126 bestehenden)

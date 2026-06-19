@@ -1,0 +1,59 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 14:07:01
+Change: interactive-tool-launch
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/15: 1.1 Add `interactive_command` field to `TuiConfig` with default `"claude"` and serde support
+──────────────────────────────────────────────────────────────
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-08 14:08:23
+Change: interactive-tool-launch
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/15: 1.1 Add `interactive_command` field to `TuiConfig` with default `"claude"` and serde support
+──────────────────────────────────────────────────────────────
+**Abschnitt 1 (Config Layer) ist vollständig implementiert.** Hier eine Zusammenfassung der Änderungen:
+
+### config.rs
+- **Neues Feld**: `interactive_command: String` mit `#[serde(default = "default_interactive_command")]` und Default-Wert `"claude"`
+- **Neue Methode**: `build_interactive_command()` — splittet den Command-String auf Whitespace und gibt `(binary, args)` zurück
+- **9 neue Tests**:
+  - Default-Wert ist `"claude"`
+  - Deserialisierung mit/ohne `interactive_command`
+  - Serialisierung Roundtrip
+  - `build_interactive_command()` mit Default, mit Args, leer, einzelnes Binary
+
+### app.rs
+- Save-Handler in `handle_config_input` aktualisiert, um `interactive_command` aus `self.config` zu übernehmen (bis der Config-Screen das Feld in Task 4.x bekommt)
+
+Alle **303 Tests** bestehen (294 bestehende + 9 neue).
+──────────────────────────────────────────────────────────────
+Task 4/15: 2.1 Add `InteractiveLaunch` variant to the signal mechanism (or a boolean flag) so `main.rs` knows to suspend the TUI
+──────────────────────────────────────────────────────────────
+Alle Aufgaben der `interactive-tool-launch` Change sind implementiert. Hier eine Zusammenfassung der Änderungen:
+
+**Geänderte Dateien:**
+
+- **`src/app.rs`**: 
+  - `launch_interactive: bool` Flag auf `App`-Struct hinzugefügt
+  - `InteractiveCommand` Variant zum `ConfigField`-Enum hinzugefügt
+  - `interactive_command: String` zum `Screen::Config`-Variant hinzugefügt
+  - `I`-Keybinding in `handle_change_list_input` (Active tab, keine laufende Implementation)
+  - `reload_changes()` Methode zum Neuladen der Daten nach interaktivem Tool
+  - Tab-Cycling in Config screen um InteractiveCommand erweitert
+  - Inline-Editing für InteractiveCommand (wie Command-Feld)
+  - Save/Reset-Defaults berücksichtigen `interactive_command`
+  - 8 neue Tests (I-Key Signal, Config Tab-Cycling, Inline-Edit, Save, Reset)
+
+- **`src/main.rs`**: 
+  - `launch_interactive_tool()` — suspendiert TUI, führt Befehl aus, stellt TUI wieder her
+  - Verdrahtung im Event-Loop nach `handle_change_list_input`
+
+- **`src/ui.rs`**: 
+  - `draw_config_screen` rendert das neue "Interactive Command"-Feld
+  - `[I] Interactive` Hint in der Change-List (nur Active Tab)
+  - 3 neue Tests (Config-Screen-Feld, Hint sichtbar/versteckt)
+
+**313 Tests bestehen alle.**

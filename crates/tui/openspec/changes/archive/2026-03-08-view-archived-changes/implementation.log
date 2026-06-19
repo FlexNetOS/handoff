@@ -1,0 +1,39 @@
+══════════════════════════════════════════════════════════════
+IMPLEMENTATION RUN STARTED
+Time: 2026-03-07 00:45:25
+Change: view-archived-changes
+══════════════════════════════════════════════════════════════
+──────────────────────────────────────────────────────────────
+Task 1/15: 1.1 Add `list_archived_changes()` function to `data.rs` that reads `openspec/changes/archive/` directory entries, parses task progress from each `tasks.md`, and returns a `Vec<ChangeEntry>` sorted by date descending then name ascending
+──────────────────────────────────────────────────────────────
+Tasks 1.1–1.4 (Data Layer) sind abgeschlossen. Zusammenfassung:
+
+**Implementiert in `src/data.rs`:**
+- `list_archived_changes()` — Liest `openspec/changes/archive/` Verzeichniseinträge, parst Task-Fortschritt aus `tasks.md`, sortiert nach Datum absteigend und Name aufsteigend
+- `get_archived_change_status()` — Erstellt `ChangeStatusOutput` durch Dateisystem-Prüfung (proposal.md, design.md, tasks.md, specs/) statt `openspec status` CLI-Aufruf
+
+**Tests (alle 24 bestanden):**
+- `list_archived_changes`: Verzeichnis mit Changes, leeres Verzeichnis, nicht-existierendes Verzeichnis, korrekte Sortierung, fehlende tasks.md
+- `get_archived_change_status`: Alle Artifacts vorhanden, einige fehlend, Specs mit Unterverzeichnissen
+──────────────────────────────────────────────────────────────
+Task 5/15: 2.1 Add `ChangeTab` enum (`Active`, `Archived`) and add `tab` field to `Screen::ChangeList`
+──────────────────────────────────────────────────────────────
+Alle Tasks sind abgeschlossen. Hier eine Zusammenfassung der Änderungen:
+
+**`src/app.rs`:**
+- `ChangeTab` enum (`Active`, `Archived`) mit `PartialEq` hinzugefügt
+- `tab: ChangeTab` Feld zu `Screen::ChangeList` hinzugefügt
+- `is_archived: bool` Feld zu `Screen::ArtifactMenu` hinzugefügt
+- Tab-Switching via Left/Right/h/l in `handle_change_list_input` — lädt Daten von der richtigen Quelle und setzt Selection auf 0 zurück
+- `enter_artifact_menu` nutzt `get_archived_change_status()` für archivierte Changes
+- `find_change_dir` löst zu `openspec/changes/archive/<name>/` auf wenn `is_archived` true ist
+- `R`-Key Handler ignoriert archivierte Changes
+- 10 neue Tests: Tab-Switching, Noop-Verhalten, Selection-Reset, Runner-Deaktivierung, Pfadauflösung
+
+**`src/ui.rs`:**
+- `tab_title()` Funktion rendert `OpenSpec TUI [Active | Archived]` mit Highlighting
+- `draw_change_list` akzeptiert den Tab-Parameter
+- Tab-spezifische Empty-Messages ("No active/archived changes found")
+- 4 neue Tests für Title-Rendering und Empty-Messages
+
+**94 Tests bestanden** (vorher 80).
