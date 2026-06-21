@@ -79,6 +79,76 @@ fn capsule_path() -> PathBuf {
     Path::new(HF).join("context").join("capsule.json")
 }
 
+/// ADR-0018 D1: the committed continuity truth — the deterministic JSONL export of the witnessed
+/// ledger that travels with git (the binary `ledger.db` stays a local, gitignored cache). Sits
+/// beside the ledger (`ledger.db` → `ledger.events.jsonl`); follows `HANDOFF_LEDGER`.
+pub(crate) fn ledger_jsonl_path() -> String {
+    let db = ledger_path();
+    match db.strip_suffix(".db") {
+        Some(stem) => format!("{stem}.events.jsonl"),
+        None => format!("{db}.events.jsonl"),
+    }
+}
+
+/// `hf export` — (re)write the committed JSONL ledger export (ADR-0018 D1). Run as a separate
+/// process at a commit point (the session-end hook / the loop), NOT inside a mutating verb — redb
+/// is single-writer, so a same-process second open would contend with the open mutation handle.
+fn cmd_export() {
+    match Ledger::open(&ledger_path())
+        .and_then(|led| led.all_events())
+        .and_then(|evs| ledger::export_jsonl(&evs))
+    {
+        Ok(text) => {
+            let n = text.lines().count();
+            let p = ledger_jsonl_path();
+            match std::fs::write(&p, &text) {
+                Ok(()) => println!("hf export: wrote {n} event(s) to {p}"),
+                Err(e) => {
+                    eprintln!("hf export: write {p} failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("hf export: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// `hf import` — rebuild the local binary ledger from the committed JSONL export (ADR-0018 D1; a
+/// fresh clone re-derives its cache). Fail-closed: refuses to overwrite an existing binary ledger
+/// (never silently clobber the authoritative store), and aborts if the rebuilt chain mismatches.
+fn cmd_import() {
+    let jsonl_path = ledger_jsonl_path();
+    let db = ledger_path();
+    if db != ":memory:" && Path::new(&db).exists() {
+        eprintln!(
+            "hf import: a ledger already exists at {db}; refusing to overwrite. Remove it first to \
+             rebuild from {jsonl_path}."
+        );
+        std::process::exit(1);
+    }
+    let text = match std::fs::read_to_string(&jsonl_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("hf import: cannot read {jsonl_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    match ledger::rebuild_from_jsonl(&text, &db) {
+        Ok(n) => {
+            println!(
+                "hf import: rebuilt {db} from {jsonl_path} ({n} events, witness chain verified)"
+            )
+        }
+        Err(e) => {
+            eprintln!("hf import: FAILED (fail-closed): {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Parse one card file fail-closed (HFTASK-0057, PRD §7.3/§23): read → schema-validate the raw
 /// JSON against the generated handoff.task.v1 schema → deserialize. A card that is unreadable,
 /// is not valid JSON, violates the schema (missing `intent_lock`, bad `id`, wrong `schema`
@@ -2845,6 +2915,8 @@ fn main() {
                 .map(|s| s.as_str()),
         ),
         Some("reconcile") => cmd_reconcile(),
+        Some("export") => cmd_export(),
+        Some("import") => cmd_import(),
         Some("migrate") => {
             let path = args
                 .get(1)
@@ -3171,7 +3243,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
         }
     }
 }
