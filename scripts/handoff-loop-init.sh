@@ -25,8 +25,34 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-KERNEL_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"          # scripts/.. -> handoff repo root
-META_ROOT="$(cd "$KERNEL_HOME/.." && pwd)"           # handoff/.. -> meta root (best-effort)
+
+# Resolve the handoff KERNEL source root (used only for the optional `cargo install` rebuild of
+# the redb hf) + the META_ROOT (used for `--fleet` member discovery). This script runs in TWO
+# homes: (a) the handoff dev checkout (`meta/handoff/scripts/`) where `SCRIPT_DIR/..` IS the
+# kernel; (b) VENDORED under the harness plugin (`.../skills/handoff-loop-init/scripts/`) where
+# `SCRIPT_DIR/..` is NOT a kernel. Detect robustly so the same script works ejected (HFTASK-0065).
+_find_meta_root() {  # walk up from $1 for a dir with .meta.yaml + a handoff/ member
+  local d="$1"
+  while [ -n "$d" ] && [ "$d" != / ]; do
+    [ -f "$d/.meta.yaml" ] && { echo "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+_is_kernel_home() {  # a handoff kernel source root has the hf crate + the keystone ADR
+  [ -f "$1/hf/Cargo.toml" ] && [ -f "$1/docs/adr-0001-flexnetos-autopilot-keystone.md" ]
+}
+KERNEL_HOME=""
+if _is_kernel_home "$(cd "$SCRIPT_DIR/.." && pwd)"; then
+  KERNEL_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"          # (a) handoff dev checkout
+fi
+META_ROOT="$(_find_meta_root "$(pwd)" || _find_meta_root "$SCRIPT_DIR" || echo "")"
+# Ejected case: no kernel beside the script — find one via the meta root (for the rebuild path only;
+# absent that, Phase 0 falls back to PATH hf and degrades gracefully instead of rebuilding).
+if [ -z "$KERNEL_HOME" ] && [ -n "$META_ROOT" ] && _is_kernel_home "$META_ROOT/handoff"; then
+  KERNEL_HOME="$META_ROOT/handoff"
+fi
+[ -z "$META_ROOT" ] && [ -n "$KERNEL_HOME" ] && META_ROOT="$(cd "$KERNEL_HOME/.." && pwd)"
 export HANDOFF_KERNEL_HOME="$KERNEL_HOME"
 # shellcheck source=scripts/handoff-lib.sh
 . "$SCRIPT_DIR/handoff-lib.sh"
@@ -61,7 +87,21 @@ elif command -v ldd >/dev/null 2>&1 && ldd "$(command -v hf 2>/dev/null || echo 
   say "PATH hf links libsqlite (pre-redb build) — will rebuild the no-C redb binary"; need_build=1
 fi
 if [ "$need_build" = 1 ]; then
-  if [ "$DRY" = 1 ]; then
+  if [ -z "$KERNEL_HOME" ] || ! _is_kernel_home "$KERNEL_HOME"; then
+    # Ejected (vendored under the plugin) with no handoff kernel source reachable: we cannot
+    # rebuild hf here. Fail-closed with a NEEDS-HUMAN instruction rather than cd-ing nowhere.
+    if [ -n "$HF" ] && [ "$BUILD_HF" = 0 ]; then
+      say "WARNING: hf present but may be pre-redb, and no kernel source to rebuild from — proceeding with the existing hf (install the redb hf from meta/handoff to silence this)"
+    else
+      cat >&2 <<MSG
+[init] NEEDS-HUMAN: a redb \`hf\` is required but is not on PATH and no handoff kernel source
+       is reachable to build it from. Install it from meta/handoff:
+         ( cd <…>/meta/handoff && cargo install --path hf --locked --force )
+       then re-run this command.
+MSG
+      exit 2
+    fi
+  elif [ "$DRY" = 1 ]; then
     echo "    DRY: (cd $KERNEL_HOME && cargo install --path hf --locked --force)"
   else
     say "building+installing redb hf from $KERNEL_HOME (this may take a minute)…"
@@ -100,12 +140,23 @@ INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 OK=0 FAIL=0
 deploy_hooks() {
   local dir="$1"
   mkdir -p "$dir/.handoff/hooks" "$dir/.claude"
-  local f
+  # Hook source: the kernel's live hooks when run from a handoff checkout; else the copies
+  # vendored beside this script (so the skill stays self-contained when ejected, HFTASK-0065).
+  local hooks_src="$KERNEL_HOME/.handoff/hooks"
+  [ -d "$hooks_src" ] || hooks_src="$SCRIPT_DIR/hooks"
+  local f had=0
   for f in loop-entry.sh session-end.sh hooks.toml; do
-    [ -f "$KERNEL_HOME/.handoff/hooks/$f" ] || continue
+    [ -f "$hooks_src/$f" ] || continue
+    had=1
     if [ "$DRY" = 1 ]; then echo "    DRY: cp hooks/$f -> $dir/.handoff/hooks/"; else
-      cp "$KERNEL_HOME/.handoff/hooks/$f" "$dir/.handoff/hooks/$f"; fi
+      cp "$hooks_src/$f" "$dir/.handoff/hooks/$f"; fi
   done
+  # No hook sources anywhere (ejected without vendored hooks): do NOT wire settings.json to
+  # files that don't exist — skip fail-closed rather than create dangling hook references.
+  if [ "$had" = 0 ]; then
+    say "  no hook sources found (neither \$KERNEL_HOME/.handoff/hooks nor vendored) — skipping hook wiring"
+    return 0
+  fi
   # Merge SessionStart/SessionEnd wiring into .claude/settings.json (preserve existing keys).
   if [ "$DRY" = 1 ]; then echo "    DRY: merge SessionStart/SessionEnd into $dir/.claude/settings.json"; return 0; fi
   python3 - "$dir/.claude/settings.json" <<'PY'
