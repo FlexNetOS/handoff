@@ -665,6 +665,69 @@ fn cmd_doctor(json: bool) {
 /// sync each card's status to ledger truth and re-render the packet from the live ledger, so
 /// the derived views match reality. Never edits the ledger (the source of truth) — this is the
 /// verb the docs' precedence rule tells an agent to run when views look stale.
+/// `hf migrate [PATH]` — one-time legacy C-SQLite → redb ledger importer (ADR-0017 cutover).
+///
+/// Only functional in a binary built with `--features legacy-sqlite` (that build links bundled
+/// C-SQLite for the read side; the default no-C binary deliberately cannot migrate and says so).
+/// Safe + fail-closed: migrates the SQLite file to a temp redb store (the importer re-verifies the
+/// witness chain to the same event count or aborts), backs the original up to `*.sqlite.bak`, then
+/// atomically renames the redb store into place. Exits nonzero on any error.
+#[cfg(feature = "legacy-sqlite")]
+fn cmd_migrate(path: &str) {
+    if path == ":memory:" {
+        eprintln!("hf migrate: nothing to migrate for an in-memory ledger");
+        std::process::exit(2);
+    }
+    if !std::path::Path::new(path).exists() {
+        eprintln!("hf migrate: no ledger file at {path}");
+        std::process::exit(1);
+    }
+    if !ledger::file_is_legacy_sqlite(path) {
+        eprintln!(
+            "hf migrate: {path} is not a legacy C-SQLite ledger (already redb, or not a ledger) \
+             — nothing to migrate"
+        );
+        std::process::exit(0);
+    }
+    let tmp = format!("{path}.redb.tmp");
+    let bak = format!("{path}.sqlite.bak");
+    let _ = std::fs::remove_file(&tmp);
+    match ledger::migrate_sqlite_to_redb(path, &tmp) {
+        Ok(n) => {
+            if let Err(e) = std::fs::rename(path, &bak) {
+                eprintln!("hf migrate: imported {n} events but could not back up {path}: {e}");
+                let _ = std::fs::remove_file(&tmp);
+                std::process::exit(1);
+            }
+            if let Err(e) = std::fs::rename(&tmp, path) {
+                eprintln!(
+                    "hf migrate: imported {n} events, backed up to {bak}, but could not install \
+                     the redb store ({e}); restore with `mv {bak} {path}`"
+                );
+                std::process::exit(1);
+            }
+            println!("hf migrate: {path} → redb ({n} events, witness chain re-verified); legacy SQLite backed up to {bak}");
+        }
+        Err(e) => {
+            eprintln!("hf migrate: FAILED (fail-closed, original untouched): {e}");
+            let _ = std::fs::remove_file(&tmp);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Fallback for the default no-C build: `hf migrate` exists as a verb but cannot link the legacy
+/// C-SQLite read side — direct the operator to the migration build (fail-closed, never silent).
+#[cfg(not(feature = "legacy-sqlite"))]
+fn cmd_migrate(path: &str) {
+    eprintln!(
+        "hf migrate: this binary is the default no-C build and cannot read legacy C-SQLite.\n\
+         To convert {path}, run a migration build:\n\
+         \x20 cargo run -p hf --features legacy-sqlite -- migrate {path}"
+    );
+    std::process::exit(2);
+}
+
 fn cmd_reconcile() {
     let n = sync_cards();
     let tasks = load_tasks();
@@ -2670,6 +2733,14 @@ fn main() {
                 .map(|s| s.as_str()),
         ),
         Some("reconcile") => cmd_reconcile(),
+        Some("migrate") => {
+            let path = args
+                .get(1)
+                .filter(|a| !a.starts_with("--"))
+                .cloned()
+                .unwrap_or_else(ledger_path);
+            cmd_migrate(&path);
+        }
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("reopen") => {
             let positional: Vec<&str> = args[1..]
@@ -2988,7 +3059,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
         }
     }
 }

@@ -50,6 +50,10 @@ pub enum LedgerError {
     InvalidParameterCount(usize, usize),
     /// An overlay (RVF) operation failed; carries the formatted cause.
     Overlay(String),
+    /// The on-disk file is a legacy bundled-C-SQLite ledger (ADR-0017), not a redb store.
+    /// Fail-closed (never silently treat it as empty/redb): the holder must run the one-time
+    /// `hf migrate` importer. Carries the offending path.
+    LegacySqlite(String),
 }
 
 impl std::fmt::Display for LedgerError {
@@ -68,6 +72,13 @@ impl std::fmt::Display for LedgerError {
                 )
             }
             LedgerError::Overlay(s) => write!(f, "ledger overlay error: {s}"),
+            LedgerError::LegacySqlite(p) => write!(
+                f,
+                "legacy C-SQLite ledger detected at {p} — this binary uses the pure-Rust redb \
+                 store (ADR-0017). Run the one-time importer `hf migrate {p}` (a binary built \
+                 with `--features legacy-sqlite`) to convert it to redb; refusing to proceed \
+                 (fail-closed) rather than treat it as an empty ledger."
+            ),
         }
     }
 }
@@ -362,6 +373,21 @@ fn with_busy_retry<T>(mut op: impl FnMut() -> Result<T>) -> Result<T> {
     }
 }
 
+/// True iff the file at `path` exists and begins with the SQLite-3 magic
+/// (`"SQLite format 3\0"`). Used to fail-closed on a legacy pre-redb ledger (ADR-0017). A
+/// missing/short/unreadable file is NOT legacy (open proceeds to create a fresh redb store).
+pub fn file_is_legacy_sqlite(path: &str) -> bool {
+    use std::io::Read;
+    const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+    match std::fs::File::open(path) {
+        Ok(mut f) => {
+            let mut buf = [0u8; 16];
+            f.read_exact(&mut buf).is_ok() && &buf == SQLITE_MAGIC
+        }
+        Err(_) => false,
+    }
+}
+
 impl Ledger {
     /// Open (or create) the ledger at `path`. `":memory:"` for an ephemeral in-RAM store
     /// (tests), mapped onto redb's `InMemoryBackend`.
@@ -372,6 +398,13 @@ impl Ledger {
     /// trusting the open-time cache, so they can never both chain off the same prev_hash (which
     /// would fork the witness chain).
     pub fn open(path: &str) -> Result<Self> {
+        // Fail-closed legacy guard (ADR-0017 cutover): a pre-port `ledger.db` is a bundled
+        // C-SQLite file. `Database::create` would reject it with an opaque "invalid data";
+        // detect the SQLite magic first and return an ACTIONABLE error pointing at `hf migrate`,
+        // so a format mismatch can never be silently mistaken for an empty/new ledger.
+        if path != ":memory:" && file_is_legacy_sqlite(path) {
+            return Err(LedgerError::LegacySqlite(path.to_string()));
+        }
         let db = if path == ":memory:" {
             Builder::new().create_with_backend(InMemoryBackend::new())?
         } else {

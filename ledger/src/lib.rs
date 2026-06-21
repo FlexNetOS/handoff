@@ -22,6 +22,8 @@ mod v2;
 
 #[cfg(feature = "legacy-sqlite")]
 pub mod migrate;
+#[cfg(feature = "legacy-sqlite")]
+pub use migrate::migrate_sqlite_to_redb;
 
 // Default + redb-store-only build: export the authoritative store directly.
 #[cfg(all(feature = "redb-store", not(feature = "v2")))]
