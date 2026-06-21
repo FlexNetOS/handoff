@@ -2488,6 +2488,8 @@ fn cmd_seed() {
             "HFTASK-0062" => &["cargo test -p ledger lock"],
             // runner-aware executed-count parsers (libtest/pytest/jest/go): 11 tests
             "HFTASK-0063" => &["cargo test -p hf parse_tests_ran"],
+            // schemars gen + serialization-stability + jsonschema card validation/rejection
+            "HFTASK-0057" => &["cargo test -p work-order schema", "cargo test -p hf schema"],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();

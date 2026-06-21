@@ -40,9 +40,11 @@ pub struct WorkOrder {
     /// not a handoff.task.v1 envelope and is rejected by the validator.
     #[schemars(regex(pattern = r"^handoff\.task\.v1$"))]
     pub schema: String,
-    /// `^[A-Z]*TASK-[0-9]{4,}$` — the canonical id form. Accepts both the kernel's `HFTASK-NNNN`
-    /// cards and the intake-synthesized `TASK-NNNN` orders; a free-form id is rejected.
-    #[schemars(regex(pattern = r"^[A-Z]*TASK-[0-9]{4,}$"))]
+    /// `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$` — the canonical id form. Accepts the numeric kernel/
+    /// intake ids (`HFTASK-0058`, `PHTASK-0025`, `TASK-0001`) AND the slug-style kb-minted ids
+    /// (`KBTASK-FLEET-HANDOFF-ROLLOUT`, `KBTASK-HFTASK-0058`); a free-form id or an empty slug
+    /// is rejected. (Numeric-only `[0-9]{4,}` wrongly rejected every slug-id kb card on disk.)
+    #[schemars(regex(pattern = r"^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$"))]
     pub id: String,
     pub title: String,
     pub status: Status,

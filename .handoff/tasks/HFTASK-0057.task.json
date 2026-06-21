@@ -13,7 +13,8 @@
     "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p work-order schema",
+    "cargo test -p hf schema"
   ],
   "dependencies": [
     "HFTASK-0001"

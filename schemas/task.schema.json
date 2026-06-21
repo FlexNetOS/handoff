@@ -50,9 +50,9 @@
       }
     },
     "id": {
-      "description": "`^[A-Z]*TASK-[0-9]{4,}$` — the canonical id form. Accepts both the kernel's `HFTASK-NNNN` cards and the intake-synthesized `TASK-NNNN` orders; a free-form id is rejected.",
+      "description": "`^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$` — the canonical id form. Accepts the numeric kernel/ intake ids (`HFTASK-0058`, `PHTASK-0025`, `TASK-0001`) AND the slug-style kb-minted ids (`KBTASK-FLEET-HANDOFF-ROLLOUT`, `KBTASK-HFTASK-0058`); a free-form id or an empty slug is rejected. (Numeric-only `[0-9]{4,}` wrongly rejected every slug-id kb card on disk.)",
       "type": "string",
-      "pattern": "^[A-Z]*TASK-[0-9]{4,}$"
+      "pattern": "^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$"
     },
     "intent_lock": {
       "description": "blake3 intent-lock (the drift sentinel anchor; ruvector-verified can prove against it).",
