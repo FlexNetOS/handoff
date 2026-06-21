@@ -1,23 +1,154 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "handoff.task.v1",
-  "title": "Handoff Task Card",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkOrder",
+  "description": "The handoff.task.v1 envelope (mirrors `~/Downloads/tmp/handoff/handoff/schemas/task.schema.json`), plus provenance fields that link it back to the front door and make it provable.",
   "type": "object",
-  "required": ["schema", "id", "title", "status", "priority", "objective", "path_scope", "acceptance_criteria", "test_commands"],
+  "required": [
+    "acceptance_criteria",
+    "correlation_id",
+    "id",
+    "intent_lock",
+    "objective",
+    "path_scope",
+    "priority",
+    "schema",
+    "status",
+    "test_commands",
+    "title"
+  ],
   "properties": {
-    "schema": { "const": "handoff.task.v1" },
-    "id": { "type": "string", "pattern": "^TASK-[0-9]{4,}$" },
-    "title": { "type": "string", "minLength": 3 },
-    "status": { "enum": ["backlog", "active", "claimed", "blocked", "checkpointed", "review", "done"] },
-    "priority": { "enum": ["P0", "P1", "P2", "P3"] },
-    "objective": { "type": "string", "minLength": 10 },
-    "path_scope": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-    "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-    "test_commands": { "type": "array", "items": { "type": "string" } },
-    "dependencies": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "blocked_by": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "allows_network": { "type": "boolean", "default": false },
-    "allows_dependency_addition": { "type": "boolean", "default": false }
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allows_dependency_addition": {
+      "default": false,
+      "type": "boolean"
+    },
+    "allows_network": {
+      "default": false,
+      "type": "boolean"
+    },
+    "blocked_by": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "correlation_id": {
+      "description": "= SwarmBundle.workflow_id. The cross-ref handle weave Job.correlation_id syncs to.",
+      "type": "string"
+    },
+    "dependencies": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "id": {
+      "description": "`^[A-Z]*TASK-[0-9]{4,}$` — the canonical id form. Accepts both the kernel's `HFTASK-NNNN` cards and the intake-synthesized `TASK-NNNN` orders; a free-form id is rejected.",
+      "type": "string",
+      "pattern": "^[A-Z]*TASK-[0-9]{4,}$"
+    },
+    "intent_lock": {
+      "description": "blake3 intent-lock (the drift sentinel anchor; ruvector-verified can prove against it).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/IntentLock"
+        }
+      ]
+    },
+    "objective": {
+      "type": "string"
+    },
+    "path_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "$ref": "#/definitions/Priority"
+    },
+    "role": {
+      "description": "which role-prompt in the bundle minted this order (None = whole-bundle order).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "description": "const \"handoff.task.v1\" — the schema discriminator. A card carrying any other value is not a handoff.task.v1 envelope and is rejected by the validator.",
+      "type": "string",
+      "pattern": "^handoff\\.task\\.v1$"
+    },
+    "status": {
+      "$ref": "#/definitions/Status"
+    },
+    "test_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "title": {
+      "type": "string"
+    }
   },
-  "additionalProperties": true
+  "definitions": {
+    "IntentLock": {
+      "description": "blake3 hashes of the immutable contract surface — the .handoff drift-sentinel model.\n\nPRD §12.2 specifies **five** lock fields. The first three (objective/path_scope/acceptance) are the original surface; `constraint_hash` (§12.1 policy/permission surface) and `northstar_revision` (the capsule doctrine the order was minted against) close the gap so constraint drift and a North-Star revision become hash-detectable.\n\nNo-downgrade / backward-compat: the two new fields are `#[serde(default, skip_serializing_if = \"String::is_empty\")]`, so a *legacy partial lock* (the three-hash form minted before HFTASK-0047) round-trips to byte-identical JSON and existing cards keep verifying unchanged. A populated 5-field lock is a strict superset.",
+      "type": "object",
+      "required": [
+        "acceptance_hash",
+        "objective_hash",
+        "path_scope_hash"
+      ],
+      "properties": {
+        "acceptance_hash": {
+          "type": "string"
+        },
+        "constraint_hash": {
+          "description": "blake3 of the constraint surface (permission flags + dependency edges). Empty on a legacy partial lock minted before the 5-field form existed.",
+          "type": "string"
+        },
+        "northstar_revision": {
+          "description": "blake3 of the North-Star doctrine this order was minted against (capsule `northstar`). Empty on a legacy partial lock; a change here means the order predates a doctrine revision and must be re-minted. Supplied externally (the capsule lives at the hf layer).",
+          "type": "string"
+        },
+        "objective_hash": {
+          "type": "string"
+        },
+        "path_scope_hash": {
+          "type": "string"
+        }
+      }
+    },
+    "Priority": {
+      "type": "string",
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "Status": {
+      "type": "string",
+      "enum": [
+        "backlog",
+        "active",
+        "claimed",
+        "blocked",
+        "checkpointed",
+        "review",
+        "done"
+      ]
+    }
+  }
 }

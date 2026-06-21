@@ -9,3 +9,7 @@ description = "handoff.task.v1 work-order envelope + SwarmBundle->WorkOrder seam
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 blake3 = "1"
+# HFTASK-0057 (PRD §7.3/§23): JSON Schema generation for the handoff.task.v1 envelope.
+# `derive` gives `#[derive(JsonSchema)]`; serde attrs are honored so the generated schema
+# matches the serde wire shape (no serialization change).
+schemars = { version = "0.8", features = ["derive"] }

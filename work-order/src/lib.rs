@@ -9,9 +9,10 @@
 pub mod intake;
 pub use intake::{synthesize_spec, Intent, SynthSpec};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Backlog,
@@ -23,7 +24,7 @@ pub enum Status {
     Done,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Priority {
     P0,
     P1,
@@ -33,10 +34,16 @@ pub enum Priority {
 
 /// The handoff.task.v1 envelope (mirrors `~/Downloads/tmp/handoff/handoff/schemas/task.schema.json`),
 /// plus provenance fields that link it back to the front door and make it provable.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WorkOrder {
-    pub schema: String, // const "handoff.task.v1"
-    pub id: String,     // ^TASK-[0-9]{4,}$
+    /// const "handoff.task.v1" — the schema discriminator. A card carrying any other value is
+    /// not a handoff.task.v1 envelope and is rejected by the validator.
+    #[schemars(regex(pattern = r"^handoff\.task\.v1$"))]
+    pub schema: String,
+    /// `^[A-Z]*TASK-[0-9]{4,}$` — the canonical id form. Accepts both the kernel's `HFTASK-NNNN`
+    /// cards and the intake-synthesized `TASK-NNNN` orders; a free-form id is rejected.
+    #[schemars(regex(pattern = r"^[A-Z]*TASK-[0-9]{4,}$"))]
+    pub id: String,
     pub title: String,
     pub status: Status,
     pub priority: Priority,
@@ -74,7 +81,7 @@ pub struct WorkOrder {
 /// skip_serializing_if = "String::is_empty")]`, so a *legacy partial lock* (the three-hash
 /// form minted before HFTASK-0047) round-trips to byte-identical JSON and existing cards keep
 /// verifying unchanged. A populated 5-field lock is a strict superset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct IntentLock {
     pub objective_hash: String,
     pub path_scope_hash: String,
@@ -213,6 +220,17 @@ impl WorkOrder {
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("serialize WorkOrder")
     }
+}
+
+/// HFTASK-0057 (PRD §7.3/§23): the canonical JSON Schema for the handoff.task.v1 envelope,
+/// generated from the live `WorkOrder` types via schemars (single source of truth — the schema
+/// can never drift from the Rust shape because it is *derived* from it). Pretty-printed so a
+/// committed `schemas/task.schema.json` diffs cleanly. The `hf schema` verb and the fail-closed
+/// card-load validator both compile *this* schema, so a card that violates the Rust contract is
+/// rejected loudly instead of being silently dropped.
+pub fn task_schema_json() -> String {
+    let schema = schemars::schema_for!(WorkOrder);
+    serde_json::to_string_pretty(&schema).expect("serialize task schema")
 }
 
 // --- integration contract: mirror of prompt_hub's `SwarmBundle` ---
@@ -505,6 +523,57 @@ mod tests {
         assert!(
             !o.intent_components("blake3:rev-B").northstar,
             "a doctrine revision must mark the order's northstar surface drifted"
+        );
+    }
+
+    #[test]
+    fn task_schema_is_nonempty_and_requires_contract_fields() {
+        // HFTASK-0057 (PRD §7.3): the generated schema is non-empty JSON whose `required`
+        // set includes the load-bearing contract fields — the very ones whose absence let a
+        // bad card (missing intent_lock) get silently dropped before this task.
+        let schema = task_schema_json();
+        assert!(!schema.trim().is_empty(), "schema must be non-empty");
+        let v: serde_json::Value = serde_json::from_str(&schema).expect("schema is valid JSON");
+        let required = v
+            .get("required")
+            .and_then(|r| r.as_array())
+            .expect("WorkOrder schema must declare a `required` array");
+        let names: Vec<&str> = required.iter().filter_map(|x| x.as_str()).collect();
+        for field in [
+            "intent_lock",
+            "objective",
+            "path_scope",
+            "acceptance_criteria",
+        ] {
+            assert!(
+                names.contains(&field),
+                "schema `required` must include `{field}`, got {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn schemars_derive_does_not_change_serialization() {
+        // No serde regression: deriving JsonSchema must not alter the wire form. A real
+        // WorkOrder still round-trips byte-identically, and a 3-field legacy lock still skips
+        // the two empty extension fields (the `skip_serializing_if` contract is preserved).
+        let o = work_orders_from_bundle(&sample_bundle()).remove(0);
+        let before = o.to_json();
+        let back: WorkOrder = serde_json::from_str(&before).expect("round-trip");
+        assert_eq!(
+            before,
+            back.to_json(),
+            "serialization must be byte-identical"
+        );
+        let lock = WorkOrder::compute_intent_lock("obj", &["a/".into()], &["does x".into()]);
+        let j = serde_json::to_string(&lock).unwrap();
+        assert!(
+            !j.contains("constraint_hash"),
+            "empty constraint skipped: {j}"
+        );
+        assert!(
+            !j.contains("northstar_revision"),
+            "empty northstar skipped: {j}"
         );
     }
 }
