@@ -1,0 +1,47 @@
+# Guard: master is fast-forward-only from develop — it must never receive a PR.
+#
+# The repo's flow is **PR → develop → sync-master.yml fast-forwards master**. A PR merged
+# directly into master (e.g. PR #89 `copilot/fix-ci-format-job`, --base master) silently
+# diverges the trunk from develop and breaks `develop_mirrors_trunk`, and on the shared org
+# runner cap it triples CI load. Branch protection can't express "no PRs to this branch"
+# and `required_pull_request_reviews` would also block sync-master.yml's direct ff push, so
+# this workflow auto-closes any PR that targets master. The legitimate sync is a direct
+# `git push` (not a PR) and is unaffected.
+#
+# pull_request_target runs in the BASE (master) context with a token that can close PRs.
+# It never checks out the PR head, so untrusted-code execution is not a concern.
+name: Guard master (no direct PRs)
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  reject-master-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-close and explain
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "::warning::PR #${PR} targets master (head: ${HEAD_REF}); auto-closing."
+          gh pr close "${PR}" --repo "${REPO}" --comment \
+          "🚫 **This PR targets \`master\`, which is fast-forward-only from \`develop\`.**
+
+          The flow here is **PR → \`develop\` → \`sync-master.yml\` fast-forwards \`master\`**.
+          A PR merged directly into master silently diverges the trunk from develop (it both
+          breaks \`develop_mirrors_trunk\` and, on the shared org runner cap, triples CI load).
+
+          Please re-open this against **\`develop\`**:
+          \`\`\`
+          gh pr edit ${PR} --base develop   # if the branch is still based on develop
+          # or rebase onto develop and open a fresh PR --base develop
+          \`\`\`
+          _Auto-closed by \`.github/workflows/guard-master.yml\`._"
