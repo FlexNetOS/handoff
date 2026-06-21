@@ -2148,6 +2148,26 @@ fn cmd_seed() {
             ),
         });
     }
+    // Tightened completion gates (HFTASK-0058/0059/0060): these cards declare a specific,
+    // fast proof instead of the blanket `cargo test`. A blanket `cargo test` runs the whole
+    // workspace (slow) and — executed by `hf test` via `sh -c` in the invocation cwd — can
+    // match zero tests yet still exit 0, rubber-stamping the fail-closed `hf done` gate. Each
+    // command below scopes to the crate + module that actually covers the change, so `hf test`
+    // runs a known-nonzero, on-objective set (verified counts in comments). `test_commands` is
+    // NOT part of the intent_lock (lock = objective+path_scope+acceptance), so this is a pure,
+    // hash-stable metadata refinement — no lock recompute, no drift.
+    for wo in backlog.iter_mut() {
+        let tight: &[&str] = match wo.id.as_str() {
+            // ADR-0016 swallow-guard engine (swallow_report / repair_gitignore): 3 tests
+            "HFTASK-0058" => &["cargo test -p hf durability::"],
+            // SQLITE_BUSY retry + concurrent-writers no-lock/no-fork over the v1 store: 19 tests
+            "HFTASK-0059" => &["cargo test -p ledger v1::"],
+            // RVF sidecar acquire_store open-retry, exercised by the v2 suite: 6 tests
+            "HFTASK-0060" => &["cargo test -p ledger v2::"],
+            _ => continue,
+        };
+        wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
+    }
     // HFTASK-0029 Defect B: seed is IDEMPOTENT/ADDITIVE — only write cards that are
     // MISSING on disk. Overwriting an existing card clobbered its live status (done →
     // backlog) on re-seed; skipping existing cards preserves status and still creates

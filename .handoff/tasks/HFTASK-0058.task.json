@@ -13,7 +13,7 @@
     "Canonical .handoff durability policy + hf gitignore swallow-guard (ADR-0016): implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p hf durability::"
   ],
   "dependencies": [
     "HFTASK-0001"
