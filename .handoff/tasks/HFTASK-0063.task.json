@@ -13,7 +13,7 @@
     "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest): implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p hf parse_tests_ran"
   ],
   "dependencies": [
     "HFTASK-0045"

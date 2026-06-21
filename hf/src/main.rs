@@ -169,16 +169,7 @@ const KERNEL_NORTHSTAR: &str = "KERNEL DOCTRINE — build a local-first, auditab
 /// basename. This is what makes `hf init` portable — a member repo identifies as itself,
 /// not as "handoff".
 fn repo_name() -> String {
-    let toplevel = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty());
-    let dir = toplevel
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok());
+    let dir = repo_toplevel().or_else(|| std::env::current_dir().ok());
     dir.as_deref()
         .and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().into_owned())
@@ -1097,22 +1088,31 @@ fn latest_pr_opened(led: &Ledger, id: &str) -> Option<String> {
 ///   exits 0);
 /// - `Some(n)` with the real executed count otherwise.
 fn parse_tests_ran(output: &str) -> Option<u64> {
-    let mut found_summary = false;
+    // HFTASK-0063: try each recognized runner in turn; the FIRST that recognizes its summary
+    // wins. `None` only when NONE match (a genuinely-unknown runner → caller degrades to
+    // exit-code-only). Order is widest-first; the parsers don't overlap (distinct markers).
+    parse_libtest(output)
+        .or_else(|| parse_pytest(output))
+        .or_else(|| parse_jest(output))
+        .or_else(|| parse_gotest(output))
+}
+
+/// libtest / cargo: sum the executed buckets (`passed`+`failed`+`measured`; never
+/// `filtered out` or `ignored`) of every `test result:` summary line across all suites.
+fn parse_libtest(output: &str) -> Option<u64> {
+    let mut found = false;
     let mut total = 0u64;
     for line in output.lines() {
         let Some(rest) = line.split("test result:").nth(1) else {
             continue;
         };
-        found_summary = true;
+        found = true;
         // `rest` ≈ " ok. 3 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; …".
         // Scan token PAIRS (a count followed by its label) so the leading status word
-        // (`ok.`/`FAILED.`) in the first segment doesn't shadow the count behind it. Count
-        // only buckets whose tests actually RAN: "filtered" (out) were never selected and
-        // "ignored" were selected but skipped (no assertion) — neither is completion evidence.
+        // (`ok.`/`FAILED.`) in the first segment doesn't shadow the count behind it.
         let toks: Vec<&str> = rest.split_whitespace().collect();
         for w in toks.windows(2) {
             if let Ok(n) = w[0].parse::<u64>() {
-                // labels arrive punctuated by the `;` separator (e.g. "passed;").
                 if matches!(
                     w[1].trim_end_matches([';', '.', ',']),
                     "passed" | "failed" | "measured"
@@ -1122,7 +1122,114 @@ fn parse_tests_ran(output: &str) -> Option<u64> {
             }
         }
     }
-    found_summary.then_some(total)
+    found.then_some(total)
+}
+
+/// Sum the integer preceding any of `labels` in a comma/space-separated summary fragment,
+/// scanning token pairs so a count is always paired with the word that follows it.
+fn sum_labeled(fragment: &str, labels: &[&str]) -> u64 {
+    let toks: Vec<&str> = fragment
+        .split([' ', ',', '\t'])
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut total = 0u64;
+    for w in toks.windows(2) {
+        if let Ok(n) = w[0].parse::<u64>() {
+            if labels.contains(&w[1]) {
+                total += n;
+            }
+        }
+    }
+    total
+}
+
+/// pytest summary, e.g. `===== 5 passed, 1 failed, 2 skipped in 0.10s =====` or
+/// `==== no tests ran in 0.01s ====`. Counts executed outcomes (passed/failed/error/xpassed/
+/// xfailed); `skipped`/`deselected`/`warnings` are not evidence. A framed "no tests ran"
+/// summary returns `Some(0)` (the zero-match rubber stamp the gate must reject). The LAST
+/// framed summary wins. `None` if no pytest-framed summary is present.
+fn parse_pytest(output: &str) -> Option<u64> {
+    let mut found = false;
+    let mut total = 0u64;
+    for line in output.lines() {
+        let l = line.trim();
+        if l.len() < 2 || !l.starts_with('=') || !l.ends_with('=') {
+            continue;
+        }
+        let lower = l.to_ascii_lowercase();
+        let is_summary = [
+            "passed",
+            "failed",
+            "error",
+            "xpassed",
+            "xfailed",
+            "no tests ran",
+        ]
+        .iter()
+        .any(|k| lower.contains(k));
+        if !is_summary {
+            continue;
+        }
+        found = true;
+        // The framed summary is authoritative; the last one wins.
+        total = sum_labeled(
+            &lower,
+            &["passed", "failed", "error", "errors", "xpassed", "xfailed"],
+        );
+    }
+    found.then_some(total)
+}
+
+/// jest / vitest summary line, e.g. `Tests:       1 failed, 5 passed, 6 total`. Counts
+/// `passed`+`failed` (executed; `total` includes skipped/todo). `None` if no `Tests:` line.
+fn parse_jest(output: &str) -> Option<u64> {
+    let mut found = false;
+    let mut total = 0u64;
+    for line in output.lines() {
+        let Some(rest) = line.trim().strip_prefix("Tests:") else {
+            continue;
+        };
+        found = true;
+        total = sum_labeled(rest, &["passed", "failed"]);
+    }
+    found.then_some(total)
+}
+
+/// go test (verbose): count per-test `--- PASS:` / `--- FAIL:` markers. A verbose run with
+/// zero matched tests, or any run printing `no tests to run` / `no test files`, returns
+/// `Some(0)` (zero-match rubber stamp). Non-verbose go prints no per-test marker, so without
+/// `-v` this returns `None` (degrade to exit-code-only rather than falsely report 0).
+fn parse_gotest(output: &str) -> Option<u64> {
+    let count = output
+        .lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            t.starts_with("--- PASS:") || t.starts_with("--- FAIL:")
+        })
+        .count() as u64;
+    if count > 0 {
+        return Some(count);
+    }
+    if output
+        .lines()
+        .any(|l| l.contains("no tests to run") || l.contains("no test files"))
+    {
+        return Some(0);
+    }
+    None
+}
+
+/// The git repository root of the cwd (`git rev-parse --show-toplevel`), or `None` outside a
+/// repo. Used to pin `hf test`'s working dir so test_commands run from a deterministic root.
+fn repo_toplevel() -> Option<PathBuf> {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
 }
 
 /// `hf test [ID]` — PRD §4.7 evidence-backed completion. Execute the work order's
@@ -1162,13 +1269,23 @@ fn cmd_test(id: Option<&str>) {
         eprintln!("hf test: {resolved} declares no test_commands (nothing to run)");
         std::process::exit(2);
     }
+    // HFTASK-0063: pin the command's working dir to the repo root so test_commands (e.g.
+    // `cargo test -p hf`) run from a deterministic location, not the ambient invocation cwd
+    // (a card run from a subdir or the meta root would otherwise resolve differently). Falls
+    // back to the current dir outside a git repo.
+    let run_dir = repo_toplevel();
     let mut results = Vec::new();
     let mut all_passed = true;
     for cmd in &wo.test_commands {
         println!("hf test: $ {cmd}");
         // Capture output (instead of inheriting stdio) so the gate can verify tests ACTUALLY
         // ran; re-emit it so the operator still sees the full run.
-        let (code, ran) = match std::process::Command::new("sh").arg("-c").arg(cmd).output() {
+        let mut command = std::process::Command::new("sh");
+        command.arg("-c").arg(cmd);
+        if let Some(dir) = &run_dir {
+            command.current_dir(dir);
+        }
+        let (code, ran) = match command.output() {
             Ok(out) => {
                 use std::io::Write;
                 std::io::stdout().write_all(&out.stdout).ok();
@@ -2317,6 +2434,8 @@ fn cmd_seed() {
             "HFTASK-0061" => &["cargo test -p hf reopen"],
             // RVF dead-lock reclaim (inspect_lock + witnessed open): the 5 *lock* tests
             "HFTASK-0062" => &["cargo test -p ledger lock"],
+            // runner-aware executed-count parsers (libtest/pytest/jest/go): 11 tests
+            "HFTASK-0063" => &["cargo test -p hf parse_tests_ran"],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -2823,6 +2942,51 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         // No libtest summary → can't introspect → None (caller degrades to exit-code-only).
         let out = "PASS  src/foo.test.ts (4 passed)\nDone in 1.2s";
         assert_eq!(parse_tests_ran(out), None);
+    }
+
+    #[test]
+    fn parse_tests_ran_pytest_counts_executed_excludes_skipped() {
+        // HFTASK-0063: pytest framed summary — passed+failed executed, skipped excluded.
+        let out = "tests/test_x.py ...F\n\
+                   ===== 5 passed, 1 failed, 2 skipped in 0.12s =====";
+        assert_eq!(parse_tests_ran(out), Some(6));
+    }
+
+    #[test]
+    fn parse_tests_ran_pytest_zero_match_is_some_zero() {
+        // The pytest zero-match rubber stamp: a framed "no tests ran" → Some(0) → FAIL closed.
+        let out = "==== no tests ran in 0.01s ====";
+        assert_eq!(parse_tests_ran(out), Some(0));
+    }
+
+    #[test]
+    fn parse_tests_ran_jest_counts_passed_plus_failed() {
+        // jest/vitest: passed+failed (NOT "total", which includes skipped/todo).
+        let out = "Tests:       1 failed, 5 passed, 1 skipped, 7 total\nSnapshots: 0 total";
+        assert_eq!(parse_tests_ran(out), Some(6));
+    }
+
+    #[test]
+    fn parse_tests_ran_gotest_verbose_counts_markers() {
+        // go test -v: per-test --- PASS:/--- FAIL: markers.
+        let out = "=== RUN   TestA\n--- PASS: TestA (0.00s)\n\
+                   === RUN   TestB\n--- FAIL: TestB (0.01s)\nFAIL\nexit status 1";
+        assert_eq!(parse_tests_ran(out), Some(2));
+    }
+
+    #[test]
+    fn parse_tests_ran_gotest_no_tests_is_some_zero() {
+        // go's zero-match signal → Some(0) → FAIL closed.
+        let out = "testing: warning: no tests to run\nPASS\nok  \texample/pkg\t0.002s";
+        assert_eq!(parse_tests_ran(out), Some(0));
+    }
+
+    #[test]
+    fn parse_tests_ran_libtest_still_wins_over_other_runners() {
+        // A cargo run that also happens to print a '='-framed line must still parse as libtest.
+        let out = "===== a banner =====\n\
+                   test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out";
+        assert_eq!(parse_tests_ran(out), Some(3));
     }
 
     #[test]
