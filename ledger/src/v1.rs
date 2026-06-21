@@ -117,6 +117,44 @@ pub fn resolve_lease(events: &[(String, String)], now_ns: u64) -> Option<String>
     held.and_then(|(h, expiry)| (expiry > now_ns).then_some(h))
 }
 
+/// True if a rusqlite error is a transient lock contention (SQLITE_BUSY / SQLITE_LOCKED).
+fn is_busy(e: &rusqlite::Error) -> bool {
+    matches!(
+        e,
+        rusqlite::Error::SqliteFailure(ffi, _)
+            if matches!(
+                ffi.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+    )
+}
+
+/// Run a write transaction, retrying the WHOLE closure on transient SQLITE_BUSY/SQLITE_LOCKED.
+///
+/// HFTASK-0059: `busy_timeout` (set in `open`) handles most contention, but under heavy
+/// concurrency — especially Windows file-locking — a `BEGIN IMMEDIATE` write can still surface
+/// SQLITE_BUSY: the cumulative wait across many serialized writers can exceed the timeout, or
+/// SQLite returns busy *without* invoking the handler on a lock upgrade. Retrying is safe for
+/// every ledger write because each attempt re-reads the authoritative tail (seq + prev_hash)
+/// inside a fresh `BEGIN IMMEDIATE`, so no fork or duplicate seq can result. A short linear
+/// backoff that grows with the attempt (capped) keeps concurrent writers from re-colliding in
+/// lockstep. Non-busy errors return immediately; the attempt cap bounds worst-case latency so a
+/// genuinely stuck lock still surfaces as an error rather than hanging.
+fn with_busy_retry<T>(mut op: impl FnMut() -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    const MAX_ATTEMPTS: u32 = 100;
+    let mut attempt: u32 = 0;
+    loop {
+        match op() {
+            Err(e) if is_busy(&e) && attempt + 1 < MAX_ATTEMPTS => {
+                attempt += 1;
+                let backoff_ms = (attempt as u64).min(10);
+                std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
+            }
+            other => return other,
+        }
+    }
+}
+
 impl Ledger {
     /// Open (or create) the ledger. `":memory:"` for ephemeral spike runs.
     ///
@@ -276,38 +314,42 @@ impl Ledger {
         ts_ns: u64,
     ) -> rusqlite::Result<u64> {
         let action_hash = hash_action(event_type, work_order_id, payload_json);
-        // Acquire the write lock up front so the tail read + insert are atomic vs. peers.
-        let tx = self
-            .conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        // Re-read the authoritative tail from the DB (not the cached open()-time values):
-        // a concurrent writer may have advanced it since this handle was opened.
-        let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
-            .query_row(
-                "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
-                [],
-                |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
-            )
-            .unwrap_or((0, vec![0u8; 32]));
-        let mut prev_hash = [0u8; 32];
-        if tail_prev.len() == 32 {
-            prev_hash.copy_from_slice(&tail_prev);
-        }
-        let next_seq = tail_seq + 1;
-        tx.execute(
-            "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                next_seq as i64,
-                ts_ns as i64,
-                event_type,
-                work_order_id,
-                payload_json,
-                action_hash.to_vec(),
-                prev_hash.to_vec(),
-            ],
-        )?;
-        tx.commit()?;
+        // HFTASK-0028/0059: acquire the write lock up front so the tail read + insert are atomic
+        // vs. peers; retry the whole transaction on transient SQLITE_BUSY (Windows-robust).
+        let next_seq = with_busy_retry(|| {
+            let tx = self
+                .conn
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // Re-read the authoritative tail from the DB (not the cached open()-time values):
+            // a concurrent writer may have advanced it since this handle was opened.
+            let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
+                .query_row(
+                    "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
+                    [],
+                    |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
+                )
+                .unwrap_or((0, vec![0u8; 32]));
+            let mut prev_hash = [0u8; 32];
+            if tail_prev.len() == 32 {
+                prev_hash.copy_from_slice(&tail_prev);
+            }
+            let next_seq = tail_seq + 1;
+            tx.execute(
+                "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    next_seq as i64,
+                    ts_ns as i64,
+                    event_type,
+                    work_order_id,
+                    payload_json,
+                    action_hash.to_vec(),
+                    prev_hash.to_vec(),
+                ],
+            )?;
+            tx.commit()?;
+            Ok(next_seq)
+        })?;
         // Keep the in-memory cache consistent with what we just committed.
         self.seq = next_seq;
         self.prev_witness_hash = action_hash;
@@ -334,73 +376,78 @@ impl Ledger {
         ttl_secs: u64,
         now_ns: u64,
     ) -> rusqlite::Result<LeaseOutcome> {
-        let tx = self
-            .conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        // Resolve the current holder from this resource's lease history, INSIDE the write lock.
-        let events: Vec<(String, String)> = {
-            let mut stmt = tx.prepare(
-                "SELECT event_type, payload_json FROM events
-                 WHERE work_order_id = ?1 AND event_type IN ('lease_acquired','lease_released')
-                 ORDER BY seq",
-            )?;
-            let rows = stmt.query_map([resource], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        };
-        let current = resolve_lease(&events, now_ns);
-        let heartbeat = match &current {
-            Some(h) if h == holder => true, // we already hold it → extend
-            Some(other) => {
-                let other = other.clone();
-                drop(tx); // read-only: release the write lock without writing
-                return Ok(LeaseOutcome::Conflict { holder: other });
-            }
-            None => false, // free
-        };
+        // HFTASK-0059: retry the whole check-then-write on transient SQLITE_BUSY (Windows-robust).
+        // Each attempt re-resolves the lease state and re-reads the tail inside a fresh
+        // BEGIN IMMEDIATE, so a retry can never fork the chain or double-acquire.
+        with_busy_retry(|| {
+            let tx = self
+                .conn
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // Resolve the current holder from this resource's lease history, INSIDE the write lock.
+            let events: Vec<(String, String)> = {
+                let mut stmt = tx.prepare(
+                    "SELECT event_type, payload_json FROM events
+                     WHERE work_order_id = ?1 AND event_type IN ('lease_acquired','lease_released')
+                     ORDER BY seq",
+                )?;
+                let rows = stmt.query_map([resource], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            let current = resolve_lease(&events, now_ns);
+            let heartbeat = match &current {
+                Some(h) if h == holder => true, // we already hold it → extend
+                Some(other) => {
+                    let other = other.clone();
+                    drop(tx); // read-only: release the write lock without writing
+                    return Ok(LeaseOutcome::Conflict { holder: other });
+                }
+                None => false, // free
+            };
 
-        // Append the witnessed `lease_acquired` event, chaining off the live tail (same logic
-        // as `append`, inlined so it shares this transaction).
-        let payload = serde_json::json!({
-            "resource": resource,
-            "holder": holder,
-            "ttl_secs": ttl_secs,
-            "acquired_ns": now_ns,
-        })
-        .to_string();
-        let action_hash = hash_action("lease_acquired", resource, &payload);
-        let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
-            .query_row(
-                "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
-                [],
-                |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
-            )
-            .unwrap_or((0, vec![0u8; 32]));
-        let mut prev_hash = [0u8; 32];
-        if tail_prev.len() == 32 {
-            prev_hash.copy_from_slice(&tail_prev);
-        }
-        let next_seq = tail_seq + 1;
-        tx.execute(
-            "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
-             VALUES (?1, ?2, 'lease_acquired', ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                next_seq as i64,
-                now_ns as i64,
-                resource,
-                payload,
-                action_hash.to_vec(),
-                prev_hash.to_vec(),
-            ],
-        )?;
-        tx.commit()?;
-        self.seq = next_seq;
-        self.prev_witness_hash = action_hash;
-        Ok(if heartbeat {
-            LeaseOutcome::Heartbeat { seq: next_seq }
-        } else {
-            LeaseOutcome::Acquired { seq: next_seq }
+            // Append the witnessed `lease_acquired` event, chaining off the live tail (same logic
+            // as `append`, inlined so it shares this transaction).
+            let payload = serde_json::json!({
+                "resource": resource,
+                "holder": holder,
+                "ttl_secs": ttl_secs,
+                "acquired_ns": now_ns,
+            })
+            .to_string();
+            let action_hash = hash_action("lease_acquired", resource, &payload);
+            let (tail_seq, tail_prev): (u64, Vec<u8>) = tx
+                .query_row(
+                    "SELECT seq, action_hash FROM events ORDER BY seq DESC LIMIT 1",
+                    [],
+                    |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, Vec<u8>>(1)?)),
+                )
+                .unwrap_or((0, vec![0u8; 32]));
+            let mut prev_hash = [0u8; 32];
+            if tail_prev.len() == 32 {
+                prev_hash.copy_from_slice(&tail_prev);
+            }
+            let next_seq = tail_seq + 1;
+            tx.execute(
+                "INSERT INTO events (seq, ts_ns, event_type, work_order_id, payload_json, action_hash, prev_hash)
+                 VALUES (?1, ?2, 'lease_acquired', ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    next_seq as i64,
+                    now_ns as i64,
+                    resource,
+                    payload,
+                    action_hash.to_vec(),
+                    prev_hash.to_vec(),
+                ],
+            )?;
+            tx.commit()?;
+            self.seq = next_seq;
+            self.prev_witness_hash = action_hash;
+            Ok(if heartbeat {
+                LeaseOutcome::Heartbeat { seq: next_seq }
+            } else {
+                LeaseOutcome::Acquired { seq: next_seq }
+            })
         })
     }
 
