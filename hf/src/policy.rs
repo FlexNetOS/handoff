@@ -43,9 +43,19 @@ impl Default for Remote {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Loop {
+    /// Upper safety bound on tasks per cycle. With `wrap_strategy = "context"` (ADR-0018 D3) the
+    /// loop wraps on the context budget first; `cycle_flush` only caps a runaway cycle.
     pub cycle_flush: u32,
     pub batch_checkout: bool,
     pub worktree_prefix: String,
+    /// ADR-0018 D3: how the loop decides when to checkpoint → handoff.
+    /// `"context"` = wrap when ~`context_budget_pct`% of the context window is consumed (default);
+    /// `"tasks"` = legacy fixed `cycle_flush` count. Unknown values fall back to `"context"`.
+    pub wrap_strategy: String,
+    /// ADR-0018 D3: target fraction (percent) of the context window to consume before wrapping.
+    /// The kernel exposes this policy; the loop-skill layer (handoff-loop / session-relay-wrap-up)
+    /// reads the running token budget and triggers the wrap at the threshold.
+    pub context_budget_pct: u8,
 }
 impl Default for Loop {
     fn default() -> Self {
@@ -53,6 +63,8 @@ impl Default for Loop {
             cycle_flush: 4,
             batch_checkout: true,
             worktree_prefix: "handoff-".into(),
+            wrap_strategy: "context".into(),
+            context_budget_pct: 50,
         }
     }
 }
@@ -175,9 +187,22 @@ mod tests {
         assert_eq!(p.remote.trunk_branch, "master");
         assert_eq!(p.loop_cfg.cycle_flush, 4);
         assert_eq!(p.loop_cfg.worktree_prefix, "handoff-");
+        // ADR-0018 D3: context-budget wrap is the default (cycle_flush is now a safety bound).
+        assert_eq!(p.loop_cfg.context_budget_pct, 50);
+        assert_eq!(p.loop_cfg.wrap_strategy, "context");
         assert!(p.preflight.require_clean_tree);
         assert!(p.sync.kb_enabled);
         assert_eq!(p.sync.kb_slugs.len(), 2);
+    }
+
+    #[test]
+    fn wrap_strategy_round_trips_for_the_tasks_opt_out() {
+        // ADR-0018 D3: a consumer wraps on context unless wrap_strategy is exactly "tasks"
+        // (the loop-skill layer reads this field; "unknown" stays on the new default).
+        let p: Policy = toml::from_str("[loop]\nwrap_strategy = \"tasks\"\n").unwrap();
+        assert_eq!(p.loop_cfg.wrap_strategy, "tasks");
+        let typo: Policy = toml::from_str("[loop]\nwrap_strategy = \"contxt\"\n").unwrap();
+        assert_ne!(typo.loop_cfg.wrap_strategy, "tasks"); // any non-"tasks" → context default
     }
 
     #[test]
@@ -190,6 +215,8 @@ mod tests {
         let p: Policy = toml::from_str(toml).unwrap();
         assert_eq!(p.loop_cfg.cycle_flush, 7);
         assert_eq!(p.loop_cfg.worktree_prefix, "handoff-"); // default preserved
+        assert_eq!(p.loop_cfg.context_budget_pct, 50); // default preserved
+        assert_eq!(p.loop_cfg.wrap_strategy, "context"); // default strategy preserved
         assert_eq!(p.remote.base_branch, "develop"); // missing section → default
     }
 
