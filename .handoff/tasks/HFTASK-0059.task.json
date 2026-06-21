@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0059",
+  "title": "Bounded SQLITE_BUSY retry for concurrent ledger writes",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "busy_timeout (set in Ledger::open) handles most contention, but under heavy concurrency — especially Windows file-locking — a BEGIN IMMEDIATE write can still surface SQLITE_BUSY (cumulative wait across serialized writers exceeds the timeout, or SQLite returns busy without invoking the handler on a lock upgrade). Wrap each ledger write transaction in with_busy_retry: retry the whole closure on transient SQLITE_BUSY/SQLITE_LOCKED with a short capped linear backoff. Safe for every write because each attempt re-reads the authoritative tail (seq + prev_hash) inside a fresh BEGIN IMMEDIATE, so no fork/duplicate seq can result; bounded by an attempt cap so a genuinely stuck lock still surfaces as an error. Shipped PR #96.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Bounded SQLITE_BUSY retry for concurrent ledger writes: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0028"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:ed3336e212e1ba8116bbdd24bc9e875293b85f8e07d641f4eef96aef7a970dc2",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:d0ac67ade0b756b655ed0da7099d6cf56e1416172a93907145041fe6023c17a3",
+    "constraint_hash": "blake3:000c4ca7301824b7d4e0b949b6dd961b3637079255b0a9d9c1d06b81ba871a9e",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
