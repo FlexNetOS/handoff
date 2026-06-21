@@ -670,8 +670,10 @@ fn cmd_doctor(json: bool) {
 /// Only functional in a binary built with `--features legacy-sqlite` (that build links bundled
 /// C-SQLite for the read side; the default no-C binary deliberately cannot migrate and says so).
 /// Safe + fail-closed: migrates the SQLite file to a temp redb store (the importer re-verifies the
-/// witness chain to the same event count or aborts), backs the original up to `*.sqlite.bak`, then
-/// atomically renames the redb store into place. Exits nonzero on any error.
+/// witness chain to the same event count or aborts), backs the original up to an **out-of-tree**
+/// `*.sqlite.bak` (under `$HANDOFF_LEDGER_BACKUP_DIR` / `$XDG_DATA_HOME` / `~/.local/share`, never
+/// inside the tracked `.handoff/` tree — the HFTASK-0053 cutover hygiene gap), then atomically
+/// renames the redb store into place. Exits nonzero on any error.
 #[cfg(feature = "legacy-sqlite")]
 fn cmd_migrate(path: &str) {
     if path == ":memory:" {
@@ -690,7 +692,7 @@ fn cmd_migrate(path: &str) {
         std::process::exit(0);
     }
     let tmp = format!("{path}.redb.tmp");
-    let bak = format!("{path}.sqlite.bak");
+    let bak = resolve_backup_target(path);
     let _ = std::fs::remove_file(&tmp);
     match ledger::migrate_sqlite_to_redb(path, &tmp) {
         Ok(n) => {
@@ -726,6 +728,82 @@ fn cmd_migrate(path: &str) {
          \x20 cargo run -p hf --features legacy-sqlite -- migrate {path}"
     );
     std::process::exit(2);
+}
+
+/// Resolve the out-of-tree directory for migration backups so a legacy `*.sqlite.bak` never lands
+/// inside the tracked `.handoff/` tree (where it churns git and trips `hf drift`'s
+/// `deny_without_claim` — the HFTASK-0053 cutover hygiene gap). Honors, in order,
+/// `$HANDOFF_LEDGER_BACKUP_DIR`, then `$XDG_DATA_HOME/handoff-ledger-backups`, then
+/// `$HOME/.local/share/handoff-ledger-backups`. `None` only when no home/data dir is resolvable
+/// (the caller then falls back to an in-tree, gitignored backup with a loud warning).
+#[cfg_attr(not(feature = "legacy-sqlite"), allow(dead_code))]
+fn ledger_backup_dir() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    if let Ok(d) = std::env::var("HANDOFF_LEDGER_BACKUP_DIR") {
+        if !d.is_empty() {
+            return Some(PathBuf::from(d));
+        }
+    }
+    if let Ok(d) = std::env::var("XDG_DATA_HOME") {
+        if !d.is_empty() {
+            return Some(PathBuf::from(d).join("handoff-ledger-backups"));
+        }
+    }
+    if let Ok(h) = std::env::var("HOME") {
+        if !h.is_empty() {
+            return Some(PathBuf::from(h).join(".local/share/handoff-ledger-backups"));
+        }
+    }
+    None
+}
+
+/// Encode an absolute ledger path into a single safe backup filename stem: every character outside
+/// `[A-Za-z0-9._-]` becomes `_` and a leading `_` (from the root `/`) is trimmed, so the full
+/// source location is preserved and two different ledgers can never collide on one backup name.
+#[cfg_attr(not(feature = "legacy-sqlite"), allow(dead_code))]
+fn backup_stem_for(abs: &str) -> String {
+    let mut s: String = abs
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    while s.starts_with('_') {
+        s.remove(0);
+    }
+    s
+}
+
+/// Compute the backup target path for `hf migrate`: an out-of-tree `<stem>.sqlite.bak` under
+/// [`ledger_backup_dir`], never clobbering an existing backup (`.1`, `.2`, … on collision). Falls
+/// back to the in-tree (gitignored) `<path>.sqlite.bak` with a loud warning only when no
+/// out-of-tree dir is resolvable/creatable — an upgrade over the old always-in-tree behavior.
+#[cfg(feature = "legacy-sqlite")]
+fn resolve_backup_target(path: &str) -> String {
+    if let Some(dir) = ledger_backup_dir() {
+        if std::fs::create_dir_all(&dir).is_ok() {
+            let abs = std::fs::canonicalize(path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string());
+            let stem = backup_stem_for(&abs);
+            let mut cand = dir.join(format!("{stem}.sqlite.bak"));
+            let mut n = 1u32;
+            while cand.exists() {
+                cand = dir.join(format!("{stem}.sqlite.bak.{n}"));
+                n += 1;
+            }
+            return cand.to_string_lossy().into_owned();
+        }
+    }
+    eprintln!(
+        "hf migrate: WARNING — no out-of-tree backup dir resolvable; backing up in-tree to \
+         {path}.sqlite.bak (gitignored by the ledger guard)"
+    );
+    format!("{path}.sqlite.bak")
 }
 
 fn cmd_reconcile() {
@@ -3074,6 +3152,35 @@ mod tests {
     /// test runner otherwise races on that shared global. This lock serializes just those two
     /// (a latent flake on develop that the new durability tests' scheduling surfaced).
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn backup_stem_encodes_full_path_and_trims_root() {
+        // The full source location is preserved (so two ledgers never collide), separators and
+        // spaces become `_`, the leading `/` is trimmed, and already-safe chars pass through.
+        assert_eq!(
+            backup_stem_for("/home/x/.handoff/ledger.db"),
+            "home_x_.handoff_ledger.db"
+        );
+        assert_eq!(backup_stem_for("/a b/c"), "a_b_c");
+        assert_eq!(backup_stem_for("rel.db"), "rel.db");
+    }
+
+    #[test]
+    fn ledger_backup_dir_honors_explicit_override() {
+        // The explicit override wins over XDG/HOME and is returned verbatim. Serialize on the
+        // shared env lock and restore the prior value so no sibling test is destabilized.
+        let _g = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("HANDOFF_LEDGER_BACKUP_DIR").ok();
+        std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", "/tmp/hb-test-dir");
+        assert_eq!(
+            ledger_backup_dir(),
+            Some(std::path::PathBuf::from("/tmp/hb-test-dir"))
+        );
+        match prev {
+            Some(v) => std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", v),
+            None => std::env::remove_var("HANDOFF_LEDGER_BACKUP_DIR"),
+        }
+    }
 
     #[test]
     fn init_capsule_is_portable_for_members() {
