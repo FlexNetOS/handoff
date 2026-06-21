@@ -5,6 +5,15 @@
       <sourceFolder url="file://$MODULE_DIR$/hf/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/ledger/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/work-order/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/cli/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/core/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/core/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/runner/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/spec/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/spec/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tui/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
