@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0066",
+  "title": "Converge fleet-rollout.sh ledger-guard onto scripts/handoff-lib.sh (single source of the residency guards)",
+  "status": "backlog",
+  "priority": "P3",
+  "objective": "`scripts/handoff-lib.sh` is the canonical sourceable home for the `.gitignore` residency + redb-migration-artifact guards (HFTASK-0035/0037/0053 — `ensure_ledger_guard`/`ensure_active_md_guard`), but `scripts/fleet-rollout.sh` still keeps its OWN copy of `ensure_ledger_guard`, so the two definitions can drift (the lib already extends the guard with `*.sqlite.bak`/`*.redb.tmp`; fleet-rollout's copy may not). Converge: make `fleet-rollout.sh` source `handoff-lib.sh` and delegate to its guard functions (delete the duplicate body), so there is exactly ONE definition. Preserve fleet-rollout's existing behavior exactly (idempotent; new + existing members; README rev-model; never clobber a foreign `.gitignore`). No-downgrade. Low-risk/maintainability — a fresh redb dir never produces a `.sqlite.bak`, so this is correctness-of-single-source, not a live bug.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Converge fleet-rollout.sh ledger-guard onto scripts/handoff-lib.sh (single source of the residency guards): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "bash -n scripts/fleet-rollout.sh",
+    "bash -n scripts/handoff-lib.sh"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:58418aecff2aea9d230ec8c9278f0993fae8a81aaf67ac8f8cb5d612314b1bc4",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:23830094de4b48bfbb37a32423c117a2d4a668282320e8ff06cc5700d82a6eab",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
