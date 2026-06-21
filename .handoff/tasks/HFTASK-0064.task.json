@@ -4,7 +4,7 @@
   "title": "hf doctor fail-closed invariant sweep + stale-lock self-heal (assert the FAIL-OPEN class is closed)",
   "status": "backlog",
   "priority": "P1",
-  "objective": "The systemic guard (5th target, harness-evolution L7/L10): a point fix per surface isn't enough — `hf doctor` must ASSERT the whole fail-open class stays closed AND auto-heal the one liveness wedge. Extend cmd_doctor to: (a) enumerate every `tasks/*.task.json` and FAIL (DEGRADED + exit 1) if any card on disk is absent from `hf status` (catches the load_tasks silent-drop that hid card #95 a whole session); (b) assert ledger replay + witness-chain verify with NO empty/default fallback masking a read error; (c) detect a provably-dead `*.rvf.lock` and reclaim it via HFTASK-0062 (witnessed `lock_reclaimed`), REFUSING live/unverifiable holders; (d) `hf doctor --json` structured report. Unit-tested: dead-reclaim, live-refusal, missing-card-fails, empty-status-fails. Depends on 0062 (consume reclaim) + the loud-load fix in 0057 (assert). Detection-only form can ship first (additive, no-downgrade).",
+  "objective": "The systemic guard (5th target, harness-evolution L7/L10): a point fix per surface isn't enough \u2014 `hf doctor` must ASSERT the whole fail-open class stays closed AND auto-heal the one liveness wedge. Extend cmd_doctor to: (a) enumerate every `tasks/*.task.json` and FAIL (DEGRADED + exit 1) if any card on disk is absent from `hf status` (catches the load_tasks silent-drop that hid card #95 a whole session); (b) assert ledger replay + witness-chain verify with NO empty/default fallback masking a read error; (c) detect a provably-dead `*.rvf.lock` and reclaim it via HFTASK-0062 (witnessed `lock_reclaimed`), REFUSING live/unverifiable holders; (d) `hf doctor --json` structured report. Unit-tested: dead-reclaim, live-refusal, missing-card-fails, empty-status-fails. Depends on 0062 (consume reclaim) + the loud-load fix in 0057 (assert). Detection-only form can ship first (additive, no-downgrade).",
   "path_scope": [
     "spike/**",
     "handoff/**"
@@ -13,7 +13,8 @@
     "hf doctor fail-closed invariant sweep + stale-lock self-heal (assert the FAIL-OPEN class is closed): implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p hf try_parse_card",
+    "cargo test -p ledger lock"
   ],
   "dependencies": [
     "HFTASK-0062",

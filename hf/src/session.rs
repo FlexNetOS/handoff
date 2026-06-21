@@ -212,9 +212,8 @@ fn session_start(base_override: Option<&str>, leaser: &dyn Leaser) {
     ) {
         PreflightDecision::Refuse(reason) => {
             let payload = serde_json::json!({ "phase": "preflight", "reason": reason }).to_string();
-            if let Ok(mut led) = Ledger::open(&ledger_path()) {
-                let _ = led.append("preflight_refuse", "session", &payload, now_ns());
-            }
+            // fail-open-audit R3: surface a lost witness loudly instead of a silent `if let Ok`.
+            crate::witness_lifecycle("preflight_refuse", "session", &payload);
             eprintln!("hf session start: REFUSED — {reason}");
             return;
         }
@@ -252,9 +251,8 @@ fn session_start(base_override: Option<&str>, leaser: &dyn Leaser) {
         "branch": branch, "base": base, "worktree": worktree.to_string_lossy(),
     })
     .to_string();
-    if let Ok(mut led) = Ledger::open(&ledger_path()) {
-        let _ = led.append("session_start", "session", &payload, now_ns());
-    }
+    // fail-open-audit R3: surface a lost witness loudly instead of a silent `if let Ok`.
+    crate::witness_lifecycle("session_start", "session", &payload);
     println!("hf session start: {branch} off {base_ref}");
     println!("  worktree: {}", worktree.display());
     println!(
@@ -285,9 +283,8 @@ fn session_end(recycle: bool, base_override: Option<&str>, leaser: &dyn Leaser) 
     let _ = leaser.release(&resource);
 
     let payload = serde_json::json!({ "branch": branch, "recycle": recycle }).to_string();
-    if let Ok(mut led) = Ledger::open(&ledger_path()) {
-        let _ = led.append("session_end", "session", &payload, now_ns());
-    }
+    // fail-open-audit R3: surface a lost witness loudly instead of a silent `if let Ok`.
+    crate::witness_lifecycle("session_end", "session", &payload);
     println!("hf session end: closed {branch} (lease released, worktree removed)");
 
     if recycle {

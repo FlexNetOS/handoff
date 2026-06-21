@@ -1,40 +1,45 @@
-# Run evaluation — 2026-06-13 Phase E wrap-up (per-run scratch; ledger is durable)
+# Run evaluation — 2026-06-21 seeded-card hardening (per-run scratch; LESSONS.md is durable)
 
-Scope: handoff Continuity Kernel loop + owner-directed architecture tasks. Shipped & witnessed:
-HFTASK-0003, 0026, 0027, 0028, 0029, 0030, 0031, 0032; + north-star wiring (ADR-0006), two-level
-NORTH-STAR adoption, meta NORTH-STAR v2, ADR-0004 §3 revision.
+Scope: hardening the completion-evidence gate for the three seeded durability/concurrency cards.
+Shipped & witnessed: PR #102 (`1b0503c`, scoped test_commands), PR #103 (`6b91ed1`, `hf test` fails
+closed on zero tests). Surfaced-not-fixed: orphaned `.handoff/ledger.db.rvf.lock` liveness wedge.
 
 ## Friction
-- **High-cost:** a 15-agent synthesis workflow spun up to re-derive a vision that already existed at
-  meta root — owner had to stop it (L1). Largest single waste of the run.
-- **Medium:** repeated hf-verb safety defects surfaced mid-loop (ship/seed/claim/sync), each costing
-  a fix cycle (0029, 0032) and one contaminated PR (#29) + one mutated real FLEET ledger (L2/L4).
-- **Low:** stacked-PR base deletion forced a cherry-pick (L6); preflight↔CI mismatch cost one
-  red CI on a green-local PR (#30, L3).
+- **Root cause that delayed detection (prior session):** a hand-committed card (#95) missing the
+  required `intent_lock` was SILENTLY DROPPED by `load_tasks` (fail-open `if let Ok`), so it never
+  showed in `hf status` — the loop reasoned over an incomplete backlog and didn't notice for a whole
+  session. Largest friction event; root cause is the fail-open class.
+- **Medium:** the test gate's exit-0 rubber-stamp meant a zero-match filter could stamp PASS — only
+  caught when test_commands were hand-audited (PR #102 → #103).
+- **Liveness:** the orphaned RVF lock wedges every `hf` invocation until a manual `rm` (safe/
+  fail-closed, but a hard liveness stop with no automated recovery).
 
 ## Gate quality
-- **Caught real defects:** gatekeeper + verifier caught scope, provenance, idempotency on 0031/0032
-  (5 code-omniscient spot-checks; gates re-run, not taken on report). Good.
-- **Slipped past:** preflight (local gate) false-passed a lint CI then caught — gate was narrower
-  than CI on the same dimension (L3). Fixed.
-- **Gate caused harm:** verification itself mutated production state (`hf sync --help` rolled 407
-  events into the real FLEET ledger) — a verifier-isolation failure compounded by a verb default
-  (L2/L4). The append-only law correctly refused to delete the result.
-- No false-blocks of valid work observed.
+- **Caught real defects:** PR #103 made `hf test` require positive evidence (`parse_tests_ran`:
+  Some(0)=FAIL, None=degrade-with-note) — a genuine strengthening of the completion-evidence gate;
+  5 unit tests + live positive/negative proof.
+- **Slipped past (the lesson):** the completion-evidence gate previously accepted ANY exit-0 command
+  — absence-as-pass. The card-load path slipped a malformed card past `hf status` entirely. Both are
+  the same FAIL-OPEN class.
+- **No false-blocks** of valid work observed; PR #102 kept locks hash-stable (test_commands ∉
+  intent_lock), so no drift introduced.
 
 ## Coverage
-- Backlog advanced cleanly one witnessed task per cycle; no items silently capped or dropped.
-- ADR-0004 reversal correctly minted follow-up cards (0033/0034/0035) rather than scope-creeping
-  the current cycle. Good coverage discipline.
+- The three cards were correctly scoped (3/19/6 targeted tests) rather than the blanket workspace
+  run. No items silently capped. The fail-open audit found additional candidate sites
+  (`current_statuses` `unwrap_or_default`, `load_task_in().ok()?`, the `hf test` None-degrade
+  surfacing, the verifier "green is one line" blind spot) — enumerated in `_workspace/10_evolution.md`.
 
 ## Human walls
-- One avoidable wall: owner had to intervene to stop the synthesis fan-out (L1) — a canon-search
-  gate would have prevented it.
-- Genuine walls preserved: leave-vs-restore of the contaminated FLEET ledger correctly escalated as
-  an owner data-state decision (append-only law); ADR-0004 reversal was owner-directed. Correct.
+- One liveness wall: the orphaned RVF lock required a manual `rm` — avoidable via a provably-dead
+  reclaim (5th target). The fail-closed refusal to steal the lock was correct; the absence of an
+  automated dead-holder reclaim is the gap.
+- No genuine owner walls hit this run.
 
 ## Verdict
-Productive, high-throughput run with strong gate discipline on the code path. The two systemic
-gaps are **pre-work canon search** (L1) and a **standing hf-verb-safety class check** (L2/L4) —
-both routed to proposals below. The concurrency model (0028) and provenance-rollup gates are
-working well; keep them.
+Strong, narrow, well-evidenced hardening run. The systemic teaching is a single class — **FAIL-OPEN**
+— with ≥3 distinct instances in one run, so it escalates immediately (Phase 7-4). Upgrades routed in
+`_workspace/10_evolution.md` and `_workspace/proposed-upgrades.md`: U1–U5 (auto-PR doc/skill/script
++ AGENTS.md fail-closed law) and two escalated structural items (loud `load_tasks`; the 5th-target
+`hf doctor` invariant sweep + stale-lock self-heal). No guard weakened; the "raise the retry cap"
+band-aid explicitly refused.
