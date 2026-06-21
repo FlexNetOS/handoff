@@ -18,8 +18,8 @@ use rvf_runtime::{
 use crate::v1;
 
 pub use crate::v1::{
-    hash_action, resolve_lease, EventRow, LeaseOutcome, LedgerError, Result, RollupProvenance,
-    RollupStat,
+    file_is_legacy_sqlite, hash_action, resolve_lease, EventRow, LeaseOutcome, LedgerError, Result,
+    RollupProvenance, RollupStat,
 };
 
 /// v2 ledger: v1 structured storage + RVF vector overlay for semantic recall.
