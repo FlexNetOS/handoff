@@ -25,6 +25,11 @@ pub mod migrate;
 #[cfg(feature = "legacy-sqlite")]
 pub use migrate::migrate_sqlite_to_redb;
 
+// ADR-0018 D1: deterministic JSONL export/import — the committed continuity truth (binary redb
+// stays a local cache). Always compiled (no C dependency; pure serde over the event store).
+pub mod export;
+pub use export::{export_jsonl, rebuild_from_jsonl};
+
 // Default + redb-store-only build: export the authoritative store directly.
 #[cfg(all(feature = "redb-store", not(feature = "v2")))]
 pub use v1::*;
