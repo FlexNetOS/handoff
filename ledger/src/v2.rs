@@ -62,6 +62,51 @@ fn rvf_err(e: rvf_types::RvfError) -> rusqlite::Error {
     rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e.to_string())))
 }
 
+/// True if an RVF error is transient lock contention (another writer holds/held the sidecar
+/// lock) — the RVF analogue of SQLITE_BUSY, safe to retry.
+fn is_rvf_lock_contention(e: &rvf_types::RvfError) -> bool {
+    matches!(
+        e,
+        rvf_types::RvfError::Code(rvf_types::ErrorCode::LockHeld)
+            | rvf_types::RvfError::Code(rvf_types::ErrorCode::LockStale)
+    )
+}
+
+/// Acquire the RVF sidecar store, retrying on transient lock contention.
+///
+/// HFTASK-0060 (sibling of HFTASK-0059): the SQLite path got `with_busy_retry`, but the RVF
+/// sidecar open did NOT — so two `hf` processes touching the same ledger back-to-back (a
+/// session + a checkpoint hook, or rapid CLI calls) surfaced `0x0300 LockHeld` ("another
+/// writer holds the lock") as a hard error, which hf call sites `.unwrap()`-ed into a panic.
+/// Retry open/create on LockHeld/LockStale with a short capped linear backoff; a genuinely
+/// stuck lock still surfaces after the attempt cap. The RVF store is a best-effort recall
+/// sidecar (the v1 SQLite store is authoritative), so a bounded wait never risks the chain.
+fn acquire_store(rvf: &Path) -> Result<RvfStore, rvf_types::RvfError> {
+    const MAX_ATTEMPTS: u32 = 100;
+    let mut attempt: u32 = 0;
+    loop {
+        let res = if rvf.exists() {
+            RvfStore::open(rvf)
+        } else {
+            RvfStore::create(
+                rvf,
+                RvfOptions {
+                    dimension: DIM as u16,
+                    metric: DistanceMetric::Cosine,
+                    ..Default::default()
+                },
+            )
+        };
+        match res {
+            Err(e) if is_rvf_lock_contention(&e) && attempt + 1 < MAX_ATTEMPTS => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis((attempt as u64).min(10)));
+            }
+            other => return other,
+        }
+    }
+}
+
 impl Ledger {
     /// Open or create the ledger.
     ///
@@ -71,19 +116,9 @@ impl Ledger {
     pub fn open(path: &str) -> rusqlite::Result<Self> {
         let v1 = v1::Ledger::open(path)?;
         let rvf = rvf_path(path);
-        let store = if rvf.exists() {
-            RvfStore::open(&rvf).map_err(rvf_err)?
-        } else {
-            RvfStore::create(
-                &rvf,
-                RvfOptions {
-                    dimension: DIM as u16,
-                    metric: DistanceMetric::Cosine,
-                    ..Default::default()
-                },
-            )
-            .map_err(rvf_err)?
-        };
+        // HFTASK-0060: retry the sidecar acquisition on transient RVF lock contention
+        // (0x0300 LockHeld) — the RVF analogue of the SQLite busy-retry (HFTASK-0059).
+        let store = acquire_store(&rvf).map_err(rvf_err)?;
         Ok(Self {
             v1,
             store,

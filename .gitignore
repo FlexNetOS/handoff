@@ -11,6 +11,7 @@ node_modules/
 .handoff/**/*.db-wal
 .handoff/**/*.db-shm
 .handoff/**/*.rvf
+.handoff/**/*.rvf.lock
 /.handoff/packets/
 /.handoff/workspaces/
 

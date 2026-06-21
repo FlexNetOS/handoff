@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0060",
+  "title": "RVF sidecar open retries on lock contention (fix intermittent hf panic)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "RVF sidecar open retries on lock contention (fix intermittent hf panic): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0028"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:a98589bc5ac85655de3e49bb365828e82d2f43c657eaae5ee11c7d1e5727356c",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:a7f6dc301ce6d81777d4bc4c6f7c408ccbc8693b18fafc9ccf74a66539f8cd4a",
+    "constraint_hash": "blake3:000c4ca7301824b7d4e0b949b6dd961b3637079255b0a9d9c1d06b81ba871a9e",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

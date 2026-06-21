@@ -100,6 +100,19 @@ fn load_tasks() -> Vec<WorkOrder> {
 fn save_task(wo: &WorkOrder) {
     save_task_in(&tasks_dir(), wo);
 }
+/// Open the ledger or exit fail-closed with a clean message — never panic. Transient RVF
+/// lock contention (0x0300 LockHeld) is already retried inside `Ledger::open` (HFTASK-0060);
+/// this guards the genuinely-fatal open errors (corruption, disk) at the call site instead of
+/// `.unwrap()`-ing them into a backtrace.
+fn open_ledger_or_exit(path: &str) -> Ledger {
+    match Ledger::open(path) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("hf: cannot open ledger at {path} ({e})");
+            std::process::exit(1);
+        }
+    }
+}
 /// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
 /// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
 fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
@@ -663,7 +676,7 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
     // claimers serialize and exactly one wins.
     let holder = lease::local_holder();
     let now = now_ns();
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     match led.try_acquire_lease(&resource, &holder, CLAIM_TTL_SECS, now) {
         Ok(ledger::LeaseOutcome::Conflict { holder: other }) => {
             eprintln!(
@@ -845,7 +858,7 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
         }
     };
     let payload = serde_json::json!({ "id": id, "note": note }).to_string();
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     led.append("checkpoint", &id, &payload, now_ns()).unwrap();
     // ADR-0003 rule 3 (HFTASK-0042): append a progress line to the kb plan (no-op for non-kb).
     if let Some(wo) = load_task_in(&tasks_dir, &id) {
@@ -884,7 +897,7 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         eprintln!("hf done: no such task {id}");
         std::process::exit(1);
     };
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     // HFTASK-0045 (PRD §4.7 evidence-backed completion): a task that declares
     // test_commands may only reach Done once a witnessed `test_result` shows green.
     // Fail-closed — unproven completion never lands. Tasks with no test_commands are
@@ -1067,7 +1080,7 @@ fn cmd_test(id: Option<&str>) {
         "results": results,
     })
     .to_string();
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     led.append("test_result", &resolved, &payload, now_ns())
         .unwrap();
     if all_passed {
@@ -1265,7 +1278,7 @@ Implements [[tasks/{id}]]"
     };
     let payload =
         serde_json::json!({ "id": id, "branch": branch, "pr": pr_url, "base": base }).to_string();
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     led.append("pr_opened", id, &payload, now_ns()).unwrap();
     println!("hf ship: pr_opened recorded for {id}");
 }
@@ -1287,7 +1300,7 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     };
     let payload =
         serde_json::json!({ "id": id, "pr": pr, "verdict": verdict, "by": by }).to_string();
-    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap();
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     led.append("review_verdict", id, &payload, now_ns())
         .unwrap();
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
@@ -1923,6 +1936,12 @@ fn cmd_seed() {
            "PRD §11.3/§11.5/§15/§16 (lines 404/419/421/612/627/640/725): the kernel specifies repo-local .handoff/locks/{merge,index}.lock and a SINGLE-WRITER merge path — 'Merge is single-writer; only the merge steward can hold merge.lock; no merge without merge lock' — plus merge-steward/conflict-arbiter roles. None exist in code: HFTASK-0048 built only the CLAIM lease lockfile, HFTASK-0009 ship leaves the merge to GitHub-native auto-merge, and grit (ADR-0009) covers the fleet-level INTENT but not the PRD's concrete merge.lock artifact + steward contract. Build merge.lock/index.lock acquisition + single-writer merge serialization gated by it. No-downgrade: an accepted PRD commitment that composes with grit and auto-merge.", &["HFTASK-0048"]),
         mk("HFTASK-0057", "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection", Priority::P2,
            "PRD §7.3 (lines 256-257: schemars for generation, jsonschema for validation), §20.1, §23 TASK-0002 acceptance ('JSON Schema is generated or checked in' + 'Invalid task cards fail validation'): there is NO schemars/jsonschema dependency; only 3 hand-written schemas (schemas/{task,session,packet}.schema.json) exist and nothing validates against them, so a malformed task card is NOT rejected at load. Build schema generation for the handoff.*.v1 types via schemars (or keep curated schemas in lockstep) AND wire jsonschema runtime validation so an invalid card fails closed instead of loading. No-downgrade: completes the typed-contract guarantee (HFTASK-0052 added Rust hook types but not schema gen/validation).", &["HFTASK-0001"]),
+        mk("HFTASK-0059", "Bounded SQLITE_BUSY retry for concurrent ledger writes", Priority::P1,
+           "busy_timeout (set in Ledger::open) handles most contention, but under heavy concurrency — especially Windows file-locking — a BEGIN IMMEDIATE write can still surface SQLITE_BUSY (cumulative wait across serialized writers exceeds the timeout, or SQLite returns busy without invoking the handler on a lock upgrade). Wrap each ledger write transaction in with_busy_retry: retry the whole closure on transient SQLITE_BUSY/SQLITE_LOCKED with a short capped linear backoff. Safe for every write because each attempt re-reads the authoritative tail (seq + prev_hash) inside a fresh BEGIN IMMEDIATE, so no fork/duplicate seq can result; bounded by an attempt cap so a genuinely stuck lock still surfaces as an error. Shipped PR #96.", &["HFTASK-0028"]),
+        mk("HFTASK-0058", "Canonical .handoff durability policy + hf gitignore swallow-guard (ADR-0016)", Priority::P1,
+           "The kernel OWNS and SHIPS the .handoff commit-vs-ignore policy instead of every consumer hand-rolling its own .gitignore: a dir-form `.handoff/`/`.claude/` ignore silently SWALLOWS durable tasks/decisions/loop ledgers (git cannot re-include past an excluded parent dir; !-negations can't rescue it). Ship hf/src/durability.rs (durable-vs-regenerable taxonomy + canonical CONTENTS-FORM .gitignore fragment + git check-ignore swallow_report + repair_gitignore), the `hf gitignore [--check|--repair|--write]` verb, and the fail-closed swallow-guard wired into `hf doctor` (DEGRADED + exit 1 on a swallow). docs/adr-0016-handoff-durability-policy.md. Shipped PR #98.", &["HFTASK-0001"]),
+        mk("HFTASK-0060", "RVF sidecar open retries on lock contention (fix intermittent hf panic)", Priority::P1,
+           "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().", &["HFTASK-0028"]),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed

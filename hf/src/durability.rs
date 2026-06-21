@@ -47,6 +47,8 @@ pub const REGENERABLE_PROBES: &[&str] = &[
     ".handoff/ledger.db",
     ".handoff/ledger.db-wal",
     ".handoff/ledger.db-shm",
+    ".handoff/ledger.db.rvf",
+    ".handoff/ledger.db.rvf.lock",
     ".handoff/packets/latest.md",
     ".handoff/workspaces/main/scratch",
     ".handoff/locks/task.lock",
@@ -76,6 +78,7 @@ pub const CANONICAL_GITIGNORE_FRAGMENT: &str = "\
 .handoff/**/*.db-wal
 .handoff/**/*.db-shm
 .handoff/**/*.rvf
+.handoff/**/*.rvf.lock
 /.handoff/packets/
 /.handoff/workspaces/
 /.handoff/locks/
