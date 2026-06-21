@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0068",
+  "title": "ADR-0018 D3: context-budget loop wrap (~50% window), not fixed cycle_flush",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0018 D3: replace 'wrap after cycle_flush tasks' with 'run until ~50% of the context window is consumed, then checkpoint -> handoff'. Add `policy.toml [loop] context_budget_pct = 50` + `wrap_strategy = \"context\"` to hf/src/policy.rs LoopCfg with compiled defaults + round-trip tests; keep `cycle_flush` as an UPPER safety bound. The kernel exposes the policy + the wrap verbs; ENFORCEMENT is at the loop-skill layer (handoff-loop Phase 5 + session-relay-wrap-up read the running token/context budget and trigger the wrap at the threshold). Wire the threshold into the handoff-loop skill + session-relay-wrap-up.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D3: context-budget loop wrap (~50% window), not fixed cycle_flush: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:ff7ef9a20a51ebfa894d4c460a5b8226d84d4066485516087fb2a77b2fa33073",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:b66bc2b4265fba4fb430bbf694cba2fc9be79a182359be1867429289135175cc",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

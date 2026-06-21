@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0073",
+  "title": "ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0018 D8: make the `hf claim -> grit claim <file::symbol> -> grit worktree -> grit done` cycle (ADR-0009) the DEFAULT path for every batch; advance the shared grit backend (ADR-0010) past degrade. GitHub: ground the autonomous AI gatekeeper (HFTASK-0014) as a REQUIRED status check feeding branch protection (HFTASK-0010/0012) + gh-aw guardrails so develop->trunk promotion needs NO manual gh api.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0075"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:c0ea257eb272717c8ca54871ff8c114796bc31fc4ad1a16500e409c599d39dba",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:ceca9b42d83b4e1ae4a39c2726eda553665851bd78ea2addffad65e37ec38e8f",
+    "constraint_hash": "blake3:ead758fd4e721c0bcdd1f17abfdc58d119ca84fca4cbd3fafb55a8d6a631b266",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

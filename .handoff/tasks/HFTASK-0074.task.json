@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0074",
+  "title": "ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI)",
+  "status": "backlog",
+  "priority": "P3",
+  "objective": "ADR-0018 D9: commit `.idea/` (per D1) and actually USE it — shared run/debug configurations for the hf binary + tests, the Qodana inspection profile (`qodana.yaml`) wired as ADVISORY CI, the Rust plugin config. `workspace.xml` (the one genuinely per-user file) is committed per D1 unless it churns destructively — then carve it out with a recorded rationale (the ONLY allowed D1 exception).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0067"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:774fced2c78b740af1a381f9a7905123e483edc61aece1b33ecc30152d7398f7",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:2266359a93ee8718d3da06a774da71241a639a823ad1ca5e5b6c17ce8e092279",
+    "constraint_hash": "blake3:7d0b7a1032c495af077ca61e5fce5a3b97dacd7fafbd7f220d66cb35544f676e",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

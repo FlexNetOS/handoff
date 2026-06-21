@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0075",
+  "title": "ADR-0018 D10: worktree per task batch, reaped on verified PR merge",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0018 D10: every task batch starts a NEW grit worktree (ADR-0009); it is removed ONLY on verified PR merge (not before); abandoned/discarded batches keep their worktree until reconciled. Wire into `hf session`/`hf claim --batch` + the handoff-loop preflight. This isolation is the precondition that makes D1's committed binary ledger.db safe (parallel batches never share a working ledger).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D10: worktree per task batch, reaped on verified PR merge: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:cec9144e88ac054020f842014ae0160d388ea86213642fbcff7bd899b5baae90",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:a979b94f736226ba271fcf0a7b528fb2d53d104d4dedc6be38d998a1bc5d114c",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
