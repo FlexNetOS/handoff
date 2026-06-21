@@ -2315,6 +2315,8 @@ fn cmd_seed() {
             "HFTASK-0060" => &["cargo test -p ledger v2::"],
             // hf reopen gate (should_reopen, disjoint from should_unclaim): reopen tests
             "HFTASK-0061" => &["cargo test -p hf reopen"],
+            // RVF dead-lock reclaim (inspect_lock + witnessed open): the 5 *lock* tests
+            "HFTASK-0062" => &["cargo test -p ledger lock"],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
