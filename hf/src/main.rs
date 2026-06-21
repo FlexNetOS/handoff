@@ -14,6 +14,7 @@ mod branch;
 mod cognitum;
 mod contract;
 mod delivery;
+mod durability;
 mod fleet;
 mod gatekeeper;
 mod gates;
@@ -351,6 +352,60 @@ fn cmd_claim_next() {
     }
 }
 
+/// HFTASK-0058 (ADR-0016): `hf gitignore` — ship/repair/check the canonical `.handoff`
+/// durability policy. With no mode it prints the canonical contents-form fragment to stdout
+/// (consumers inherit it instead of hand-rolling). `--check` runs the swallow-guard and exits
+/// nonzero (fail-closed) if a durable `.handoff` path would be ignored. `--repair`/`--write`
+/// strips any dir-form `.handoff/`/`.claude/` swallow and appends the fragment idempotently.
+fn cmd_gitignore(mode: Option<&str>) {
+    let repo = Path::new(".");
+    match mode {
+        Some("--check") => {
+            let r = durability::swallow_report(repo);
+            if r.is_healthy() {
+                println!("hf gitignore --check: OK (no .handoff durability swallow)");
+                for p in &r.regenerable_unignored {
+                    println!("  · note: regenerable path not ignored: {p}");
+                }
+            } else {
+                eprintln!(
+                    "hf gitignore --check: SWALLOW — durable .handoff state would not commit"
+                );
+                for l in &r.dir_form_ignores {
+                    eprintln!("  ⚠ dir-form ignore (swallows durable children): {l}");
+                }
+                for p in &r.swallowed_durable {
+                    eprintln!("  ⚠ durable path is ignored: {p}");
+                }
+                eprintln!("  → fix: `hf gitignore --repair`");
+                std::process::exit(1);
+            }
+        }
+        Some("--repair") | Some("--write") => match durability::repair_gitignore(repo) {
+            Ok(o) if o.changed() => {
+                for l in &o.removed_dir_form {
+                    println!("hf gitignore: removed dir-form swallow `{l}`");
+                }
+                if o.added_fragment {
+                    println!("hf gitignore: appended canonical durability fragment (ADR-0016)");
+                }
+            }
+            Ok(_) => println!("hf gitignore: already canonical (no change)"),
+            Err(e) => {
+                eprintln!("hf gitignore --repair: {e}");
+                std::process::exit(1);
+            }
+        },
+        None => print!("{}", durability::CANONICAL_GITIGNORE_FRAGMENT),
+        Some(other) => {
+            eprintln!(
+                "hf gitignore: unknown mode '{other}' (expected --check | --repair | --write)"
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
 /// HFTASK-0049: `hf doctor` — kernel health diagnostics. Verifies the witness chain
 /// (tamper-evidence), reports event/task counts and the next safe task, and checks ledger
 /// residency (the local ledger lives under `.handoff/`). Exits nonzero if the witness chain
@@ -369,7 +424,14 @@ fn cmd_doctor(json: bool) {
         Err(_) => (false, 0),
     };
     let next = next_safe(&tasks, &replay).map(|t| t.id.clone());
-    let healthy = chain_ok && ledger_present;
+    // HFTASK-0058 (ADR-0016): the durability swallow-guard. Ask Git whether a durable
+    // `.handoff` path is being ignored (a dir-form `.handoff/`/`.claude/` ignore silently
+    // swallows tasks/decisions/loop ledgers). Only runs inside a git repo; a swallow is
+    // fatal (fail-closed), like a broken witness chain.
+    let in_git = Path::new(".git").exists();
+    let swallow = in_git.then(|| durability::swallow_report(Path::new(".")));
+    let durability_ok = swallow.as_ref().map(|r| r.is_healthy()).unwrap_or(true);
+    let healthy = chain_ok && ledger_present && durability_ok;
     if json {
         let out = serde_json::json!({
             "schema": "handoff.doctor.v1",
@@ -382,6 +444,12 @@ fn cmd_doctor(json: bool) {
             "done": done,
             "remaining": tasks.len() - done,
             "next_task_id": next,
+            "durability": swallow.as_ref().map(|r| serde_json::json!({
+                "ok": r.is_healthy(),
+                "dir_form_ignores": r.dir_form_ignores,
+                "swallowed_durable": r.swallowed_durable,
+                "regenerable_unignored": r.regenerable_unignored,
+            })),
         });
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
     } else {
@@ -404,6 +472,21 @@ fn cmd_doctor(json: bool) {
             "  next safe     : {}",
             next.as_deref().unwrap_or("(none — all done or blocked)")
         );
+        match &swallow {
+            Some(r) if r.is_healthy() => println!("  durability    : OK (no .handoff swallow)"),
+            Some(r) => {
+                println!("  durability    : SWALLOW — durable .handoff state would not commit");
+                for l in &r.dir_form_ignores {
+                    println!(
+                        "                  ⚠ dir-form ignore: {l}  (use `hf gitignore --repair`)"
+                    );
+                }
+                for p in &r.swallowed_durable {
+                    println!("                  ⚠ durable path ignored: {p}");
+                }
+            }
+            None => println!("  durability    : n/a (not a git repo)"),
+        }
         println!(
             "  health        : {}",
             if healthy { "OK" } else { "DEGRADED" }
@@ -2099,6 +2182,11 @@ fn main() {
             }
         }
         Some("doctor") => cmd_doctor(args.iter().any(|a| a == "--json")),
+        Some("gitignore") => cmd_gitignore(
+            args.iter()
+                .find(|a| a.starts_with("--"))
+                .map(|s| s.as_str()),
+        ),
         Some("reconcile") => cmd_reconcile(),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
         Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
@@ -2402,7 +2490,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -2410,6 +2498,13 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// HFTASK-0058: the two tests that mutate the process-global `HANDOFF_LEDGER` env var
+    /// (`ledger_path_defaults_local_and_honors_handoff_ledger` and
+    /// `apply_ledger_flag_extracts_and_exports_path`) must not run concurrently — the parallel
+    /// test runner otherwise races on that shared global. This lock serializes just those two
+    /// (a latent flake on develop that the new durability tests' scheduling surfaced).
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn init_capsule_is_portable_for_members() {
@@ -2457,6 +2552,7 @@ mod tests {
 
     #[test]
     fn ledger_path_defaults_local_and_honors_handoff_ledger() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // HFTASK-0054: without an override, ledger_path() is cwd-relative.
         let prev = std::env::var("HANDOFF_LEDGER").ok();
         std::env::remove_var("HANDOFF_LEDGER");
@@ -2484,6 +2580,7 @@ mod tests {
 
     #[test]
     fn apply_ledger_flag_extracts_and_exports_path() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // HFTASK-0054: the global `--ledger <path>` flag is stripped and exported.
         let prev = std::env::var("HANDOFF_LEDGER").ok();
         std::env::remove_var("HANDOFF_LEDGER");
