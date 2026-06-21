@@ -23,6 +23,8 @@ jobs:
           fetch-depth: 0
       - name: Probe develop -> master merge
         run: |
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
           git fetch origin develop
           git checkout origin/master
           git merge --no-commit --no-ff origin/develop

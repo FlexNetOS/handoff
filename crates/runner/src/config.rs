@@ -33,7 +33,10 @@ pub struct TuiConfig {
     #[serde(default)]
     pub run_finished_command: String,
     /// Consecutive no-progress retries per task before stalling. Defaults to 1.
-    #[serde(default = "default_retry_on_failure")]
+    #[serde(
+        default = "default_retry_on_failure",
+        skip_serializing_if = "is_default_retry_on_failure"
+    )]
     pub retry_on_failure: u32,
 }
 
@@ -51,6 +54,10 @@ fn default_interactive_command() -> String {
 
 fn default_retry_on_failure() -> u32 {
     DEFAULT_RETRY_ON_FAILURE
+}
+
+fn is_default_retry_on_failure(v: &u32) -> bool {
+    *v == DEFAULT_RETRY_ON_FAILURE
 }
 
 impl Default for TuiConfig {
@@ -307,14 +314,14 @@ mod tests {
             post_implementation_prompt: "commit {name}".to_string(),
             interactive_command: "claude-i".to_string(),
             run_finished_command: "notify done".to_string(),
-            retry_on_failure: 1,
+            retry_on_failure: 2,
         };
         let golden = "command: my-tool {prompt}\n\
                       prompt: do {name} stuff\n\
                       post_implementation_prompt: commit {name}\n\
                       interactive_command: claude-i\n\
                       run_finished_command: notify done\n\
-                      retry_on_failure: 1\n";
+                      retry_on_failure: 2\n";
         assert_eq!(serde_norway::to_string(&config).unwrap(), golden);
         // And it round-trips back to the same struct.
         let back: TuiConfig = serde_norway::from_str(golden).unwrap();

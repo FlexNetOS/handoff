@@ -209,7 +209,7 @@ mod tests {
         let files = stable_walk(root).unwrap();
         let relative_names: Vec<String> = files
             .iter()
-            .map(|p| p.strip_prefix(root).unwrap().to_string_lossy().to_string())
+            .map(|p| normalize_path(p.strip_prefix(root).unwrap()))
             .collect();
 
         // subdir/ comes after a.txt but before z.txt (sorted by PathBuf components)
