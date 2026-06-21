@@ -19,6 +19,16 @@ reconcile it, and re-render derived views from witnessed truth.
    **Git > `.handoff/ledger.db` > `tasks/*.task.json` > `active.md` > `packets/latest.md`.**
    When a lower tier contradicts a higher one, the higher tier wins and the lower
    one is *regenerated*, never hand-edited.
+   **Card-load is fail-closed (L9):** explicitly **enumerate every `tasks/*.task.json`
+   on disk and diff it against `hf status`**. A card present on disk but absent from
+   `hf status` (unparseable, missing `intent_lock`, lock-mismatched) was silently
+   dropped by the loader — that is a **P0 surfacing**, never a silent skip, and it
+   must appear in the truth report (drift cannot flag what `load_tasks` already
+   dropped; this is exactly how #95 stayed invisible a whole session). The kernel now
+   backs this: `hf doctor` hard-fails on a non-conformant card (HFTASK-0064) and
+   `hf status` warns loudly (HFTASK-0057) — treat any such warning as a gating
+   finding. Surface the present-on-disk-but-absent count even when zero ("0 dropped
+   cards — backlog complete").
 3. **Re-render derived views** from ledger truth: `hf checkpoint --sync-cards`
    (or `hf sync-cards`) for cards; `hf handoff` to re-render the packet. This is
    how stale "Done 0/22" packets get corrected to match shipped PRs.

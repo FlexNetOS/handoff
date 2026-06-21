@@ -15,8 +15,14 @@ at the end.
 
 1. **Build the real artifact.** `cargo build -p hf` (and affected crates). Build
    output is setup, not evidence.
-2. **Run the contract tests.** `cargo test` across `hf`/`ledger`/`work-order`.
-   Report failures only; a green run is one line.
+2. **Run the contract tests — and assert they actually RAN.** `cargo test` across
+   `hf`/`ledger`/`work-order`. **First assert tests-ran > 0:** a suite that reports
+   `executed 0 tests` (a zero-match filter, a skipped module, a no-op runner) is a
+   **FAIL**, not a pass — absence of failure is not evidence (L8). `hf test` now
+   witnesses the executed count and `parse_tests_ran` covers libtest/pytest/jest/go
+   (PR #103/#106): `Some(0)` ⇒ FAIL, `None` ⇒ degraded-runner with a surfaced note
+   (never a silent pass). Only *after* tests-ran > 0 is confirmed does "a green run
+   is one line" apply; report failures only past that point.
 3. **Mirror the CI lint gate EXACTLY** (HFTASK-0030, the PR #30 lesson). handoff CI
    runs `cargo clippy --workspace --all-targets -- -D warnings` — `--all-targets`
    **lints test code**. You MUST run that exact command, not just `--all-features`:

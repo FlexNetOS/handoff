@@ -34,3 +34,28 @@ ledger.db" policy).
 ### Recurrence watch (act on next occurrence)
 - **L1 / search-before-act** (this run: synthesis fan-out; prior: prompt_hub thin-seed copy) — if a
   third instance appears, the canon-search gate moves from *proposed* to *applied*.
+
+---
+
+## 2026-06-21 — Seeded-card hardening retro (HAND OFF; lightweight)
+
+Run evaluated: PR #102 (`1b0503c`, scoped test_commands for HFTASK-0058/0059/0060) + PR #103
+(`6b91ed1`, `hf test` fails closed on zero tests) + the surfaced-not-fixed orphaned RVF lock wedge.
+**Headline:** every defect this run is one anti-pattern wearing different masks — **FAIL-OPEN**: a
+guard/loader/evidence-check that, when its input is missing/empty/unrecognized, proceeds as if
+satisfied instead of stopping. That inverts the kernel's founding promise (witnessed + fail-closed).
+Full retro + routed upgrades + 5th target: `_workspace/10_evolution.md`.
+
+| # | Lesson (class) | Evidence | Recurrence | Routed-to | Status |
+|---|----------------|----------|------------|-----------|--------|
+| L7 | **FAIL-OPEN class.** A guard/loader/evidence-check that can't confirm its precondition must STOP, not proceed. Banned in continuity-gating paths: silent `if let Ok(_)`/`.ok()?` on cards, `unwrap_or_default()` on ledger reads feeding status, "exit 0 ⇒ pass", "retry then quietly give up". | `load_tasks` swallowed card #95 (missing `intent_lock`) → invisible from `hf status` a whole session (`hf/src/main.rs:90-96`); `hf test` exit-0 rubber-stamp (PR #103); orphaned `.rvf.lock` wedge. Also-audited fail-open sites: `current_statuses()` `unwrap_or_default` (`main.rs:131-135`), `load_task_in().ok()?` (`main.rs:124-128`). | 1 NEW class, **≥3 distinct instances in one run ⇒ escalate now** (Phase 7-4) | AGENTS.md **fail-closed law** (U4) + `scripts/fail-open-audit.sh` advisory lint (U5) | **applied** (U4+U5 on `chore/fail-closed-doctrine`; kernel loud-load HFTASK-0057 PR #107 + doctor sweep HFTASK-0064 PR #108 shipped) |
+| L8 | **Every witnessed PASS needs POSITIVE evidence.** A gate that passed because nothing failed (exit 0, empty result set, `None`/degraded runner, zero rows) is not evidence — require the count/artifact proving the criterion was exercised. | `cargo test <filter>` matching nothing exited 0 → witnessed PASS; PR #103 `parse_tests_ran` (Some(0)=FAIL, None=degrade-with-note). | 1 | kernel-verifier agent + kernel-verify skill: **assert tests-ran > 0** (U1); code-omniscient-gatekeeper + gatekeeper-review skill: reject absence-as-pass, surface degrade-notes (U3) | **applied** (U1+U3 on `chore/fail-closed-doctrine`; backed by `hf test`/`parse_tests_ran` PR #103/#106) |
+| L9 | **A card that fails to load is a P0 surfacing, never a silent skip.** `hf status` must reflect every card on disk or fail loudly; drift can't flag what `load_tasks` already dropped. | #95 invisible until test_commands were hand-audited; delayed detection a full session. | 1 (instance of L7, tracked separately for its doctrine routing) | handoff-loop state-precedence doctrine + continuity-navigator + drift-reconcile (U2-doctrine); loud `load_tasks` code fix (U2-code = HFTASK-0057) | **applied** (U2-doctrine on `chore/fail-closed-doctrine`; U2-code shipped HFTASK-0057 PR #107) |
+| L10 | **Liveness gap: orphaned-lock wedge.** A stale lock from a provably-dead holder wedges every `hf` call past the retry cap. Raising the cap is a fail-open band-aid (longer wait, same wedge); provably-dead reclaim is the fix. | persistent `.handoff/ledger.db.rvf.lock` returns RVF 0x0300 LockHeld past the HFTASK-0060 retry cap; manual `rm` required. | 1 | **5th target**: `hf doctor` fail-closed invariant sweep + stale-lock self-heal | **applied** (shipped: RVF reclaim HFTASK-0062 + `hf doctor` sweep HFTASK-0064 PR #108) |
+
+### Recurrence watch (act on next occurrence)
+- **FAIL-OPEN (L7)** already escalated this run (≥3 instances). If a 4th surfaces post-fix, the
+  `fail-open-audit.sh` lint should be promoted from advisory to a CI-gating check.
+- **L8 / absence-as-pass** — if any other gate (drift, fleet status, hook severity) is found
+  accepting an empty/absent result as pass, the gatekeeper checklist item (U3) moves from skill-text
+  to a structural pre-verdict assertion.

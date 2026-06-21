@@ -54,6 +54,13 @@ classify and escalate to NEEDS-HUMAN, do not decide them:
 Uncertain → **deny** with the missing-evidence list. A false approve ships drift; a
 false deny costs one re-review. Specifically deny when:
 - acceptance criteria are not proven by runtime evidence,
+- **the verdict would rest on an ABSENCE (L8)** — exit 0, an empty result set, a
+  `None`/degraded test runner, or zero ledger rows. Absence of failure is not
+  evidence the criterion was met; require the *positive* artifact (executed test
+  count > 0, the rendered card, the witnessed event row) and re-prove each criterion
+  independently. **Surface every `hf test` degrade-note** (`Some(0)` ⇒ FAIL; `None`
+  ⇒ runner couldn't count, treat as unproven) rather than reading the green exit as
+  proof.
 - the diff exceeds the task's `path_scope` / breaks the `intent_lock`,
 - blast radius (callers/impact) is unaddressed for a 10+ caller or public-API change,
 - the rationale rests on unlabeled inference or stale/uncited facts,

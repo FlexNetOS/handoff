@@ -39,9 +39,18 @@ silently returns.
    Replay events to derive each task's real status. **Verify the witness chain**
    (the kernel's own `verify` path / `hf resume --json` count) — a broken chain is
    a P0 finding, stop and escalate.
-3. **Read card + view truth.** Compare `tasks/*.task.json` status against the
-   replayed ledger status; compare `active.md` `Done X/Y` + `packets/latest.md`
-   against git+ledger. Each mismatch is a drift item.
+3. **Read card + view truth — and enumerate on-disk cards vs `hf status` (L9,
+   fail-closed).** Compare `tasks/*.task.json` status against the replayed ledger
+   status; compare `active.md` `Done X/Y` + `packets/latest.md` against git+ledger.
+   Each mismatch is a drift item. **Then list every `tasks/*.task.json` on disk and
+   diff against `hf status`:** a card present on disk but absent from `hf status` was
+   silently dropped by the loader (unparseable JSON, missing `intent_lock`,
+   lock-mismatch) — that is a **P0 surfacing, never a silent skip**, because drift
+   cannot flag what the loader already dropped (this is how #95 stayed invisible a
+   whole session). The kernel now backs this: `hf doctor` hard-fails on a
+   non-conformant card (HFTASK-0064) and `hf status` warns loudly (HFTASK-0057) —
+   treat any such warning as a gating finding. Report the dropped-card count even
+   when zero.
 4. **Check intent_lock integrity.** Each card carries
    `intent_lock {objective_hash, path_scope_hash, acceptance_hash}` (blake3). If a
    card body changed but the lock didn't (or vice-versa) → drift item.
