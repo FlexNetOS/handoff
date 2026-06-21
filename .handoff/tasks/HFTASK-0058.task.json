@@ -1,0 +1,29 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0058",
+  "title": "Redesign ADR: canonical .handoff durability policy (commit-vs-ignore source-of-truth) shipped by the kernel",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "PROBLEM (source-level, affects every consumer): `.handoff/` is the continuity source-of-truth EVERYWHERE the hf kernel is used, but there is no single canonical, kernel-owned policy defining which `.handoff/` subpaths are DURABLE (must be committed) vs REGENERABLE/runtime (must be ignored). The kernel's own .gitignore encodes a nuanced partial policy (ignore `.handoff/**/ledger.db|*.db-wal|*.db-shm|*.rvf`, `/.handoff/packets|workspaces|locks|deliveries/`, `/.handoff/active.md`; commit `.handoff/tasks/`+`.handoff/decisions/`), but that policy is IMPLICIT and NOT shipped to consumers, so each consumer hand-rolls its own `.gitignore` and gets it wrong. CONCRETE FAILURES (found 2026-06-21 verifying the rust-port harness end-to-end): (1) a consumer with a DIR-FORM ignore (`.handoff/` or `.claude/`, a directory with no `/*`) SILENTLY SWALLOWS its durable loop ledgers (`.handoff/loop/*.md`) and harness files — `git add` stages ZERO, continuity dies — and `!`-exceptions CANNOT rescue it because git refuses to re-include a path whose parent directory is excluded (only CONTENTS-FORM `.handoff/*`/`.claude/*` + negations works); (2) a kernel-style `.handoff/**/*.db`-shaped pattern can over-match and catch a consumer's durable `.md`; (3) there is no guard that detects a swallow before state is lost. The rust-port harness mitigated this PER-CONSUMER (eject.sh now detects dir-form ignores + runs `git check-ignore` on representative agent/ledger paths + warns; eject.md documents a contents-form contract) — but that is a band-aid on ONE consumer. The real fix is at the SOURCE. ASK (this task = produce the redesign ADR, not the per-consumer patch): write `docs/adr-0016-handoff-durability-policy.md` that (a) defines the CANONICAL durable-vs-regenerable `.handoff/` subpath taxonomy (e.g. durable: `tasks/`, `decisions/`, loop `*.md` ledgers; regenerable: `*.db*`, `packets/`, `workspaces/`, `locks/`, `deliveries/`, `active.md`); (b) has the kernel SHIP a canonical, CONTENTS-FORM `.gitignore` fragment (and/or an `hf` verb that writes/repairs it) that consumers INHERIT instead of hand-rolling — never a dir-form `.handoff/`/`.claude/` ignore; (c) adds an `hf doctor`/`hf check` guard that fail-closed DETECTS when a durable `.handoff/` path would be (or is being) ignored/uncommitted (the swallow), since these bugs were invisible from reading code and only surfaced by running on a fresh repo; (d) documents the relationship to the regenerable ledger.db so the two never collide. NO-DOWNGRADE: this only strengthens continuity (durable truth is provably committed); it must not loosen the existing regenerable-ignore set. CONTEXT/EVIDENCE: rust-port harness PRs harness_hub#49 (eject durability guard) + the per-consumer mitigation; this task flags the upstream redesign so the fix lands once, at the kernel.",
+  "path_scope": [
+    "docs/**",
+    ".handoff/**",
+    "hf/**",
+    "crates/**"
+  ],
+  "acceptance_criteria": [
+    "docs/adr-0016-handoff-durability-policy.md exists (status: proposed/accepted) defining the canonical durable-vs-regenerable .handoff subpath taxonomy",
+    "the kernel ships a canonical CONTENTS-FORM .gitignore fragment (and/or an `hf` verb to write/repair it) that consumers inherit — never a dir-form .handoff/ or .claude/ ignore",
+    "an `hf doctor`/`hf check` guard fail-closed detects when a DURABLE .handoff path would be ignored or is uncommitted (the swallow), with a test proving it on a dir-form-ignore fixture",
+    "no regression to the existing regenerable-ignore set (ledger.db/packets/workspaces/locks/deliveries/active.md still ignored); cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer"
+}
