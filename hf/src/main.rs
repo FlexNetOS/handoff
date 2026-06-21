@@ -1023,11 +1023,52 @@ fn latest_pr_opened(led: &Ledger, id: &str) -> Option<String> {
         })
 }
 
+/// Count how many tests a libtest/cargo run actually EXECUTED, by summing the
+/// `N passed; M failed; … measured` fields of every `test result:` summary line in the
+/// captured output. `filtered out` and `ignored` are NOT counted — they provide no
+/// assertion evidence. Returns:
+/// - `None` when no libtest summary is present (the command is some runner we can't
+///   introspect) so the caller degrades to exit-code-only instead of false-blocking;
+/// - `Some(0)` when a recognized test runner matched/ran zero real tests — the rubber
+///   stamp the completion gate must reject (a `cargo test <filter>` that hit nothing still
+///   exits 0);
+/// - `Some(n)` with the real executed count otherwise.
+fn parse_tests_ran(output: &str) -> Option<u64> {
+    let mut found_summary = false;
+    let mut total = 0u64;
+    for line in output.lines() {
+        let Some(rest) = line.split("test result:").nth(1) else {
+            continue;
+        };
+        found_summary = true;
+        // `rest` ≈ " ok. 3 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; …".
+        // Scan token PAIRS (a count followed by its label) so the leading status word
+        // (`ok.`/`FAILED.`) in the first segment doesn't shadow the count behind it. Count
+        // only buckets whose tests actually RAN: "filtered" (out) were never selected and
+        // "ignored" were selected but skipped (no assertion) — neither is completion evidence.
+        let toks: Vec<&str> = rest.split_whitespace().collect();
+        for w in toks.windows(2) {
+            if let Ok(n) = w[0].parse::<u64>() {
+                // labels arrive punctuated by the `;` separator (e.g. "passed;").
+                if matches!(
+                    w[1].trim_end_matches([';', '.', ',']),
+                    "passed" | "failed" | "measured"
+                ) {
+                    total += n;
+                }
+            }
+        }
+    }
+    found_summary.then_some(total)
+}
+
 /// `hf test [ID]` — PRD §4.7 evidence-backed completion. Execute the work order's
 /// `test_commands` and witness the outcome as a `test_result` ledger event so `hf done`
 /// can gate on green tests. With no id, targets the next safe task. Exits nonzero when any
 /// command fails (fail-closed, so hooks / the loop observe the failure). The kernel's
-/// completion-evidence guarantee: a stored `test_commands` is now actually run, not ignored.
+/// completion-evidence guarantee: a stored `test_commands` is now actually run, not ignored
+/// — and (the real fix) exit 0 alone is NOT accepted: a recognized runner that executed
+/// zero tests is rejected, closing the "blanket `cargo test` matched nothing" rubber stamp.
 fn cmd_test(id: Option<&str>) {
     let resolved = match id {
         Some(s) if !s.is_empty() && !s.starts_with("--") => s.to_string(),
@@ -1062,21 +1103,54 @@ fn cmd_test(id: Option<&str>) {
     let mut all_passed = true;
     for cmd in &wo.test_commands {
         println!("hf test: $ {cmd}");
-        let code = match std::process::Command::new("sh").arg("-c").arg(cmd).status() {
-            Ok(s) => s.code().unwrap_or(-1),
+        // Capture output (instead of inheriting stdio) so the gate can verify tests ACTUALLY
+        // ran; re-emit it so the operator still sees the full run.
+        let (code, ran) = match std::process::Command::new("sh").arg("-c").arg(cmd).output() {
+            Ok(out) => {
+                use std::io::Write;
+                std::io::stdout().write_all(&out.stdout).ok();
+                std::io::stderr().write_all(&out.stderr).ok();
+                let mut combined = String::from_utf8_lossy(&out.stdout).into_owned();
+                combined.push_str(&String::from_utf8_lossy(&out.stderr));
+                (out.status.code().unwrap_or(-1), parse_tests_ran(&combined))
+            }
             Err(e) => {
                 eprintln!("hf test: failed to spawn '{cmd}': {e}");
-                -1
+                (-1, None)
             }
         };
-        if code != 0 {
+        // The completion-evidence gate: exit 0 is necessary but NOT sufficient. A recognized
+        // runner that executed zero tests (filter matched nothing, or all `#[ignore]`) is a
+        // rubber stamp — reject it fail-closed. A runner we can't introspect (`ran == None`)
+        // falls back to exit-code-only and is flagged (no-downgrade for non-cargo runners).
+        let zero_tests = ran == Some(0);
+        let cmd_passed = code == 0 && !zero_tests;
+        if !cmd_passed {
             all_passed = false;
         }
-        results.push(serde_json::json!({ "cmd": cmd, "code": code }));
+        if zero_tests {
+            eprintln!(
+                "hf test: '{cmd}' exited 0 but executed 0 tests — completion evidence requires \
+                 >0 (failing closed; tighten the filter so it matches real tests)"
+            );
+        } else if ran.is_none() && code == 0 {
+            eprintln!(
+                "hf test: note — '{cmd}' produced no libtest summary; gated on exit code only \
+                 (executed-test count unverifiable)"
+            );
+        }
+        results.push(serde_json::json!({
+            "cmd": cmd,
+            "code": code,
+            "tests_ran": ran,
+            "passed": cmd_passed,
+        }));
     }
+    let total_ran: u64 = results.iter().filter_map(|r| r["tests_ran"].as_u64()).sum();
     let payload = serde_json::json!({
         "id": resolved,
         "passed": all_passed,
+        "tests_ran": total_ran,
         "results": results,
     })
     .to_string();
@@ -1085,7 +1159,7 @@ fn cmd_test(id: Option<&str>) {
         .unwrap();
     if all_passed {
         println!(
-            "hf test: {resolved} -> PASS ({} command(s) green, witnessed)",
+            "hf test: {resolved} -> PASS ({} command(s) green, {total_ran} test(s) executed, witnessed)",
             wo.test_commands.len()
         );
     } else {
@@ -2587,6 +2661,52 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn parse_tests_ran_sums_executed_across_suites_excluding_filtered_and_ignored() {
+        // Two cargo suites: 3 real tests in one, 0 (all filtered out) in the other.
+        let out = "\
+running 3 tests
+test a ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; finished in 0.05s
+
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out; finished in 0.00s
+";
+        assert_eq!(parse_tests_ran(out), Some(3));
+    }
+
+    #[test]
+    fn parse_tests_ran_is_zero_when_filter_matches_nothing() {
+        // THE rubber-stamp the gate must reject: exit 0, but every suite ran nothing.
+        let out = "\
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+";
+        assert_eq!(parse_tests_ran(out), Some(0));
+    }
+
+    #[test]
+    fn parse_tests_ran_excludes_ignored_only_runs() {
+        // An all-ignored match gives no assertion evidence → counts as 0 executed.
+        let out =
+            "test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished";
+        assert_eq!(parse_tests_ran(out), Some(0));
+    }
+
+    #[test]
+    fn parse_tests_ran_counts_failures_as_executed() {
+        // A failed test still RAN; the exit code (not the count) carries the failure.
+        let out = "test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out";
+        assert_eq!(parse_tests_ran(out), Some(3));
+    }
+
+    #[test]
+    fn parse_tests_ran_none_for_unrecognized_runner() {
+        // No libtest summary → can't introspect → None (caller degrades to exit-code-only).
+        let out = "PASS  src/foo.test.ts (4 passed)\nDone in 1.2s";
+        assert_eq!(parse_tests_ran(out), None);
     }
 
     #[test]
