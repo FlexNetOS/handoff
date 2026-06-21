@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0062",
+  "title": "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Liveness gap surfaced after HFTASK-0060: acquire_store (ledger/src/v2.rs) RETRIES transient 0x0300 LockHeld/0x0301 LockStale but never RECLAIMS a persistently-orphaned lock whose holder PROCESS IS DEAD, so a leftover `.handoff/ledger.db.rvf.lock` returns LockHeld past the retry cap and wedges EVERY subsequent `hf` invocation (fail-closed, no panic — but the kernel is unusable until a human `rm`s it, violating no-human-in-loop). Fix: detect a provably-dead holder (PID liveness and/or mtime age-out beyond the lock TTL) and reclaim it, emitting a witnessed `lock_reclaimed` event; REFUSE to steal a live or unverifiable-liveness holder (fail-closed both ways). NOT 'raise the retry cap' — that is a fail-open band-aid (longer wait, same wedge). The v1 SQLite store stays authoritative so a bounded reclaim never risks the chain.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0060"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e33785ff8d9817eca7595db639f01518b7da318ff80ce6157921172f34ee3ee9",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:45f0e528d8e849e58732bf0e73329ac1002a81f6e8a11075f8d8decfc9f0533b",
+    "constraint_hash": "blake3:874378dccfe33ce5b60e68df00808f1796de5713eb9fad2bcd565a177f32e06a",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
