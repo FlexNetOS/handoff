@@ -19,6 +19,12 @@ ledger = { path = "../ledger" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+# HFTASK-0057 (PRD §7.3/§23): runtime validation of a card's raw JSON against the
+# schemars-generated handoff.task.v1 schema, so a schema-violating card (missing intent_lock,
+# bad id, wrong `schema` const) is rejected loudly at load instead of silently dropped.
+# default-features off drops the reqwest/TLS resolvers — we validate against an in-memory
+# schema with no remote `$ref` resolution, so no HTTP machinery is needed (lean, offline).
+jsonschema = { version = "0.46", default-features = false }
 # HFTASK-0004 (ADR-0011): the real RuVector formal-verification crate — proof-carrying
 # AgentContract attestation (lean-agentic Eq.refl proofs + tamper-evident ProofAttestation
 # that serializes into an RVF WITNESS_SEG). Path dep mirrors `ledger`'s rvf-crypto: handoff

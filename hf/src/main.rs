@@ -26,6 +26,7 @@ mod policy;
 mod prompt_hub;
 mod route;
 mod routing;
+mod schema;
 #[cfg(feature = "secrets")]
 mod secrets;
 mod session;
@@ -78,6 +79,54 @@ fn capsule_path() -> PathBuf {
     Path::new(HF).join("context").join("capsule.json")
 }
 
+/// Parse one card file fail-closed (HFTASK-0057, PRD §7.3/§23): read → schema-validate the raw
+/// JSON against the generated handoff.task.v1 schema → deserialize. A card that is unreadable,
+/// is not valid JSON, violates the schema (missing `intent_lock`, bad `id`, wrong `schema`
+/// const), or fails to deserialize is **never silently dropped** — it emits a loud WARNING and
+/// returns `None`. This fixes the FAIL-OPEN bug where a present-but-broken card (e.g. #95's
+/// missing `intent_lock`) vanished from `hf status` with no signal. The CLI is not bricked on
+/// one bad card (the `hf doctor` sweep, HFTASK-0064, will turn this into a hard fail).
+fn parse_card_file(p: &Path) -> Option<WorkOrder> {
+    let s = match fs::read_to_string(p) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
+                p.display()
+            );
+            return None;
+        }
+    };
+    let value: serde_json::Value = match serde_json::from_str(&s) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
+                p.display()
+            );
+            return None;
+        }
+    };
+    if let Err(violations) = schema::validate_card(&value) {
+        eprintln!(
+            "hf: WARNING — card {} failed to load: schema violation [{violations}] \
+             (NOT in status; fix or remove it)",
+            p.display()
+        );
+        return None;
+    }
+    match serde_json::from_value::<WorkOrder>(value) {
+        Ok(wo) => Some(wo),
+        Err(e) => {
+            eprintln!(
+                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
+                p.display()
+            );
+            None
+        }
+    }
+}
+
 fn load_tasks() -> Vec<WorkOrder> {
     let mut v = vec![];
     if let Ok(rd) = fs::read_dir(tasks_dir()) {
@@ -88,10 +137,8 @@ fn load_tasks() -> Vec<WorkOrder> {
             .collect();
         paths.sort();
         for p in paths {
-            if let Ok(s) = fs::read_to_string(&p) {
-                if let Ok(wo) = serde_json::from_str::<WorkOrder>(&s) {
-                    v.push(wo);
-                }
+            if let Some(wo) = parse_card_file(&p) {
+                v.push(wo);
             }
         }
     }
@@ -123,8 +170,13 @@ fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
 /// resolved home, so per-task ops see the card that lives where the ledger lives).
 fn load_task_in(tasks_dir: &Path, id: &str) -> Option<WorkOrder> {
     let p = tasks_dir.join(format!("{id}.task.json"));
-    let s = fs::read_to_string(p).ok()?;
-    serde_json::from_str::<WorkOrder>(&s).ok()
+    // HFTASK-0057: an ABSENT file is a silent None (legitimately "no such card here"); a
+    // PRESENT-but-unparseable/invalid file is a loud WARNING (the fail-closed discipline) so a
+    // broken card never silently disappears from a per-task lookup.
+    if !p.exists() {
+        return None;
+    }
+    parse_card_file(&p)
 }
 
 /// Replay the ledger to get the current status per task id (overrides the card's stored status).
@@ -2436,6 +2488,8 @@ fn cmd_seed() {
             "HFTASK-0062" => &["cargo test -p ledger lock"],
             // runner-aware executed-count parsers (libtest/pytest/jest/go): 11 tests
             "HFTASK-0063" => &["cargo test -p hf parse_tests_ran"],
+            // schemars gen + serialization-stability + jsonschema card validation/rejection
+            "HFTASK-0057" => &["cargo test -p work-order schema", "cargo test -p hf schema"],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -2799,6 +2853,12 @@ fn main() {
             }
             prompt_hub::cmd_prompt_hub(vibe, scope.as_deref(), dispatch, json);
         }
+        Some("schema") => {
+            let code = schema::cmd_schema(&args[1..]);
+            if code != 0 {
+                std::process::exit(code);
+            }
+        }
         Some("handoff") => cmd_handoff(),
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
@@ -2811,7 +2871,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
         }
     }
 }
