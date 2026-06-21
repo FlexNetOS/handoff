@@ -446,8 +446,12 @@ fn implementation_loop(
         }
     }
 
-    // Stall detection: track consecutive runs without progress
+    // Stall detection: track consecutive runs without progress.
+    // `stall_count` is the global absolute upper bound (STALL_THRESHOLD).
+    // `task_failures` is the per-task retry counter bounded by
+    // `config.retry_on_failure`; whichever limit is hit first stalls the loop.
     let mut stall_count: u32 = 0;
+    let mut task_failures: u32 = 0;
     let mut prev_completed: u32 = match data::parse_task_progress(tasks_path) {
         Ok((c, _)) => c,
         Err(e) => {
@@ -633,11 +637,18 @@ fn implementation_loop(
         };
 
         if completed > prev_completed {
-            // Progress was made — reset stall counter
+            // Progress was made; reset both the global and per-task counters.
             stall_count = 0;
+            task_failures = 0;
             prev_completed = completed;
         } else {
-            // No progress — increment stall counter
+            // Default retry_on_failure=1 re-issues once, then stalls on the
+            // second no-progress run. STALL_THRESHOLD is still an absolute cap.
+            task_failures += 1;
+            if task_failures > config.retry_on_failure {
+                stalled = true;
+                break;
+            }
             stall_count += 1;
             if stall_count >= STALL_THRESHOLD {
                 stalled = true;
@@ -1111,6 +1122,76 @@ mod tests {
         assert!(matches!(msg, ImplUpdate::Stalled));
     }
 
+    /// T4 (SCEN-3.1 / REQ-3): the loop stalls after exactly
+    /// `retry_on_failure + 1` no-progress runs.
+    ///
+    /// Uses `true` as the command: it spawns successfully and exits 0 but never
+    /// marks a task, so every run is a no-progress run. With
+    /// `retry_on_failure = 2`, two runs emit `Progress`; the third run bumps the
+    /// retry counter over the limit and emits `Stalled`. That proves arbitrary
+    /// N+1 retry bounds, complementing the default-N=1 spawn-failure test above.
+    #[test]
+    fn test_loop_stalls_after_retry_on_failure_runs() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let dir = tmp_dir.path();
+        let change_dir = dir.join("openspec/changes/test-retry");
+        std::fs::create_dir_all(&change_dir).unwrap();
+        let tasks_path = change_dir.join("tasks.md");
+        std::fs::write(&tasks_path, "- [ ] Task one\n").unwrap();
+
+        let retry_on_failure: u32 = 2;
+        // `true` ignores its args, exits 0, and makes no task progress.
+        let config = TuiConfig {
+            command: "true {prompt}".to_string(),
+            prompt: "test {name}".to_string(),
+            retry_on_failure,
+            ..Default::default()
+        };
+
+        let (tx, rx) = mpsc::channel();
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let child_handle: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let log_path = dir.join("test.log");
+
+        implementation_loop(
+            "test-retry",
+            &tasks_path,
+            &log_path,
+            &tx,
+            &cancel_flag,
+            &child_handle,
+            &config,
+        );
+
+        // Count no-progress runs via the messages channel: each non-stalling run
+        // emits one `Progress`, and the final run emits `Stalled` instead.
+        let mut progress_runs: u32 = 0;
+        let mut stalled = false;
+        while let Ok(msg) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            match msg {
+                ImplUpdate::Progress { .. } => progress_runs += 1,
+                ImplUpdate::Stalled => {
+                    stalled = true;
+                    break;
+                }
+                ImplUpdate::Error(e) => panic!("unexpected error from loop: {e}"),
+                other => panic!("unexpected message before stall: {other:?}"),
+            }
+        }
+
+        assert!(stalled, "loop should stall once retries are exhausted");
+        assert_eq!(
+            progress_runs, retry_on_failure,
+            "loop should make exactly retry_on_failure no-progress runs before the stalling run"
+        );
+        // Total runs = the progress-emitting runs plus the final stalling run.
+        assert_eq!(
+            progress_runs + 1,
+            retry_on_failure + 1,
+            "loop should stall after exactly retry_on_failure + 1 runs"
+        );
+    }
+
     #[test]
     fn test_config_render_prompt_contains_all_context_references() {
         let config = TuiConfig::default();
@@ -1443,6 +1524,9 @@ mod tests {
         let config = TuiConfig {
             command: "true {prompt}".to_string(),
             prompt: "test {name}".to_string(),
+            // Keep the per-task retry limit above STALL_THRESHOLD so this test
+            // isolates the global stall cap (3 runs) rather than the per-task path.
+            retry_on_failure: 5,
             ..Default::default()
         };
 
@@ -1517,6 +1601,9 @@ mod tests {
         let config = TuiConfig {
             command: format!("{} {} {{prompt}}", python, script_str),
             prompt: tasks_str,
+            // Keep the per-task retry limit above STALL_THRESHOLD so this test
+            // exercises the global stall cap / reset path, not the per-task path.
+            retry_on_failure: 5,
             ..Default::default()
         };
 
@@ -1596,6 +1683,9 @@ mod tests {
         let config = TuiConfig {
             command: format!("{} {} {{prompt}}", python, script_str),
             prompt: tasks_str,
+            // Keep the per-task retry limit above STALL_THRESHOLD so this test
+            // exercises the global stall cap / reset path, not the per-task path.
+            retry_on_failure: 5,
             ..Default::default()
         };
 
