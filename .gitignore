@@ -1,5 +1,10 @@
 /target
 node_modules/
+# === .handoff durability policy (ADR-0016 / HFTASK-0058) ===
+# The kernel owns the canonical commit-vs-ignore taxonomy. The contents-form rules below are
+# the durability fragment `hf gitignore` ships; `hf gitignore --check` / `hf doctor` fail-closed
+# if a DURABLE path (tasks/, decisions/, loop/*.md, context/) is ever swallowed. Never add a
+# bare `.handoff/` or `.claude/` ignore — Git can't re-include past an excluded parent dir.
 # HFTASK-0035 (ADR-0004 §3.3/§6 rev): the local ledger is gitignored (legitimate per-repo
 # source of record, never committed). `**` also covers the top-level path + grit worktrees.
 .handoff/**/ledger.db
