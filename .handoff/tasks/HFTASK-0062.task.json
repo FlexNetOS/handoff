@@ -13,7 +13,7 @@
     "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p ledger lock"
   ],
   "dependencies": [
     "HFTASK-0060"
