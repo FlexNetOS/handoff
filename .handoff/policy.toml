@@ -10,7 +10,9 @@ trunk_branch = "master"           # protected trunk PRs target
 develop_mirrors_trunk = true
 
 [loop]
-cycle_flush     = 4               # tasks per cycle before `hf ship`
+wrap_strategy   = "context"       # ADR-0018 D3: "context" (budget) | "tasks" (legacy fixed count)
+context_budget_pct = 50           # wrap (checkpoint→handoff) at ~50% of the context window
+cycle_flush     = 4               # upper safety bound on tasks/cycle (caps a runaway cycle)
 batch_checkout  = true            # `hf claim --batch N` (≤ cycle_flush)
 worktree_prefix = "handoff-"      # session worktree/branch prefix
 

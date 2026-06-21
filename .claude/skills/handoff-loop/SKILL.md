@@ -96,7 +96,10 @@ The ledger records what happened; ICM records what was learned and decided. See 
    locks) → work in `.grit/worktrees/agent-N` → `grit done` (rebase+merge under file
    lock). Different symbols in the same file never collide, so cycles run truly
    parallel with zero discarded work. (`.grit/` is gitignored binary state.)
-3. Note the cycle budget: ship after `cycle_flush` tasks (default 4), then hand off.
+3. Note the wrap budget (ADR-0018 D3): with `wrap_strategy = "context"` (default) the loop runs
+   until ~`context_budget_pct`% (default **50%**) of the context window is consumed, then ships +
+   hands off; `cycle_flush` (default 4) is only an upper safety bound. With `wrap_strategy = "tasks"`
+   it reverts to the legacy fixed `cycle_flush` count.
 
 ### Phase 2: Orient + reconcile  — **Execution mode: Sub-agent**
 
@@ -175,9 +178,13 @@ add the CLAUDE.md change-history row, and **regenerate derived views** (`hf chec
 
 ### Phase 5: Cycle close + loop
 
-1. Increment the cycle counter. If `< cycle_flush` and more safe tasks remain →
-   return to Phase 2 for the next task.
-2. At `cycle_flush` (or no safe task, or budget hit): `hf checkpoint` →
+1. **Wrap decision (ADR-0018 D3 — context budget, not a fixed count).** With `wrap_strategy =
+   "context"` (default): if the running context window is **< `context_budget_pct`% (default 50%)**
+   consumed *and* more safe tasks remain → return to Phase 2 for the next task; once ~50% is
+   consumed, wrap (step 2) regardless of task count. `cycle_flush` still caps a runaway cycle as an
+   upper bound. (Legacy `wrap_strategy = "tasks"` → wrap at `cycle_flush` tasks.) The agent reads its
+   own token/context budget; `session-relay-wrap-up` enforces the same threshold.
+2. At the wrap point (context budget hit, or `cycle_flush` cap, or no safe task): `hf checkpoint` →
    `hf handoff` (re-render the packet) → report. The rendered packet IS the
    next-session prompt.
 3. Preserve `_workspace/` (audit trail). Report a per-cycle summary: task shipped,
