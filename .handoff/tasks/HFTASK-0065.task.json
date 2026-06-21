@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0065",
+  "title": "Package the handoff loop skills as `harness:` plugin skills (/harness:handoff-loop, /harness:handoff-loop-init)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "Owner's standing 'proper harness setup': make the handoff loop + init invokable under the published `harness:` plugin namespace, not only as handoff-local project skills. DISCOVERY (verify, don't assume): `harness_hub/harness/` is the vendored `harness` plugin (separate repo — upstream revfactory/harness + FlexNetOS skills) and ALREADY ships `skills/handoff-loop-init/` + `skills/handoff-loop-run/`, so the work is RECONCILE not create: sync the current script-driven `handoff/.claude/skills/handoff-loop-init` (PR #113) + the `handoff-loop` orchestrator skill + the bundled `scripts/handoff-loop-init.sh`/`scripts/handoff-lib.sh` drivers + the PR #114 out-of-tree-backup behavior INTO the plugin copies so `/harness:handoff-loop-init` and `/harness:handoff-loop` run the LATEST, non-downgraded implementation. Distinct from the generic `harness-loop-init` (loop-state-dir init) — do NOT conflate the two. CROSS-REPO: harness_hub changes are a separate-repo commit/PR over its SSH remote and go through the gatekeeper; the bundled `scripts/*.sh` must be reachable when the skill is ejected (vendor them under the skill dir or document the `$HANDOFF_KERNEL_HOME` dependency). No-downgrade: neither the handoff-local skills nor the plugin copies may lose capability; if the plugin copies are stale they get upgraded, never the reverse.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Package the handoff loop skills as `harness:` plugin skills (/harness:handoff-loop, /harness:handoff-loop-init): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "bash scripts/handoff-loop-init.sh --dry-run"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:726dea3620e880c4b04447e60bd0691197fdd3b7b7e741d06f994c9c52e94384",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:8d9e838b448c04155aee7b07a88af712e9a6fabb6a0c915448d0e9c03a66609d",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
