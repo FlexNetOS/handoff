@@ -38,6 +38,13 @@ it with the exact missing-evidence list, or classify it as a genuine **owner wal
 4. **Fail closed.** Uncertain → deny with the missing-evidence list. A false approve
    ships drift; a false deny costs one re-review. Verify acceptance criteria are
    met with witnessed evidence (tests + drive output) before approving "done".
+   **Reject any verdict resting on an ABSENCE (L8).** Exit 0, an empty result set, a
+   `None`/degraded runner, or zero ledger rows is *not* evidence the criterion was
+   met — it is evidence nothing was exercised. Specifically: surface every `hf test`
+   degrade-note (`None` ⇒ runner couldn't count; `Some(0)` ⇒ FAIL) rather than
+   treating the green exit as proof, and **re-prove each acceptance criterion
+   independently** with a positive artifact (the executed test count, the rendered
+   card, the witnessed event row). Deny until the positive evidence exists.
 
 ## Input/output protocol
 

@@ -48,6 +48,16 @@ Cards and packets are *derived* — regenerate them (`hf checkpoint --sync-cards
 `hf handoff`); never hand-edit. This is what keeps "Done 0/22" from lying after a
 ship.
 
+**Card load is fail-closed (L9).** A card that fails to load — unparseable JSON,
+missing `intent_lock`, lock-mismatched body — is a **P0 surfacing, never a silent
+skip**. A dropped card makes `hf status` reason over an incomplete backlog (exactly
+how #95 stayed invisible a whole session). The navigator must **enumerate
+`tasks/*.task.json` on disk vs `hf status`** and report any card present-on-disk but
+absent-from-status as a P0 drift item — drift cannot flag what the loader already
+dropped. The kernel now backs this: `hf doctor` hard-fails on a non-conformant card
+(HFTASK-0064) and `hf status` warns loudly rather than silently skipping
+(HFTASK-0057); treat any such warning as a gating finding, not noise.
+
 ## ICM persistent memory (mandatory — `icm-memory` skill)
 
 ICM is the cross-session memory the owner requires. **Recall** relevant memory at

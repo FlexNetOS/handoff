@@ -17,8 +17,13 @@ module — not once at the end.
    mismatches — they're findings.
 2. **Build the real artifact.** `cargo build -p hf` (+ affected `ledger`/`work-order`).
    Build output is setup, not evidence — don't quote it as proof.
-3. **Run the contract tests.** `cargo test` across the workspace. Report failures
-   only; a green run is one line.
+3. **Run the contract tests — assert tests-ran > 0 first.** `cargo test` across the
+   workspace. A suite reporting `executed 0 tests` (zero-match filter, skipped
+   module, degraded runner) is a **FAIL**, not a pass — absence of failure is not
+   evidence (L8). `hf test` witnesses the executed count and `parse_tests_ran` covers
+   libtest/pytest/jest/go (PR #103/#106): `Some(0)` ⇒ FAIL, `None` ⇒ degraded-runner
+   surfaced as a note, never a silent pass. "A green run is one line" applies ONLY
+   after tests-ran > 0 is confirmed; report failures only past that point.
 4. **Drive the documented surface, happy path first.** Run the exact `hf`
    invocation the card/claim names. Capture stdout+stderr **separately**
    (`cmd >out 2>err`) and the exit code **unpiped** — `cmd | head` clobbers `$?`

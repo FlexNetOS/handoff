@@ -45,6 +45,30 @@ Maintain this repository through the Continuity Ledger Kernel (`.handoff`) proto
 - Do not make architecture changes without an ADR.
 - Do not treat `.handoff/packets/latest.md` as more authoritative than Git, the ledger, or task cards.
 
+### Fail-closed law (the FAIL-OPEN ban — L7)
+
+A guard, loader, or evidence-check that **cannot confirm its precondition must STOP,
+not proceed.** In any continuity-gating path (card load, ledger read, status
+derivation, completion-evidence, lock acquisition, policy gate) the following
+fail-OPEN patterns are **banned** — each must instead fail closed with a *surfaced
+diagnostic*:
+
+- a silent `if let Ok(_) { … }` / `match … { Ok => …, Err => /* skip */ }` that drops
+  the error case without surfacing it (e.g. silently skipping an unparseable card);
+- `.ok()?` on a card or ledger read (swallows the failure and short-circuits as if
+  empty);
+- `unwrap_or_default()` feeding a status/derivation (an empty default reported as
+  truth — `current_statuses()` returning `{}` must be a FAIL, not "nothing done");
+- **exit 0 ⇒ pass** — treating a zero exit / empty result / zero rows / `None`
+  runner as evidence the criterion was met (require the *positive* count or artifact);
+- **retry-then-quietly-give-up** — exhausting a retry cap and proceeding as if the
+  operation succeeded (the stale-lock wedge), instead of surfacing the wall.
+
+Every such site must emit a diagnostic to stderr (or a `hf doctor`/`hf status`
+surfacing) and propagate a non-zero/Err outcome. *Absence of failure is not evidence
+of success.* When in doubt, fail closed and surface — the kernel's founding promise
+is witnessed + fail-closed.
+
 ## Required before stopping
 
 ```bash
