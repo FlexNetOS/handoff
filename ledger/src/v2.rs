@@ -1,7 +1,7 @@
 //! RVF vector-native ledger v2.
 //!
-//! Hybrid design: the proven rusqlite+v1 store remains the authoritative structured event
-//! ledger (append, replay, witness chain, lease state, rollup provenance). An RVF vector
+//! Hybrid design: the pure-Rust redb-backed v1 store remains the authoritative structured
+//! event ledger (append, replay, witness chain, lease state, rollup provenance). An RVF vector
 //! store is layered on top for semantic recall over session history via HNSW indexing.
 //!
 //! Vectors: 384-dim, cosine metric. Embeddings are deterministic hash-based pseudo-embeddings
@@ -18,7 +18,8 @@ use rvf_runtime::{
 use crate::v1;
 
 pub use crate::v1::{
-    hash_action, resolve_lease, EventRow, LeaseOutcome, RollupProvenance, RollupStat,
+    hash_action, resolve_lease, EventRow, LeaseOutcome, LedgerError, Result, RollupProvenance,
+    RollupStat,
 };
 
 /// v2 ledger: v1 structured storage + RVF vector overlay for semantic recall.
@@ -58,8 +59,8 @@ fn rvf_path(path: &str) -> std::path::PathBuf {
     Path::new(path).with_extension("db.rvf")
 }
 
-fn rvf_err(e: rvf_types::RvfError) -> rusqlite::Error {
-    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e.to_string())))
+fn rvf_err(e: rvf_types::RvfError) -> LedgerError {
+    LedgerError::Overlay(e.to_string())
 }
 
 /// True if an RVF error is transient lock contention (another writer holds/held the sidecar
@@ -196,7 +197,7 @@ fn inspect_lock(rvf: &Path) -> LockReclaim {
 /// call meanwhile). A live/cross-host/unverifiable holder is refused — a genuinely stuck *live*
 /// lock still surfaces after the attempt cap. The RVF store is a best-effort recall sidecar
 /// (the v1 SQLite store is authoritative), so a bounded wait/reclaim never risks the chain.
-fn acquire_store(rvf: &Path) -> Result<(RvfStore, Option<u32>), rvf_types::RvfError> {
+fn acquire_store(rvf: &Path) -> std::result::Result<(RvfStore, Option<u32>), rvf_types::RvfError> {
     const MAX_ATTEMPTS: u32 = 100;
     let mut attempt: u32 = 0;
     let mut reclaimed_pid: Option<u32> = None;
@@ -242,7 +243,7 @@ impl Ledger {
     /// The v1 SQLite store lives at `path`. The RVF vector sidecar lives at `{path}.rvf`.
     /// If the RVF sidecar does not exist, it is created. If opening the RVF sidecar fails,
     /// the call returns an error so callers can fall back to the v1 feature if desired.
-    pub fn open(path: &str) -> rusqlite::Result<Self> {
+    pub fn open(path: &str) -> Result<Self> {
         let mut v1 = v1::Ledger::open(path)?;
         let rvf = rvf_path(path);
         // HFTASK-0060: retry the sidecar acquisition on transient RVF lock contention
@@ -281,7 +282,7 @@ impl Ledger {
         work_order_id: &str,
         payload_json: &str,
         ts_ns: u64,
-    ) -> rusqlite::Result<u64> {
+    ) -> Result<u64> {
         let seq = self
             .v1
             .append(event_type, work_order_id, payload_json, ts_ns)?;
@@ -313,13 +314,9 @@ impl Ledger {
 
     /// Semantic recall: return the `k` events whose embeddings are most similar to the
     /// supplied intent vector, ordered by cosine distance (closest first).
-    pub fn query_by_intent(
-        &self,
-        intent_vector: &[f32],
-        k: usize,
-    ) -> rusqlite::Result<Vec<EventRow>> {
+    pub fn query_by_intent(&self, intent_vector: &[f32], k: usize) -> Result<Vec<EventRow>> {
         if intent_vector.len() != self.dim {
-            return Err(rusqlite::Error::InvalidParameterCount(
+            return Err(LedgerError::InvalidParameterCount(
                 self.dim,
                 intent_vector.len(),
             ));
@@ -352,19 +349,19 @@ impl Ledger {
     // Delegated v1 API (authoritative structured storage / witness / lease)
     // ------------------------------------------------------------------
 
-    pub fn all_events(&self) -> rusqlite::Result<Vec<EventRow>> {
+    pub fn all_events(&self) -> Result<Vec<EventRow>> {
         self.v1.all_events()
     }
 
-    pub fn events_after(&self, after_seq: u64) -> rusqlite::Result<Vec<EventRow>> {
+    pub fn events_after(&self, after_seq: u64) -> Result<Vec<EventRow>> {
         self.v1.events_after(after_seq)
     }
 
-    pub fn verify_witness_chain(&self) -> rusqlite::Result<usize> {
+    pub fn verify_witness_chain(&self) -> Result<usize> {
         self.v1.verify_witness_chain()
     }
 
-    pub fn verify_rollup_provenance(&self) -> rusqlite::Result<RollupProvenance> {
+    pub fn verify_rollup_provenance(&self) -> Result<RollupProvenance> {
         self.v1.verify_rollup_provenance()
     }
 
@@ -373,11 +370,11 @@ impl Ledger {
         origin_repo: &str,
         rows: &[EventRow],
         updated_ns: u64,
-    ) -> rusqlite::Result<RollupStat> {
+    ) -> Result<RollupStat> {
         self.v1.rollup_from(origin_repo, rows, updated_ns)
     }
 
-    pub fn sync_cursor_get(&self, origin_repo: &str) -> rusqlite::Result<Option<u64>> {
+    pub fn sync_cursor_get(&self, origin_repo: &str) -> Result<Option<u64>> {
         self.v1.sync_cursor_get(origin_repo)
     }
 
@@ -386,7 +383,7 @@ impl Ledger {
         origin_repo: &str,
         last_seq: u64,
         updated_ns: u64,
-    ) -> rusqlite::Result<()> {
+    ) -> Result<()> {
         self.v1.sync_cursor_set(origin_repo, last_seq, updated_ns)
     }
 
@@ -396,21 +393,16 @@ impl Ledger {
         holder: &str,
         ttl_secs: u64,
         now_ns: u64,
-    ) -> rusqlite::Result<LeaseOutcome> {
+    ) -> Result<LeaseOutcome> {
         self.v1
             .try_acquire_lease(resource, holder, ttl_secs, now_ns)
     }
 
-    pub fn release_lease(
-        &mut self,
-        resource: &str,
-        holder: &str,
-        now_ns: u64,
-    ) -> rusqlite::Result<u64> {
+    pub fn release_lease(&mut self, resource: &str, holder: &str, now_ns: u64) -> Result<u64> {
         self.v1.release_lease(resource, holder, now_ns)
     }
 
-    pub fn lease_holder(&self, resource: &str, now_ns: u64) -> rusqlite::Result<Option<String>> {
+    pub fn lease_holder(&self, resource: &str, now_ns: u64) -> Result<Option<String>> {
         self.v1.lease_holder(resource, now_ns)
     }
 
@@ -419,11 +411,11 @@ impl Ledger {
         wo: &work_order::WorkOrder,
         status: work_order::Status,
         ts_ns: u64,
-    ) -> rusqlite::Result<u64> {
+    ) -> Result<u64> {
         self.v1.record_transition(wo, status, ts_ns)
     }
 
-    pub fn replay_latest_status(&self) -> rusqlite::Result<Vec<(String, work_order::Status)>> {
+    pub fn replay_latest_status(&self) -> Result<Vec<(String, work_order::Status)>> {
         self.v1.replay_latest_status()
     }
 
@@ -431,7 +423,7 @@ impl Ledger {
     ///
     /// The underlying v1 SQLite connection is dropped automatically; this call primarily
     /// ensures the RVF store is cleanly closed.
-    pub fn close(self) -> rusqlite::Result<()> {
+    pub fn close(self) -> Result<()> {
         self.store.close().map_err(rvf_err)?;
         drop(self.v1);
         Ok(())

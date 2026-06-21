@@ -1,21 +1,31 @@
 //! `ledger` — the .handoff operational-truth tier.
 //!
-//! Dual-mode event ledger supporting:
-//! - **v2 (default)**: RVF vector-native store with HNSW indexing for semantic recall over session history
-//! - **v1 (fallback)**: rusqlite (SQLite/WAL) + rvf-crypto witness chain
+//! Pure-Rust event ledger (ADR-0017 / HFTASK-0053 — no C in the trust boundary):
+//! - **redb-store (default)**: the authoritative transactional store on `redb`
+//!   (pure-Rust, ACID, single-writer serializable) + the `rvf-crypto` witness chain.
+//!   Provides the witnessed append-only hash-chain, replay, atomic lease CAS, and rollup
+//!   provenance.
+//! - **v2 (overlay, opt-in)**: layers `rvf-runtime::RvfStore` on top for vector-native
+//!   semantic recall (HNSW `query_by_intent`). Every authoritative method delegates to the
+//!   redb store; the RVF overlay only adds recall.
+//! - **legacy-sqlite (non-default)**: a one-time read-only importer that migrates an existing
+//!   bundled-C-SQLite `ledger.db` into redb, re-verifying the witness chain on the way in.
 //!
-//! The v2 implementation uses `rvf-runtime::RvfStore` for vector storage with progressive HNSW indexing,
-//! enabling query-by-intent similarity search. When RVF is unavailable or disabled, the system falls back
-//! to the proven rusqlite+v1 path.
-//!
-//! Validates: append work-order lifecycle events, witness each one (tamper-evidence), replay to current state.
+//! The previous bundled C-SQLite (`rusqlite`) backend has been retired from the default graph;
+//! tamper-evidence and all integrity invariants are preserved byte-for-byte on the redb store.
 
-#[cfg(feature = "v1")]
+// The authoritative redb store lives in `v1` (module name kept for minimal churn / history).
+#[cfg(feature = "redb-store")]
 mod v1;
 #[cfg(feature = "v2")]
 mod v2;
 
-#[cfg(all(feature = "v1", not(feature = "v2")))]
+#[cfg(feature = "legacy-sqlite")]
+pub mod migrate;
+
+// Default + redb-store-only build: export the authoritative store directly.
+#[cfg(all(feature = "redb-store", not(feature = "v2")))]
 pub use v1::*;
+// v2 build: export the overlay (which re-exports the authoritative types from v1).
 #[cfg(feature = "v2")]
 pub use v2::*;
