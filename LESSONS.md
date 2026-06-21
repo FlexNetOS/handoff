@@ -59,3 +59,18 @@ Full retro + routed upgrades + 5th target: `_workspace/10_evolution.md`.
 - **L8 / absence-as-pass** — if any other gate (drift, fleet status, hook severity) is found
   accepting an empty/absent result as pass, the gatekeeper checklist item (U3) moves from skill-text
   to a structural pre-verdict assertion.
+
+---
+
+Run evaluated: `scripts/fail-open-audit.sh` full remediation pass (the U5 advisory lint, actioned
+per its own footer: "Audit each against AGENTS.md 'Fail-closed law'"). The lint listed **115
+candidate sites**; each was read at its call site and judged on-gating-path vs benign.
+
+| # | Lesson (class) | Evidence | Recurrence | Routed-to | Status |
+|---|----------------|----------|------------|-----------|--------|
+| L11 | **Advisory fail-open lints must be actioned, not just shipped.** The U5 lint surfaced 115 candidates; 3 were REAL continuity-gating fail-opens still live after the U1–U5 doctrine pass, incl. one (`current_statuses()`) the doctrine had already *named* but left code-unfixed. The other 112 are benign (fail-*closed* direction, render fallbacks, correct run-helper success mapping, comments/seed-text) and stay as-is — over-fixing benign sites would be churn. | **R1** `fleet.rs::load_member_tasks` silently dropped unparseable member cards (the #95 class on the fleet path, never fixed by HFTASK-0057 which only covered kernel cards) → now reuses the loud `parse_card_file`. **R2** `current_statuses()` `unwrap_or_default` reported empty on a present-but-unreadable ledger to 20 callers incl. `claim`/`next_safe` → now distinguishes absent (quiet) vs present-failed (loud WARNING). **R3** session lifecycle + `cmd_release` un-claim used `if let Ok(mut led)=Ledger::open(){let _ = led.append()}`, silently losing the witness → now `witness_lifecycle()`/`open_ledger_or_exit` surface a lost witness loudly. | 3 instances (all L7 class), 0 new classes | code fixes only (no new doctrine needed — U4 law already covers them); verified live (corrupt-present ledger warns + absent quiet; broken member card warns + render still completes) | **applied** (this PR) |
+
+### Recurrence watch (act on next occurrence)
+- The lint stays **advisory**: post-remediation it should report only benign candidates. If a future
+  run finds a NEW real fail-open the lint already listed (i.e. a candidate that became gating), that is
+  the 4th-instance trigger to promote `fail-open-audit.sh` from advisory to a CI-gating check (L7 watch).

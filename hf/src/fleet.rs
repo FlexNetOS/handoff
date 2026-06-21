@@ -443,10 +443,13 @@ fn load_member_tasks(repo: &Path) -> Vec<WorkOrder> {
             .collect();
         paths.sort();
         for p in paths {
-            if let Ok(s) = std::fs::read_to_string(&p) {
-                if let Ok(wo) = serde_json::from_str::<WorkOrder>(&s) {
-                    v.push(wo);
-                }
+            // fail-open-audit R1: previously a member card that failed to read/parse was silently
+            // dropped (`if let Ok(wo) = ..`), so a broken member card vanished from the fleet
+            // rollup the same way card #95 vanished from `hf status`. Reuse the kernel's LOUD,
+            // schema-validated loader so a non-conforming member card surfaces a WARNING instead
+            // of disappearing.
+            if let Some(wo) = crate::parse_card_file(&p) {
+                v.push(wo);
             }
         }
     }
