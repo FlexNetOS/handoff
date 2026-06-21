@@ -99,7 +99,10 @@ fn try_parse_card(p: &Path) -> Result<WorkOrder, String> {
 
 /// Load a card LOUDLY: on any failure emit a fail-closed WARNING (the card is never silently
 /// dropped — the bug that hid card #95 for a whole session) and return None.
-fn parse_card_file(p: &Path) -> Option<WorkOrder> {
+///
+/// `pub(crate)` so the fleet member-card loader reuses the SAME loud, schema-validated path
+/// (fail-open-audit R1) instead of its own silent `if let Ok` drop.
+pub(crate) fn parse_card_file(p: &Path) -> Option<WorkOrder> {
     match try_parse_card(p) {
         Ok(wo) => Some(wo),
         Err(reason) => {
@@ -172,6 +175,25 @@ fn open_ledger_or_exit(path: &str) -> Ledger {
         }
     }
 }
+/// Witness a lifecycle event against the default ledger, surfacing a LOUD warning if either
+/// the open or the append fails (fail-open-audit R3). These are best-effort lifecycle markers
+/// (session start/end, preflight refusal) where the side effect has already taken place and
+/// aborting would be worse than proceeding — but a LOST witness must never vanish silently the
+/// way `if let Ok(mut led) = Ledger::open(..) { let _ = led.append(..) }` did.
+pub(crate) fn witness_lifecycle(event: &str, wo_id: &str, payload: &str) {
+    match Ledger::open(&ledger_path()) {
+        Ok(mut led) => {
+            if let Err(e) = led.append(event, wo_id, payload, now_ns()) {
+                eprintln!("hf: WARNING — failed to witness {event} ({e}); event NOT recorded");
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "hf: WARNING — cannot open ledger to witness {event} ({e}); event NOT recorded"
+            );
+        }
+    }
+}
 /// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
 /// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
 fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
@@ -192,10 +214,27 @@ fn load_task_in(tasks_dir: &Path, id: &str) -> Option<WorkOrder> {
 }
 
 /// Replay the ledger to get the current status per task id (overrides the card's stored status).
+///
+/// Fail-open guard (fail-open-audit R2): a `.unwrap_or_default()` here silently reported an
+/// EMPTY replay on a read error, so every status command (`hf status`/`resume`/`next_safe`,
+/// 20 call sites) would fall back to each card's stored default — masking a present-but-
+/// unreadable ledger as a fresh/empty one and potentially mis-selecting a claim. We now
+/// distinguish the two: an ABSENT ledger is legitimately empty (fresh repo) and stays quiet;
+/// a PRESENT ledger whose replay fails is surfaced LOUDLY (the loud-load discipline) so no
+/// status command lies in silence. `hf doctor` escalates the same condition to a hard failure.
 fn current_statuses() -> Vec<(String, Status)> {
-    Ledger::open(&ledger_path())
-        .and_then(|l| l.replay_latest_status())
-        .unwrap_or_default()
+    match Ledger::open(&ledger_path()).and_then(|l| l.replay_latest_status()) {
+        Ok(v) => v,
+        Err(e) => {
+            if Path::new(&ledger_path()).exists() {
+                eprintln!(
+                    "hf: WARNING — ledger present at {} but replay failed ({e}); statuses fall back to card defaults and may be stale (run `hf doctor`)",
+                    ledger_path()
+                );
+            }
+            Vec::new()
+        }
+    }
 }
 fn status_of(id: &str, replay: &[(String, Status)], card: &WorkOrder) -> Status {
     replay
@@ -882,11 +921,12 @@ fn cmd_release(id: &str) {
     let Some(wo) = load_task_in(&tasks_dir, id) else {
         return;
     };
-    if let Ok(mut led) = Ledger::open(&ledger.to_string_lossy()) {
-        if led
-            .record_transition(&wo, Status::Backlog, now_ns())
-            .is_ok()
-        {
+    // fail-open-audit R3: a silent `if let Ok` here lost the un-claim witness on a ledger open
+    // or transition failure, leaving the task stuck Claimed with no record of the attempt. Open
+    // fail-closed and surface a failed transition loudly.
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
+    match led.record_transition(&wo, Status::Backlog, now_ns()) {
+        Ok(_) => {
             println!("hf release: {id} -> backlog (un-claimed)");
             // ADR-0003 rule 3 (HFTASK-0042) gap-hunt: a released kb-minted card should also
             // revert its planning-plane status to backlog (mirrors claim → active).
@@ -896,6 +936,9 @@ fn cmd_release(id: &str) {
                     wo.correlation_id
                 );
             }
+        }
+        Err(e) => {
+            eprintln!("hf release: WARNING — failed to witness un-claim of {id} ({e}); task may still be Claimed");
         }
     }
 }
