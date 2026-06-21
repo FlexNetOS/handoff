@@ -13,7 +13,7 @@
     "RVF sidecar open retries on lock contention (fix intermittent hf panic): implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p ledger v2::"
   ],
   "dependencies": [
     "HFTASK-0028"

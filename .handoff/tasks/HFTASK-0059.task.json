@@ -13,7 +13,7 @@
     "Bounded SQLITE_BUSY retry for concurrent ledger writes: implemented + cargo test green + checkpointed"
   ],
   "test_commands": [
-    "cargo test"
+    "cargo test -p ledger v1::"
   ],
   "dependencies": [
     "HFTASK-0028"
