@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0067",
+  "title": "ADR-0018 D1: commit ALL dotfiles/dirs — reverse the .handoff residency-ignore + invert fleet P7",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ADR-0018 D1: moving forward every dotfile/dotdir is git-TRACKED (.handoff incl. ledger + rendered views, .idea, .claude, .github, .kb, .grit config). Stop `hf init`/`scripts/fleet-rollout.sh`/`scripts/handoff-lib.sh` from writing the `.handoff/**/ledger.db`(+wal/shm/rvf/active.md/locks/deliveries/packets) ignore block; REMOVE the existing blocks; ensure those paths are tracked instead. INVERT `hf fleet status` P7 (HFTASK-0034 git_tracks_handoff_db/ledger_guard_present): a tracked `.handoff/ledger.db` is now CONFORMANT; a missing ledger or a present ignore-guard is the VIOLATION. Decide + implement the binary ledger.db conflict story (worktree-isolated per batch HFTASK-0075 + FLEET rollup + serialized merge; binary-merge=ours-replay OR a deterministic text export beside it). Migration artifacts (*.sqlite.bak/*.redb.tmp) stay OUT-OF-TREE (already true, PR #114) — only durable state is committed. Roll the guard removal + P7 inversion ATOMICALLY. Supersedes the ignore half of ADR-0004 §3/§6 + ADR-0016/HFTASK-0035/0037/0048/0021/0066.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D1: commit ALL dotfiles/dirs — reverse the .handoff residency-ignore + invert fleet P7: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e4e2d185a8beea2b1e2b05b7cc0de029c03f844666cf50db9db1aece514e4321",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:ebfe8e05495949a03a3e1b29e0e34a8fa63b1cb3e5a231e56fc609e286bc3775",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

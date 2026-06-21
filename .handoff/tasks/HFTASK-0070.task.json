@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0070",
+  "title": "ADR-0018 D5: handoff-central format + cross-fleet deploy for session-relay-resume/-wrap-up",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0018 D5: the `session-relay-resume`/`-wrap-up` skills (today harness_hub-owned per-repo) get their canonical format/templates defined IN handoff (rendered from the witnessed ledger/packet, NEVER hand-authored prose), and handoff deploys them + enforces byte-consistency to every fleet member via the /handoff-loop-init family (HFTASK-0065). Cross-repo (harness_hub) — gatekeeper-gated.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D5: handoff-central format + cross-fleet deploy for session-relay-resume/-wrap-up: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0065"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:ca93233ad11cede028bf9e7a69bdb82964845e8067d4d1d75c3b87f70aa2157a",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:826fe56fe5040d86444334d257aa10e5f1f78736ec4d3f08fbf72444a92a2c21",
+    "constraint_hash": "blake3:5528f9155242ad11bf34413ffb5914c8eed951cca7b6a3074baa7b754eb61209",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

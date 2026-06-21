@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0072",
+  "title": "ADR-0018 D7: full adoption of meta/.kb/AGENTS.md (init full .kb + create-first + two-way seam)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0018 D7: fully adopt the FlexNetOS agent guide meta/.kb/AGENTS.md (765 lines: document-before-implement, context docs, `git kb board`, traceability) in handoff. Init the FULL `.kb` (handoff is code-intelligence-only today: `git kb init`), wire the create-first discipline + board + traceability into the loop, and bind the planning<->execution seam (ADR-0003) BOTH ways per the guide (mint-in + write-back). No downgrade of the existing one-way ledger->kb mirror; kb still never overrides execution truth.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D7: full adoption of meta/.kb/AGENTS.md (init full .kb + create-first + two-way seam): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:703f1b6b20f710a1141908903960d671577133975aa95baf0f915db91dd19a3f",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:4e86000b681ea8d1e0b5f4f1508212667243f19719f6133001af78276bed0ac4",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0071",
+  "title": "ADR-0018 D4: more direction from handoff (next-action in hf resume + packet)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0018 D4: `hf resume` + the rendered packet emit EXPLICIT next-action direction — the single next safe task, the exact next command, the cycle/context-budget state, and the blocking walls — so a fresh agent needs zero archaeology. The handoff-loop skill gives richer steering (decision rationale + 'do this next', not just 'here is state').",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0018 D4: more direction from handoff (next-action in hf resume + packet): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:32fcfe440da439bfed6829a3a53a6f66cda603a8891991d9a09120d2eeb3b173",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:ffda7e2d0f0bb334db047a143ea5e450182cb1b97de9afd22c8399762c96862b",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
