@@ -261,15 +261,35 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // RvfStore::create/open open several files and fsync the manifest. Under full
+    // `cargo test --workspace` parallelism (many test binaries doing concurrent /tmp
+    // IO) this intermittently surfaced as a transient FsyncFailed (0x0303) — fd/fsync
+    // resource pressure, not a logic bug (each test already uses a unique path). The
+    // ledger is opened single-threaded in production, so serialize the RVF-touching
+    // tests to bound concurrency and make them deterministic.
+    static RVF_TEST_GUARD: Mutex<()> = Mutex::new(());
+
+    /// Acquire the global RVF test lock, recovering from poisoning so a single failing
+    /// test does not cascade into the rest.
+    fn rvf_guard() -> std::sync::MutexGuard<'static, ()> {
+        RVF_TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     fn temp_db() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        // Monotonic counter guarantees a unique path even if two calls land on the same
+        // nanosecond, on top of pid + timestamp.
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "hf-ledger-v2-test-{}-{}",
+            "hf-ledger-v2-test-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join("ledger.db")
@@ -292,6 +312,7 @@ mod tests {
 
     #[test]
     fn append_roundtrips_through_all_events() {
+        let _g = rvf_guard();
         let path = temp_db();
         {
             let mut led = Ledger::open(path.to_str().unwrap()).unwrap();
@@ -309,6 +330,7 @@ mod tests {
 
     #[test]
     fn witness_chain_verifies() {
+        let _g = rvf_guard();
         let path = temp_db();
         {
             let mut led = Ledger::open(path.to_str().unwrap()).unwrap();
@@ -324,6 +346,7 @@ mod tests {
 
     #[test]
     fn semantic_recall_finds_similar_event() {
+        let _g = rvf_guard();
         let path = temp_db();
         {
             let mut led = Ledger::open(path.to_str().unwrap()).unwrap();
@@ -349,6 +372,7 @@ mod tests {
 
     #[test]
     fn events_after_and_rollup_still_work() {
+        let _g = rvf_guard();
         let central_path = temp_db();
         let src_path = temp_db();
         {
@@ -371,6 +395,7 @@ mod tests {
 
     #[test]
     fn atomic_lease_works() {
+        let _g = rvf_guard();
         let path = temp_db();
         {
             let mut led = Ledger::open(path.to_str().unwrap()).unwrap();
