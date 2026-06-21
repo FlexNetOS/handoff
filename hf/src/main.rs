@@ -86,45 +86,57 @@ fn capsule_path() -> PathBuf {
 /// returns `None`. This fixes the FAIL-OPEN bug where a present-but-broken card (e.g. #95's
 /// missing `intent_lock`) vanished from `hf status` with no signal. The CLI is not bricked on
 /// one bad card (the `hf doctor` sweep, HFTASK-0064, will turn this into a hard fail).
+/// Core card load: read → JSON-parse → schema-validate → deserialize. Returns the WorkOrder or
+/// a concise human reason. The single source of truth for "does this card conform", shared by
+/// the loud loader (`parse_card_file`) and the quiet `hf doctor` audit (`scan_card_conformance`).
+fn try_parse_card(p: &Path) -> Result<WorkOrder, String> {
+    let s = fs::read_to_string(p).map_err(|e| format!("unreadable: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&s).map_err(|e| format!("invalid JSON: {e}"))?;
+    schema::validate_card(&value).map_err(|v| format!("schema violation [{v}]"))?;
+    serde_json::from_value::<WorkOrder>(value).map_err(|e| format!("deserialize: {e}"))
+}
+
+/// Load a card LOUDLY: on any failure emit a fail-closed WARNING (the card is never silently
+/// dropped — the bug that hid card #95 for a whole session) and return None.
 fn parse_card_file(p: &Path) -> Option<WorkOrder> {
-    let s = match fs::read_to_string(p) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!(
-                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
-                p.display()
-            );
-            return None;
-        }
-    };
-    let value: serde_json::Value = match serde_json::from_str(&s) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!(
-                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
-                p.display()
-            );
-            return None;
-        }
-    };
-    if let Err(violations) = schema::validate_card(&value) {
-        eprintln!(
-            "hf: WARNING — card {} failed to load: schema violation [{violations}] \
-             (NOT in status; fix or remove it)",
-            p.display()
-        );
-        return None;
-    }
-    match serde_json::from_value::<WorkOrder>(value) {
+    match try_parse_card(p) {
         Ok(wo) => Some(wo),
-        Err(e) => {
+        Err(reason) => {
             eprintln!(
-                "hf: WARNING — card {} failed to load: {e} (NOT in status; fix or remove it)",
+                "hf: WARNING — card {} failed to load: {reason} (NOT in status; fix or remove it)",
                 p.display()
             );
             None
         }
     }
+}
+
+/// HFTASK-0064: enumerate every card file on disk and return the non-conforming ones with a
+/// reason, QUIETLY (no eprintln — `hf doctor` formats the report). A non-empty result is a
+/// fail-closed health violation: a card that can't load is invisible to `hf status` and must
+/// surface as a hard failure, never hide.
+fn scan_card_conformance() -> Vec<(String, String)> {
+    let mut bad = vec![];
+    let Ok(rd) = fs::read_dir(tasks_dir()) else {
+        return bad;
+    };
+    let mut paths: Vec<_> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    paths.sort();
+    for p in paths {
+        if let Err(reason) = try_parse_card(&p) {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            bad.push((name, reason));
+        }
+    }
+    bad
 }
 
 fn load_tasks() -> Vec<WorkOrder> {
@@ -487,7 +499,32 @@ fn cmd_doctor(json: bool) {
     let in_git = Path::new(".git").exists();
     let swallow = in_git.then(|| durability::swallow_report(Path::new(".")));
     let durability_ok = swallow.as_ref().map(|r| r.is_healthy()).unwrap_or(true);
-    let healthy = chain_ok && ledger_present && durability_ok;
+    // HFTASK-0064 (a): every card file on disk MUST conform — a card that can't load is
+    // invisible to `hf status`. The loud loader warns; here it is a HARD health failure
+    // (catches the load_tasks silent-drop the fail-open lesson L9 names).
+    let unconformant = scan_card_conformance();
+    // HFTASK-0064 (b): no empty-default masking — if the ledger is present, its replay MUST
+    // succeed. `current_statuses()` uses `unwrap_or_default()` (a fail-open that would report
+    // 0 tasks on a read error); doctor asserts the read explicitly instead.
+    let replay_ok = !ledger_present
+        || Ledger::open(&ledger_path())
+            .and_then(|l| l.replay_latest_status())
+            .is_ok();
+    // HFTASK-0064 (c): opening the ledger above auto-reclaims a provably-dead RVF lock
+    // (HFTASK-0062) and witnesses it. Surface the lifetime reclaim count and whether a
+    // (necessarily live-holder, since dead ones were just reclaimed) lock lingers — the
+    // latter is informational, not a failure (a live writer is legitimate).
+    let reclaimed_total = Ledger::open(&ledger_path())
+        .and_then(|l| l.all_events())
+        .map(|evs| {
+            evs.iter()
+                .filter(|e| e.event_type == "lock_reclaimed")
+                .count()
+        })
+        .unwrap_or(0);
+    let rvf_lock_present = Path::new(&format!("{}.rvf.lock", ledger_path())).exists();
+    let healthy =
+        chain_ok && ledger_present && durability_ok && replay_ok && unconformant.is_empty();
     if json {
         let out = serde_json::json!({
             "schema": "handoff.doctor.v1",
@@ -500,6 +537,14 @@ fn cmd_doctor(json: bool) {
             "done": done,
             "remaining": tasks.len() - done,
             "next_task_id": next,
+            "replay_ok": replay_ok,
+            "cards_conformant": unconformant.is_empty(),
+            "unconformant_cards": unconformant
+                .iter()
+                .map(|(name, reason)| serde_json::json!({ "card": name, "reason": reason }))
+                .collect::<Vec<_>>(),
+            "rvf_locks_reclaimed_total": reclaimed_total,
+            "rvf_lock_present": rvf_lock_present,
             "durability": swallow.as_ref().map(|r| serde_json::json!({
                 "ok": r.is_healthy(),
                 "dir_form_ignores": r.dir_form_ignores,
@@ -524,6 +569,30 @@ fn cmd_doctor(json: bool) {
             ledger_path()
         );
         println!("  tasks         : {done}/{} done", tasks.len());
+        println!(
+            "  cards         : {}",
+            if unconformant.is_empty() {
+                format!("OK (all {} conform)", tasks.len())
+            } else {
+                format!("NON-CONFORMANT ({} unloadable)", unconformant.len())
+            }
+        );
+        for (name, reason) in &unconformant {
+            println!("                  ⚠ {name}: {reason}");
+        }
+        println!(
+            "  replay        : {}",
+            if replay_ok { "OK" } else { "UNREADABLE" }
+        );
+        println!(
+            "  rvf lock      : {} reclaimed (lifetime){}",
+            reclaimed_total,
+            if rvf_lock_present {
+                "; a lock is currently held (live writer)"
+            } else {
+                ""
+            }
+        );
         println!(
             "  next safe     : {}",
             next.as_deref().unwrap_or("(none — all done or blocked)")
@@ -2490,6 +2559,11 @@ fn cmd_seed() {
             "HFTASK-0063" => &["cargo test -p hf parse_tests_ran"],
             // schemars gen + serialization-stability + jsonschema card validation/rejection
             "HFTASK-0057" => &["cargo test -p work-order schema", "cargo test -p hf schema"],
+            // doctor card-conformance core (try_parse_card) + RVF reclaim (ledger lock tests)
+            "HFTASK-0064" => &[
+                "cargo test -p hf try_parse_card",
+                "cargo test -p ledger lock",
+            ],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -2929,6 +3003,41 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn try_parse_card_accepts_valid_and_names_violations() {
+        // HFTASK-0064: the doctor card-conformance core — a valid card loads; every failure
+        // mode returns a concise reason (never a silent None) so `hf doctor` can fail closed.
+        let dir = std::env::temp_dir().join(format!("hf-card-{}-{}", std::process::id(), now_ns()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let valid = r#"{"schema":"handoff.task.v1","id":"HFTASK-9001","title":"t","status":"backlog","priority":"P2","objective":"o","path_scope":[],"acceptance_criteria":[],"test_commands":[],"correlation_id":"c","intent_lock":{"objective_hash":"a","path_scope_hash":"b","acceptance_hash":"c"}}"#;
+        let ok = dir.join("ok.json");
+        std::fs::write(&ok, valid).unwrap();
+        assert!(try_parse_card(&ok).is_ok(), "a complete card must load");
+
+        // missing intent_lock → schema violation naming the field (the card #95 bug).
+        let bad = valid.replace(
+            r#","intent_lock":{"objective_hash":"a","path_scope_hash":"b","acceptance_hash":"c"}"#,
+            "",
+        );
+        let bp = dir.join("missing_lock.json");
+        std::fs::write(&bp, &bad).unwrap();
+        let e = try_parse_card(&bp).unwrap_err();
+        assert!(e.contains("intent_lock"), "reason must name the field: {e}");
+
+        // invalid JSON → distinct reason.
+        let gp = dir.join("garbage.json");
+        std::fs::write(&gp, "{not json").unwrap();
+        assert!(try_parse_card(&gp).unwrap_err().contains("invalid JSON"));
+
+        // free-form id → schema violation.
+        let badid = valid.replace("HFTASK-9001", "nope");
+        let ip = dir.join("bad_id.json");
+        std::fs::write(&ip, badid).unwrap();
+        assert!(try_parse_card(&ip).unwrap_err().contains("schema"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
