@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0061",
+  "title": "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "The fail-closed kernel had no way to CORRECT a false-Done: a task marked Done via a pre-PR#103 blanket-`cargo test` rubber stamp (e.g. HFTASK-0057, whose schemars/jsonschema feature was never built) was stuck Done with no inverse op (`hf release` only un-claims in-progress states; `should_unclaim` excludes Done/Review). Add `hf reopen <ID> \"<reason>\"`: a reason is MANDATORY (no silent un-completion), only a terminal state (Done/Review) is reopenable, the WHY is witnessed as a `task_reopened` event before the `task_transition -> Backlog` replay acts on, kb planning-plane reverts via write-back, and the on-disk card snapshot is re-synced. Pure `should_reopen` gate, unit-tested disjoint from `should_unclaim`. Shipped: reconciled HFTASK-0057's false-Done.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test -p hf reopen"
+  ],
+  "dependencies": [
+    "HFTASK-0038"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:73275886d5ab476f1b2aa05d059dbf6c86e9caba35c647a27e5660a0d6642006",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:eebd5002ed9afcd30801d6b1b557a833d57f34bc9e827781ffb878ec5e322d26",
+    "constraint_hash": "blake3:913788a5d6078b8eca642c731cee00866a4db67e84c5f8ca22495f3764acd89d",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

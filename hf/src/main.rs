@@ -724,6 +724,13 @@ fn should_unclaim(status: Option<Status>) -> bool {
     )
 }
 
+/// HFTASK-0061: only a TERMINAL/post-work state (Done/Review) is reopenable. An in-progress
+/// claim is relinquished with `hf release` (see `should_unclaim`); a Backlog task or an unknown
+/// id has nothing to reopen. Pure so the gating decision is unit-testable.
+fn should_reopen(status: Option<Status>) -> bool {
+    matches!(status, Some(Status::Done) | Some(Status::Review))
+}
+
 /// Release the claim on a task: free the weave lease AND **un-claim** it — revert an
 /// in-progress task's ledger status back to `Backlog` (HFTASK-0038). A lease-only release
 /// left the task stuck `Claimed`, so the claim was never truly relinquished and
@@ -778,6 +785,62 @@ fn cmd_release(id: &str) {
                 );
             }
         }
+    }
+}
+
+/// `hf reopen <ID> "<reason>"` (HFTASK-0061) — the witnessed inverse of completion: revert a
+/// **terminal** task (Done/Review) back to `Backlog` with a recorded reason. The fail-closed
+/// kernel must be able to CORRECT a false-Done — e.g. a task marked Done via a pre-guard
+/// blanket-`cargo test` rubber stamp whose feature was never actually built. A reason is
+/// MANDATORY (fail-closed: no silent un-completion), and only a terminal state is reopenable
+/// (an in-progress claim is relinquished with `hf release`, not reopened). The WHY is witnessed
+/// as a `task_reopened` event before the `task_transition → Backlog` that replay acts on, so the
+/// audit trail records both that the Done was reverted and why.
+fn cmd_reopen(id: &str, reason: &str) {
+    if id.is_empty() {
+        eprintln!("hf reopen: an id is required — `hf reopen <ID> \"<reason>\"`");
+        std::process::exit(2);
+    }
+    if reason.trim().is_empty() {
+        eprintln!("hf reopen: a reason is required — `hf reopen <ID> \"<reason>\"` (no silent un-completion)");
+        std::process::exit(2);
+    }
+    let status = current_statuses()
+        .into_iter()
+        .find(|(k, _)| k == id)
+        .map(|(_, s)| s);
+    // Only a terminal/post-work state is reopenable; in-progress uses `hf release`.
+    if !should_reopen(status) {
+        eprintln!(
+            "hf reopen: {id} is {status:?}, not Done/Review — nothing to reopen \
+             (use `hf release` to relinquish an in-progress claim)"
+        );
+        std::process::exit(1);
+    }
+    let Ok((ledger, tasks_dir)) = route::route_for_task(id) else {
+        eprintln!("hf reopen: cannot route {id}");
+        std::process::exit(1);
+    };
+    let Some(wo) = load_task_in(&tasks_dir, id) else {
+        eprintln!("hf reopen: no such task {id} on disk");
+        std::process::exit(1);
+    };
+    let from = format!("{:?}", status.expect("matched Done/Review above"));
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
+    // Witness the WHY first, then the status revert replay acts on.
+    let payload = serde_json::json!({ "id": id, "reason": reason, "from": from }).to_string();
+    led.append("task_reopened", id, &payload, now_ns()).unwrap();
+    led.record_transition(&wo, Status::Backlog, now_ns())
+        .unwrap();
+    println!("hf reopen: {id} {from} -> Backlog (witnessed; reason: {reason})");
+    // ADR-0003 rule 3: a reopened kb-minted card reverts its planning-plane status too.
+    if kb::write_back(&wo.correlation_id, &kb::KbTransition::Released) {
+        println!("hf reopen: kb {} → backlog (write-back)", wo.correlation_id);
+    }
+    // Keep the on-disk card snapshot in sync with the new ledger truth.
+    let n = sync_cards();
+    if n > 0 {
+        println!("hf reopen: synced {n} card(s) from ledger truth");
     }
 }
 
@@ -2016,6 +2079,18 @@ fn cmd_seed() {
            "The kernel OWNS and SHIPS the .handoff commit-vs-ignore policy instead of every consumer hand-rolling its own .gitignore: a dir-form `.handoff/`/`.claude/` ignore silently SWALLOWS durable tasks/decisions/loop ledgers (git cannot re-include past an excluded parent dir; !-negations can't rescue it). Ship hf/src/durability.rs (durable-vs-regenerable taxonomy + canonical CONTENTS-FORM .gitignore fragment + git check-ignore swallow_report + repair_gitignore), the `hf gitignore [--check|--repair|--write]` verb, and the fail-closed swallow-guard wired into `hf doctor` (DEGRADED + exit 1 on a swallow). docs/adr-0016-handoff-durability-policy.md. Shipped PR #98.", &["HFTASK-0001"]),
         mk("HFTASK-0060", "RVF sidecar open retries on lock contention (fix intermittent hf panic)", Priority::P1,
            "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().", &["HFTASK-0028"]),
+        // --- Fail-closed harness-upgrade burst (2026-06-21, owner-authorized via /handoff-loop +
+        //     /harness-evolution). Root lesson L7: the FAIL-OPEN anti-pattern — a guard/loader/
+        //     evidence-check that proceeds when it can't confirm its precondition. Each target
+        //     closes one fail-open surface; #0064 is the systemic sweep that asserts the class. ---
+        mk("HFTASK-0061", "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason", Priority::P1,
+           "The fail-closed kernel had no way to CORRECT a false-Done: a task marked Done via a pre-PR#103 blanket-`cargo test` rubber stamp (e.g. HFTASK-0057, whose schemars/jsonschema feature was never built) was stuck Done with no inverse op (`hf release` only un-claims in-progress states; `should_unclaim` excludes Done/Review). Add `hf reopen <ID> \"<reason>\"`: a reason is MANDATORY (no silent un-completion), only a terminal state (Done/Review) is reopenable, the WHY is witnessed as a `task_reopened` event before the `task_transition -> Backlog` replay acts on, kb planning-plane reverts via write-back, and the on-disk card snapshot is re-synced. Pure `should_reopen` gate, unit-tested disjoint from `should_unclaim`. Shipped: reconciled HFTASK-0057's false-Done.", &["HFTASK-0038"]),
+        mk("HFTASK-0062", "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf", Priority::P1,
+           "Liveness gap surfaced after HFTASK-0060: acquire_store (ledger/src/v2.rs) RETRIES transient 0x0300 LockHeld/0x0301 LockStale but never RECLAIMS a persistently-orphaned lock whose holder PROCESS IS DEAD, so a leftover `.handoff/ledger.db.rvf.lock` returns LockHeld past the retry cap and wedges EVERY subsequent `hf` invocation (fail-closed, no panic — but the kernel is unusable until a human `rm`s it, violating no-human-in-loop). Fix: detect a provably-dead holder (PID liveness and/or mtime age-out beyond the lock TTL) and reclaim it, emitting a witnessed `lock_reclaimed` event; REFUSE to steal a live or unverifiable-liveness holder (fail-closed both ways). NOT 'raise the retry cap' — that is a fail-open band-aid (longer wait, same wedge). The v1 SQLite store stays authoritative so a bounded reclaim never risks the chain.", &["HFTASK-0060"]),
+        mk("HFTASK-0063", "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest)", Priority::P2,
+           "PR #103 made `hf test` fail closed on zero executed tests, but only for libtest: `parse_tests_ran` parses only cargo's `test result:` lines, so a pytest/jest/go-test card degrades to exit-code-only (the None branch) and can still be rubber-stamped by a zero-match run. Also `cmd_test` runs `sh -c` with NO `current_dir`, so test_commands are fragile to the invocation cwd. Fix: (a) pin the command's working dir to the task home (repo/meta root via the existing route/anchor helpers) so commands are cwd-stable; (b) extend executed-count parsing to recognized non-libtest runners (pytest summary line, jest 'Tests:' line, go-test '--- PASS/FAIL' / 'ok' counts), keeping the None->exit-code-only degrade ONLY for genuinely-unrecognized runners. Positive evidence for non-cargo cards, not just cargo.", &["HFTASK-0045"]),
+        mk("HFTASK-0064", "hf doctor fail-closed invariant sweep + stale-lock self-heal (assert the FAIL-OPEN class is closed)", Priority::P1,
+           "The systemic guard (5th target, harness-evolution L7/L10): a point fix per surface isn't enough — `hf doctor` must ASSERT the whole fail-open class stays closed AND auto-heal the one liveness wedge. Extend cmd_doctor to: (a) enumerate every `tasks/*.task.json` and FAIL (DEGRADED + exit 1) if any card on disk is absent from `hf status` (catches the load_tasks silent-drop that hid card #95 a whole session); (b) assert ledger replay + witness-chain verify with NO empty/default fallback masking a read error; (c) detect a provably-dead `*.rvf.lock` and reclaim it via HFTASK-0062 (witnessed `lock_reclaimed`), REFUSING live/unverifiable holders; (d) `hf doctor --json` structured report. Unit-tested: dead-reclaim, live-refusal, missing-card-fails, empty-status-fails. Depends on 0062 (consume reclaim) + the loud-load fix in 0057 (assert). Detection-only form can ship first (additive, no-downgrade).", &["HFTASK-0062","HFTASK-0057"]),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -2238,6 +2313,8 @@ fn cmd_seed() {
             "HFTASK-0059" => &["cargo test -p ledger v1::"],
             // RVF sidecar acquire_store open-retry, exercised by the v2 suite: 6 tests
             "HFTASK-0060" => &["cargo test -p ledger v2::"],
+            // hf reopen gate (should_reopen, disjoint from should_unclaim): reopen tests
+            "HFTASK-0061" => &["cargo test -p hf reopen"],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -2302,6 +2379,16 @@ fn main() {
         ),
         Some("reconcile") => cmd_reconcile(),
         Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("reopen") => {
+            let positional: Vec<&str> = args[1..]
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|a| !a.starts_with("--"))
+                .collect();
+            let id = positional.first().copied().unwrap_or("");
+            let reason = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
+            cmd_reopen(id, &reason);
+        }
         Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
         Some("checkpoint") => {
             let auto = args.iter().any(|a| a == "--auto");
@@ -2603,7 +2690,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|handoff|resume [--json|--compact]>");
         }
     }
 }
@@ -2661,6 +2748,33 @@ mod tests {
         assert!(!should_unclaim(Some(Status::Done)));
         assert!(!should_unclaim(Some(Status::Backlog)));
         assert!(!should_unclaim(None));
+    }
+
+    #[test]
+    fn reopen_targets_only_terminal_states() {
+        // HFTASK-0061: reopen is the inverse of release — it reverts a FINISHED task, never an
+        // in-progress claim (that's `hf release`) and never an already-Backlog/unknown task.
+        assert!(should_reopen(Some(Status::Done)));
+        assert!(should_reopen(Some(Status::Review)));
+        assert!(!should_reopen(Some(Status::Claimed)));
+        assert!(!should_reopen(Some(Status::Checkpointed)));
+        assert!(!should_reopen(Some(Status::Active)));
+        assert!(!should_reopen(Some(Status::Backlog)));
+        assert!(!should_reopen(None));
+        // reopen and release partition the in-progress vs terminal space disjointly.
+        for s in [
+            Status::Backlog,
+            Status::Claimed,
+            Status::Checkpointed,
+            Status::Active,
+            Status::Review,
+            Status::Done,
+        ] {
+            assert!(
+                !(should_reopen(Some(s)) && should_unclaim(Some(s))),
+                "reopen and release must never both apply to {s:?}"
+            );
+        }
     }
 
     #[test]

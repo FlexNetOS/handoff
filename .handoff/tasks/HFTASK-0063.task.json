@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0063",
+  "title": "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "PR #103 made `hf test` fail closed on zero executed tests, but only for libtest: `parse_tests_ran` parses only cargo's `test result:` lines, so a pytest/jest/go-test card degrades to exit-code-only (the None branch) and can still be rubber-stamped by a zero-match run. Also `cmd_test` runs `sh -c` with NO `current_dir`, so test_commands are fragile to the invocation cwd. Fix: (a) pin the command's working dir to the task home (repo/meta root via the existing route/anchor helpers) so commands are cwd-stable; (b) extend executed-count parsing to recognized non-libtest runners (pytest summary line, jest 'Tests:' line, go-test '--- PASS/FAIL' / 'ok' counts), keeping the None->exit-code-only degrade ONLY for genuinely-unrecognized runners. Positive evidence for non-cargo cards, not just cargo.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0045"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:c321e4e9f396d66b00a3de5f96a2984f52faa795464509d0d9df943b9555d554",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:516149bf84821769400d279217be235664f5202e078ff7e557a59ad2997f7efe",
+    "constraint_hash": "blake3:ea8d1dcc33021c0a463cbff86f3ab962b7ba7f8985dff1fcfcfed0525c6e0b55",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
