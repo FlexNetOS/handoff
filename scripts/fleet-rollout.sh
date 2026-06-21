@@ -54,51 +54,14 @@ role_for() {
   tags="${tags#*tags:}"; tags="${tags//[\[\] ]/}"; tags="${tags%%,*}"; echo "${tags:-tool}"
 }
 
-# HFTASK-0035 (ADR-0004 §3.3/§6 rev): ensure the repo's .gitignore guards the local ledger
-# so the per-repo `.handoff/**/ledger.db` (+ wal/shm sidecars, incl. grit worktrees) is never
-# committed — the one good half of the old rule, kept while the gitignored local ledger is now
-# legitimate. Idempotent: returns 0 if it ADDED any missing guard, 1 if all are already present.
-# `hf fleet status` (HFTASK-0034) gates on tracked DBs and missing guards.
-ensure_ledger_guard() {
-  local dir="$1"
-  local changed=0
-  local need_header=1
-  add_if_missing() {
-    local path="$1"
-    if git -C "$dir" check-ignore -q "$path" 2>/dev/null; then
-      return
-    fi
-    if [ "$need_header" = 1 ]; then
-      {
-        echo ""
-        echo "# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)"
-      } >> "$dir/.gitignore"
-      need_header=0
-    fi
-    echo "$path" >> "$dir/.gitignore"
-    changed=1
-  }
-  add_if_missing ".handoff/**/ledger.db"
-  add_if_missing ".handoff/**/*.db-wal"
-  add_if_missing ".handoff/**/*.db-shm"
-  return $((1 - changed))
-}
-
-# HFTASK-0037: `hf resume` / `hf handoff` render `.handoff/active.md` as a local derived
-# view (like `.handoff/packets/latest.md`). It must never be committed, or every session
-# will dirty the tree. Idempotent: returns 0 if it ADDED the guard, 1 if already ignored.
-ensure_active_md_guard() {
-  local dir="$1"
-  if git -C "$dir" check-ignore -q .handoff/active.md 2>/dev/null; then
-    return 1
-  fi
-  {
-    echo ""
-    echo "# handoff continuity: active.md is a local derived view (HFTASK-0037)"
-    echo "/.handoff/active.md"
-  } >> "$dir/.gitignore"
-  return 0
-}
+# HFTASK-0066: the .gitignore residency guards live in ONE place — `scripts/handoff-lib.sh`
+# (ADR-0004 §3.3/§6 rev, HFTASK-0035/0037; extended for the redb cutover HFTASK-0053 with the
+# `*.sqlite.bak`/`*.redb.tmp` migration-artifact guards). This script previously kept its own
+# copy of `ensure_ledger_guard`/`ensure_active_md_guard`, which drifted (it lacked the migration
+# guards). Source the canonical lib so there is exactly one definition; the functions are
+# signature-compatible drop-ins (each takes a dir, returns 0 if it ADDED a guard, 1 if present).
+# shellcheck source=scripts/handoff-lib.sh
+. "$(dirname "$0")/handoff-lib.sh"
 
 GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0; ACTIVE_GUARDED=0
 if [ ${#ONLY[@]} -gt 0 ]; then
