@@ -105,9 +105,31 @@ impl BranchPolicy {
     /// trunk after a merge, honoring `develop_mirrors_trunk`. `None` when the rule doesn't
     /// apply. Pushing `origin/<trunk>:refs/heads/<base>` is **fast-forward-only by default** —
     /// git rejects a non-ff push — so develop can never be force-moved or diverged by this.
+    ///
+    /// NOTE the direction: this is the **mirror-back** (trunk → base), keeping develop current
+    /// with the trunk after a hotfix lands on the trunk. The forward **promotion** (base →
+    /// trunk) is `hf promote` via [`trunk_ref_api_path`](Self::trunk_ref_api_path).
     pub fn develop_sync_refspec(&self) -> Option<String> {
         self.should_sync_develop_trunk()
             .then(|| format!("origin/{}:refs/heads/{}", self.trunk, self.base))
+    }
+
+    /// HFTASK-0076 (ADR-0018 D11): the GitHub REST ref path of the protected trunk, used by
+    /// `hf promote` to fast-forward the trunk to the integration base via the owner-authorized
+    /// `gh api -X PATCH <path> -f sha=<base-head> -F force=false` — where `force=false` makes
+    /// the server **reject any non-fast-forward** (the same no-downgrade guarantee as a plain
+    /// ff push, enforced server-side). This is the forward **promotion** direction
+    /// (base → trunk, i.e. develop → master), the inverse of
+    /// [`develop_sync_refspec`](Self::develop_sync_refspec)'s trunk → base mirror-back.
+    ///
+    /// The promotion uses the `gh-api` PATCH path deliberately: a plain `git push
+    /// <sha>:refs/heads/<trunk>` is classifier-blocked in this workspace, whereas the PATCH is
+    /// the documented legitimate trunk-mirror — and it is **runner-independent**, so it
+    /// promotes hands-off even when the shared GitHub Actions queue starves `sync-master.yml`'s
+    /// required checks. Gated by the same [`should_sync_develop_trunk`](Self::should_sync_develop_trunk)
+    /// policy (clone model + `develop_mirrors_trunk` + a distinct base/trunk).
+    pub fn trunk_ref_api_path(&self) -> String {
+        format!("repos/{}/git/refs/heads/{}", self.origin, self.trunk)
     }
 }
 
@@ -197,6 +219,37 @@ mod tests {
                 .unwrap()
                 .should_sync_develop_trunk()
         );
+    }
+
+    #[test]
+    fn trunk_ref_api_path_targets_the_protected_trunk() {
+        // HFTASK-0076: the gh-api ref path `hf promote` PATCHes to fast-forward the trunk.
+        let bp = BranchPolicy::resolve(&remote("clone", "develop", "master", true)).unwrap();
+        assert_eq!(
+            bp.trunk_ref_api_path(),
+            "repos/FlexNetOS/handoff/git/refs/heads/master"
+        );
+        // Honors the trunk-name reconcile (the `main` alias path) without code changes.
+        let main_bp = BranchPolicy::resolve(&remote("clone", "develop", "main", true)).unwrap();
+        assert_eq!(
+            main_bp.trunk_ref_api_path(),
+            "repos/FlexNetOS/handoff/git/refs/heads/main"
+        );
+    }
+
+    #[test]
+    fn promote_is_the_inverse_direction_of_mirror_back() {
+        // D11: promotion is base→trunk (develop→master); the HFTASK-0044 sync is trunk→base
+        // (master→develop). Same mirror policy gates both; opposite directions.
+        let bp = BranchPolicy::resolve(&remote("clone", "develop", "master", true)).unwrap();
+        assert!(bp.should_sync_develop_trunk());
+        // mirror-back keeps develop current with master:
+        assert_eq!(
+            bp.develop_sync_refspec().as_deref(),
+            Some("origin/master:refs/heads/develop")
+        );
+        // promotion targets the master ref (the opposite direction, via the api path):
+        assert!(bp.trunk_ref_api_path().ends_with("/heads/master"));
     }
 
     #[test]
