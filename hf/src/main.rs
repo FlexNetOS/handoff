@@ -1360,6 +1360,13 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         promote_develop_to_trunk(&mut led, id);
         // HFTASK-0044: keep develop current with the trunk (trunk → base mirror-back).
         sync_develop_to_trunk(&mut led, id);
+        // HFTASK-0075 (ADR-0018 D10): the "removed ON verified PR merge" path — now that a
+        // `pr_merged` is witnessed for this batch, reap its session worktree. Non-fatal and
+        // fail-closed (like the promote/sync calls above): if no session/merge can be
+        // confirmed it does nothing, leaving the worktree. Drop the ledger handle first so
+        // the reap replays the fresh, just-appended events from a clean open.
+        drop(led);
+        session::reap_open_session_if_merged();
     }
     // ADR-0003 rule 3 (HFTASK-0042): flip the kb plan to completed with evidence (no-op for
     // non-kb cards). One-way: planning is informed by execution, never read back.
@@ -3405,7 +3412,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
         }
     }
 }
