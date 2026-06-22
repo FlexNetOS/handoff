@@ -2747,6 +2747,10 @@ fn cmd_seed() {
            "ADR-0018 D11: fix/replace the `sync-master.yml` stall so develop promotes to trunk AUTOMATICALLY on green with NO manual `gh api` ff. Reconcile the trunk NAME: directive says `main`, repo uses `master` — standardize on `main` (or keep `master` with `main` as the documented alias) across `policy.toml`, `.github/workflows/*`, and the docs, ONE decision applied everywhere. The pipeline is fixed: branch off develop -> PR --base develop -> auto-promote on green.", &[]),
         mk("HFTASK-0077", "ADR-0018 D6: update .claude/rules/* + meta rules to the full-auto model + fleet deploy", Priority::P2,
            "ADR-0018 D6: update `handoff/.claude/rules/*` + the meta-level rules to the full-auto operating model (committed dotfiles, worktree-per-batch, context-budget wrap, full `.kb` adoption, grit+gh grounding, designated-agent-replaces-human). Deploy the updated rules fleet-wide via the HFTASK-0065 /handoff-loop-init mechanism.", &["HFTASK-0067","HFTASK-0068","HFTASK-0075"]),
+        // --- Owner directive 2026-06-21 (relay #134 from harness-agent-rs): institutionalize the
+        // LIVE differential-drive verification that "caught what 1000+ green tests missed". ---
+        mk("HFTASK-0078", "Live differential-drive verification as a fleet handoff action workflow", Priority::P1,
+           "Owner directive (relay #134): a LIVE differential drive (drive the REAL binary/CLI and DIFF its actual output against an expectation) caught what 1000+ green unit tests missed; capture it as a fleet-deployable handoff action workflow that institutionalizes the FAIL-OPEN doctrine the kernel already lives by (green is not proof; cases-run must be > 0; ABSENCE is a FAILURE, never a silent pass). Add `.github/workflows/differential-drive.yml` — a GENERIC, repo-agnostic reusable (`workflow_call` + `workflow_dispatch`) GitHub Actions workflow that runs `scripts/differential-drive.sh`; it is DORMANT by default (no push/PR trigger) so deploying it never spams red checks on a repo that has not yet authored cases. Add `scripts/differential-drive.sh` — a self-contained, fail-closed harness exposing `drive <name> <cmd> <expected-substring>` (PASS iff exit 0 AND output contains the substring), sourcing optional repo-specific cases from `scripts/differential-drive.cases.sh`, asserting total-cases>0 (fail-closed with an actionable message when absent/empty), and emitting a libtest-compatible `test result:` summary so `hf test` COUNT-verifies it (the tests-ran>0 gate, HFTASK-0045/0063) rather than trusting exit code alone. Ship handoff's OWN `scripts/differential-drive.cases.sh` driving the real `hf` binary (CLI-contract invariants: usage exposes claim/ship/promote/drift/handoff) + a handoff-local `.github/workflows/differential-drive-ci.yml` caller (PR-triggered, advisory/NOT-required so it never blocks the develop->trunk promote gate, replicating ci.yml's RuVector-sibling layout) that dogfoods the harness. Deploy ONLY the generic workflow + harness fleet-wide via the canonical scripts/handoff-loop-init.sh deploy_diff_drive() (HFTASK-0065/0066 mechanism), idempotent, dry-run aware; the handoff-local caller + cases file are NOT deployed (each repo authors its own cases). Making the check branch-protection-REQUIRED is the follow-on (HFTASK-0073/D8) and is NOT done here (account-level wall).", &["HFTASK-0045","HFTASK-0065"]),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -2997,6 +3001,15 @@ fn cmd_seed() {
                 "cargo test -p ledger export",
                 "bash -n scripts/handoff-lib.sh",
                 "bash -n scripts/fleet-rollout.sh",
+            ],
+            // ADR relay-#134 / HFTASK-0078: the live differential-drive harness IS its own
+            // evidence — running it drives the real `hf` binary and emits a libtest-compatible
+            // summary that `hf test` count-verifies (tests-ran>0). Plus syntax-check the harness
+            // and the deploy script that ships it fleet-wide.
+            "HFTASK-0078" => &[
+                "bash -n scripts/differential-drive.sh",
+                "bash scripts/differential-drive.sh",
+                "bash -n scripts/handoff-loop-init.sh",
             ],
             _ => continue,
         };

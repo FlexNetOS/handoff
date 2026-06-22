@@ -7,6 +7,7 @@
 #   3. install the .gitignore residency + migration-artifact guards
 #   4. migrate a legacy SQLite ledger -> redb (out-of-tree backup), ONLY if quiescent
 #   5. deploy the auto-loop hooks (SessionStart loop-entry + SessionEnd safety net)
+#      + the generic live differential-drive action workflow + harness (HFTASK-0078, relay-#134)
 #   6. verify conformance (hf drift + hf fleet status) and render the resume packet
 #
 # Idempotent and FAIL-CLOSED on the one dangerous step (ledger migration): a repo that
@@ -135,7 +136,7 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS+=("$cur")
 fi
 
-INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 OK=0 FAIL=0
+INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 DIFFDRIVE=0 OK=0 FAIL=0
 
 deploy_hooks() {
   local dir="$1"
@@ -181,6 +182,32 @@ ensure("SessionEnd", "session-end.sh")
 with open(p, "w") as fh:
     json.dump(data, fh, indent=2); fh.write("\n")
 PY
+}
+
+# Deploy the GENERIC live differential-drive action workflow + harness (HFTASK-0078, relay-#134).
+# Ships ONLY the repo-agnostic reusable workflow + the harness — NOT handoff's own cases file or
+# its handoff-local CI caller (each repo authors its own scripts/differential-drive.cases.sh; the
+# harness fails closed until it does). Idempotent (plain copy). Returns 0 if it deployed.
+deploy_diff_drive() {
+  local dir="$1"
+  # Canonical sources: the kernel checkout this script lives in (handoff dev or ejected-with-kernel).
+  local wf_src="$KERNEL_HOME/.github/workflows/differential-drive.yml"
+  [ -f "$wf_src" ] || wf_src="$SCRIPT_DIR/../.github/workflows/differential-drive.yml"
+  local sh_src="$KERNEL_HOME/scripts/differential-drive.sh"
+  [ -f "$sh_src" ] || sh_src="$SCRIPT_DIR/differential-drive.sh"
+  if [ ! -f "$wf_src" ] || [ ! -f "$sh_src" ]; then
+    say "  no differential-drive sources reachable — skipping (HFTASK-0078)"
+    return 1
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "    DRY: deploy differential-drive.yml + scripts/differential-drive.sh -> $dir"
+    return 0
+  fi
+  mkdir -p "$dir/.github/workflows" "$dir/scripts"
+  cp "$wf_src" "$dir/.github/workflows/differential-drive.yml"
+  cp "$sh_src" "$dir/scripts/differential-drive.sh"
+  chmod +x "$dir/scripts/differential-drive.sh" 2>/dev/null || true
+  return 0
 }
 
 for dir in "${TARGETS[@]}"; do
@@ -232,6 +259,9 @@ for dir in "${TARGETS[@]}"; do
     deploy_hooks "$dir" && { HOOKED=$((HOOKED+1)); say "  auto-loop hooks deployed"; }
   fi
 
+  # (5b) differential-drive action workflow + harness (HFTASK-0078)
+  deploy_diff_drive "$dir" && { DIFFDRIVE=$((DIFFDRIVE+1)); say "  differential-drive workflow + harness deployed"; }
+
   # (6) verify + render
   if [ "$DRY" = 0 ]; then
     ( cd "$dir" && "$HF" resume >/dev/null 2>&1 ) || true
@@ -240,7 +270,7 @@ for dir in "${TARGETS[@]}"; do
 
   # (commit)
   if [ "$DO_COMMIT" = 1 ] && [ "$DRY" = 0 ]; then
-    git -C "$dir" add .handoff .gitignore .claude/settings.json 2>/dev/null
+    git -C "$dir" add .handoff .gitignore .claude/settings.json .github/workflows/differential-drive.yml scripts/differential-drive.sh 2>/dev/null
     if git -C "$dir" diff --cached --quiet 2>/dev/null; then
       say "  nothing to commit"
     elif git -C "$dir" commit -q -m "chore: handoff-loop-init — .handoff upgrade + guards + auto-loop hooks"; then
@@ -252,6 +282,6 @@ for dir in "${TARGETS[@]}"; do
 done
 
 echo "---"
-echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED failed=$FAIL"
+echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED diffdrive=$DIFFDRIVE failed=$FAIL"
 [ "$DEFERRED" -gt 0 ] && echo "[init] $DEFERRED repo(s) had a live loop — re-run when idle to migrate their ledgers."
 exit 0
