@@ -105,9 +105,10 @@ fn current_hostname() -> String {
 }
 
 /// True if `pid` is a live process on THIS host. Unix: `kill(pid, 0)` == 0 (exists) or errno
-/// EPERM (exists, different user). A pid of 0 or one that would cast to a negative `i32`
-/// (which would make `kill` broadcast to a process *group*) is never our format → treated as
-/// alive so we REFUSE to reclaim (fail-closed). Non-unix: cannot verify → alive (refuse).
+/// EPERM (exists, different user). Windows: `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`
+/// succeeds for live/queryable processes; `ERROR_INVALID_PARAMETER` means the process does not
+/// exist. A pid of 0 or one that would cast to a negative `i32` on Unix is never our format →
+/// treated as alive so we REFUSE to reclaim (fail-closed). Unknown probe errors also fail closed.
 fn pid_is_alive(pid: u32) -> bool {
     if pid == 0 || pid > i32::MAX as u32 {
         return true; // unverifiable / unsafe to probe → fail-closed (do not reclaim)
@@ -126,7 +127,31 @@ fn pid_is_alive(pid: u32) -> bool {
         // EPERM (1) => process exists but belongs to another user => still alive.
         std::io::Error::last_os_error().raw_os_error() == Some(1)
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        // SAFETY: OpenProcess only asks the OS for a query handle. We close a non-null handle
+        // immediately and treat ambiguous failures as live so lock reclaim remains fail-closed.
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if !handle.is_null() {
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            return true;
+        }
+        match unsafe { GetLastError() } {
+            ERROR_INVALID_PARAMETER => false,
+            ERROR_ACCESS_DENIED => true,
+            _ => true,
+        }
+    }
+    #[cfg(all(not(unix), not(windows)))]
     {
         true
     }
