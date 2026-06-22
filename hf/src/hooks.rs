@@ -19,13 +19,21 @@ use std::path::Path;
 
 const HF: &str = ".handoff";
 
-/// The 12 lifecycle events of the contract (PRD §18). The first six were wired by HFTASK-0015;
-/// HFTASK-0052 completes the set with `SessionResume`, `PreCommand`, `PostCommand`, `PreTest`,
-/// `PostTest`, `PostHandoff`.
-pub const CONTRACT_EVENTS: [&str; 12] = [
+/// The 14 lifecycle events of the contract (PRD §18). The first six were wired by HFTASK-0015;
+/// HFTASK-0052 added `SessionResume`, `PreCommand`, `PostCommand`, `PreTest`, `PostTest`,
+/// `PostHandoff`; HFTASK-0069 (ADR-0018 D2) reconciles the last two drifted events into the
+/// contract so `hooks.toml` no longer references events the contract rejects: `SessionEnd` (the
+/// canonical lifecycle-end event — matches `.claude/settings.json` and replaces the old, dangling
+/// `SessionStop` name) and `PostMerge` (HFTASK-0011's one-way `.kb`/meta sync after a merge lands).
+///
+/// The contract is the single source of truth for which events a hook may bind to. A `hooks.toml`
+/// that names an event absent from this list is a **fail-closed drift** — see [`unknown_events`],
+/// which surfaces it loudly rather than letting `hf hook list`/`run` silently drop the hook.
+pub const CONTRACT_EVENTS: [&str; 14] = [
     "SessionStart",
     "PreSessionStart",
     "SessionResume",
+    "SessionEnd",
     "TaskClaim",
     "PreEdit",
     "PostEdit",
@@ -35,6 +43,7 @@ pub const CONTRACT_EVENTS: [&str; 12] = [
     "PostTest",
     "PreHandoff",
     "PostHandoff",
+    "PostMerge",
 ];
 
 /// One hook declaration parsed from `hooks.toml`.
@@ -64,7 +73,7 @@ pub struct HooksConfig {
 impl HooksConfig {
     pub fn load(hf_dir: &Path) -> Self {
         let path = hf_dir.join("hooks").join("hooks.toml");
-        match std::fs::read_to_string(&path) {
+        let cfg = match std::fs::read_to_string(&path) {
             Ok(s) => toml::from_str::<HooksConfig>(&s).unwrap_or_else(|e| {
                 eprintln!(
                     "hf hook: {} parse error ({e}); no hooks loaded",
@@ -73,11 +82,38 @@ impl HooksConfig {
                 HooksConfig::default()
             }),
             Err(_) => HooksConfig::default(),
+        };
+        // Fail-closed (HFTASK-0069): a hook bound to an event the contract does not define is
+        // silently un-runnable (`hf hook run` rejects it; `hf hook list` never shows it). Surface
+        // it loudly at load so a drifted `hooks.toml` is a visible error, never an invisible gap.
+        let unknown = cfg.unknown_events();
+        if !unknown.is_empty() {
+            eprintln!(
+                "hf hook: WARNING — {} hooks bind to non-contract events {:?}; they will not fire. \
+                 Reconcile {} against handoff.hooks.v1 (CONTRACT_EVENTS).",
+                unknown.len(),
+                unknown,
+                path.display()
+            );
         }
+        cfg
     }
 
     pub fn for_event<'a>(&'a self, event: &str) -> Vec<&'a HookDef> {
         self.hooks.iter().filter(|h| h.event == event).collect()
+    }
+
+    /// Fail-closed conformance check: the set of declared hook events that are NOT contract
+    /// events (deduped, source order). Empty == the config conforms to `handoff.hooks.v1`.
+    /// Pure so the drift detection is unit-testable without touching disk.
+    pub fn unknown_events(&self) -> Vec<String> {
+        let mut seen = Vec::new();
+        for h in &self.hooks {
+            if !CONTRACT_EVENTS.contains(&h.event.as_str()) && !seen.contains(&h.event) {
+                seen.push(h.event.clone());
+            }
+        }
+        seen
     }
 }
 
@@ -177,6 +213,7 @@ fn run_one(event: &HookEvent) -> HookResult {
 /// `hf hook list [--json]` — print the typed contract (the 12 events + which are wired).
 pub fn cmd_hook_list(json: bool) {
     let cfg = HooksConfig::load(Path::new(HF));
+    let unknown = cfg.unknown_events();
     if json {
         let out = serde_json::json!({
             "schema": "handoff.hooks.v1",
@@ -185,6 +222,9 @@ pub fn cmd_hook_list(json: bool) {
                 "event": h.event, "command": h.command,
                 "timeout_seconds": h.timeout_seconds, "fail_mode": h.fail_mode,
             })).collect::<Vec<_>>(),
+            // Fail-closed (HFTASK-0069): non-contract events are reported, never hidden.
+            "unknown_events": unknown,
+            "conformant": unknown.is_empty(),
         });
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
         return;
@@ -201,6 +241,15 @@ pub fn cmd_hook_list(json: bool) {
             for h in wired {
                 println!("  ● {ev} → `{}` [{}]", h.command, h.fail_mode);
             }
+        }
+    }
+    // Surface any drifted hooks bound to non-contract events (they will not fire).
+    for ev in &unknown {
+        for h in cfg.for_event(ev) {
+            println!(
+                "  ✗ {ev} → `{}` [DANGLING: not a contract event]",
+                h.command
+            );
         }
     }
 }
@@ -273,10 +322,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contract_has_all_twelve_events() {
-        assert_eq!(CONTRACT_EVENTS.len(), 12);
+    fn contract_has_all_fourteen_events() {
+        assert_eq!(CONTRACT_EVENTS.len(), 14);
+        // ADR-0018 D2 (HFTASK-0069): the 8 events the full-auto loop must cover robustly.
         for e in [
+            "SessionStart",
             "SessionResume",
+            "SessionEnd",
             "PreCommand",
             "PostCommand",
             "PreTest",
@@ -288,6 +340,56 @@ mod tests {
                 "{e} missing from the contract"
             );
         }
+        // The two events reconciled out of `hooks.toml` drift are now first-class.
+        assert!(CONTRACT_EVENTS.contains(&"SessionEnd"));
+        assert!(CONTRACT_EVENTS.contains(&"PostMerge"));
+        // The dangling pre-0069 name must NOT be a contract event (it was renamed to SessionEnd).
+        assert!(!CONTRACT_EVENTS.contains(&"SessionStop"));
+        // No duplicate event names in the contract.
+        let mut uniq = CONTRACT_EVENTS.to_vec();
+        uniq.sort_unstable();
+        uniq.dedup();
+        assert_eq!(
+            uniq.len(),
+            CONTRACT_EVENTS.len(),
+            "duplicate contract event"
+        );
+    }
+
+    #[test]
+    fn unknown_events_is_failclosed_drift_detector() {
+        // A config that names a non-contract event is flagged (deduped, source order) — it would
+        // otherwise be silently un-runnable.
+        let drifted: HooksConfig = toml::from_str(
+            r#"
+            schema = "handoff.hooks.v1"
+            [[hooks]]
+            event = "SessionStop"
+            command = "hf checkpoint --auto"
+            [[hooks]]
+            event = "SessionStop"
+            command = "hf handoff"
+            [[hooks]]
+            event = "PostTest"
+            command = "hf drift --json"
+        "#,
+        )
+        .unwrap();
+        assert_eq!(drifted.unknown_events(), vec!["SessionStop".to_string()]);
+        // A fully-canonical config (every event a contract event) reports zero drift.
+        let canonical: HooksConfig = toml::from_str(
+            r#"
+            schema = "handoff.hooks.v1"
+            [[hooks]]
+            event = "SessionEnd"
+            command = "hf checkpoint --auto && hf handoff && hf sync --auto"
+            [[hooks]]
+            event = "PostMerge"
+            command = "hf sync --auto"
+        "#,
+        )
+        .unwrap();
+        assert!(canonical.unknown_events().is_empty());
     }
 
     #[test]
