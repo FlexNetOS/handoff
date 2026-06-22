@@ -27,9 +27,11 @@ hf_bin() {
 # same predicate `hf fleet status` uses.)
 _gi_ignored() { git -C "$1" check-ignore -q "$2" 2>/dev/null; }
 
-# Ensure the ledger-residency + migration-artifact guards. Returns 0 if it ADDED any
-# missing guard, 1 if all were already present (idempotent). Mirrors
-# fleet-rollout.sh::ensure_ledger_guard and EXTENDS it with the redb backup/temp guard.
+# Ensure the BINARY-CACHE residency + migration-artifact guards. Returns 0 if it ADDED any
+# missing guard, 1 if all were already present (idempotent). ADR-0018 D1 (HFTASK-0067): the
+# binary ledger (+ rvf sidecar) is a gitignored LOCAL CACHE — the committed truth is the
+# `.handoff/ledger.events.jsonl` text export. This guard does NOT ignore the rendered views
+# (packets/, active.md, deliveries/), which are now committed.
 ensure_ledger_guard() {
   local dir="$1" changed=0 need_header=1
   _add() {
@@ -38,8 +40,8 @@ ensure_ledger_guard() {
     if [ "$need_header" = 1 ]; then
       {
         echo ""
-        echo "# handoff continuity: local ledger + migration artifacts are gitignored"
-        echo "# (ADR-0004 §3.3/§6 rev, HFTASK-0035; redb cutover HFTASK-0053)"
+        echo "# handoff continuity: binary ledger cache + migration artifacts are gitignored"
+        echo "# (committed truth = .handoff/ledger.events.jsonl — ADR-0018 D1 / HFTASK-0067)"
       } >> "$dir/.gitignore"
       need_header=0
     fi
@@ -49,21 +51,11 @@ ensure_ledger_guard() {
   _add ".handoff/**/ledger.db"
   _add ".handoff/**/*.db-wal"
   _add ".handoff/**/*.db-shm"
+  _add ".handoff/**/*.rvf"          # RVF vector sidecar — binary cache (ADR-0018 D1)
+  _add ".handoff/**/*.rvf.lock"
   _add ".handoff/**/*.sqlite.bak"   # redb-cutover migration backup (HFTASK-0053)
   _add ".handoff/**/*.redb.tmp"     # redb-cutover migration temp (HFTASK-0053)
   return $((1 - changed))
-}
-
-# Ensure the active.md derived-view guard (HFTASK-0037). 0 if added, 1 if already ignored.
-ensure_active_md_guard() {
-  local dir="$1"
-  _gi_ignored "$dir" .handoff/active.md && return 1
-  {
-    echo ""
-    echo "# handoff continuity: active.md is a local derived view (HFTASK-0037)"
-    echo "/.handoff/active.md"
-  } >> "$dir/.gitignore"
-  return 0
 }
 
 # Is FILE a legacy SQLite ledger (magic "SQLite format 3\0")? Returns 0 if legacy.

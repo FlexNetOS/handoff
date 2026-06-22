@@ -5,13 +5,20 @@
 //! **Git is the sync transport** — no daemons. State precedence stays Git > ledger >
 //! cards.
 //!
-//! Residency (ADR-0004 §3.3/§6, REVISED 2026-06-13): continuity is per-repo-first with a
-//! central rollup. A repo's **gitignored** local `.handoff/ledger.db` is LEGITIMATE (its own
-//! source of record); its events roll up into the FLEET ledger at `<meta-root>/.handoff/
-//! ledger.db`. The P7 violations `hf fleet status` surfaces (HFTASK-0034) are: (a) a
-//! git-**TRACKED** `.db` under `.handoff` (committed binary ledger state is banned), and
-//! (b) a continuity member missing the `.handoff/**/ledger.db` `.gitignore` guard. A `.db`
-//! merely present on disk is NOT a violation.
+//! Residency (ADR-0004 §3.3/§6, REVISED 2026-06-13; ADR-0018 D1 / HFTASK-0067): continuity is
+//! per-repo-first with a central rollup. The committed continuity truth is now the deterministic
+//! **`.handoff/ledger.events.jsonl`** text export (ADR-0018 D1); the binary `.handoff/ledger.db`
+//! stays a **gitignored local rebuild cache** (re-derived via `hf import`). The P7 violations
+//! `hf fleet status` surfaces are:
+//!   (a) **NEW (ADR-0018 D1):** a member with a local ledger on disk whose committed
+//!       `.handoff/ledger.events.jsonl` is **NOT git-tracked** — the durable truth is missing
+//!       (run `hf export` + commit). This is the *inversion*: committed ledger continuity is now
+//!       REQUIRED where the binary form was banned.
+//!   (b) a git-**TRACKED** binary `.db` under `.handoff` — the binary stays a cache, so committing
+//!       it (instead of the JSONL text) is still banned (HFTASK-0034).
+//!   (c) a continuity member missing the `.handoff/**/ledger.db` `.gitignore` guard — the binary
+//!       cache could be committed (HFTASK-0034/0035).
+//! A binary `.db` merely present on disk (gitignored) is LEGITIMATE.
 
 use crate::PrioStr;
 use ledger::{Ledger, RollupProvenance};
@@ -85,8 +92,13 @@ struct Row {
     project_name: Option<String>,
     role: Option<String>,
     plane: Option<String>,
+    /// ADR-0018 D1 (HFTASK-0067): a member with a local ledger on disk whose committed
+    /// `.handoff/ledger.events.jsonl` text export is NOT git-tracked — the durable continuity
+    /// truth is missing (the new primary P7 gate; run `hf export` + commit it).
+    jsonl_export_missing: bool,
     /// HFTASK-0034 (ADR-0004 §6 rev): a git-TRACKED ledger DB under `.handoff` — the banned
-    /// committed-binary-ledger violation (NOT "a ledger present on disk").
+    /// committed-binary-ledger violation (NOT "a ledger present on disk"). The binary stays a
+    /// gitignored cache; the JSONL text is the committed form (ADR-0018 D1).
     tracked_ledger: bool,
     /// HFTASK-0034: a continuity member (has `.handoff`) whose `.gitignore` lacks the
     /// `.handoff/**/ledger.db` residency guard — its local ledger could be committed.
@@ -147,6 +159,29 @@ fn git_tracks_handoff_db(repo: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// ADR-0018 D1 (HFTASK-0067): does this repo git-track its `.handoff/ledger.events.jsonl` text
+/// export — the committed continuity truth? Asks Git (`ls-files`), not the filesystem.
+fn git_tracks_jsonl_export(repo: &Path) -> bool {
+    Command::new("git")
+        .args([
+            "-C",
+            &repo.to_string_lossy(),
+            "ls-files",
+            "--",
+            ".handoff/ledger.events.jsonl",
+        ])
+        .output()
+        .ok()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false)
+}
+
+/// ADR-0018 D1: is there a local binary ledger on disk for this repo? A repo that carries a
+/// local ledger MUST commit its `.handoff/ledger.events.jsonl` export (the durable text truth).
+fn local_ledger_on_disk(repo: &Path) -> bool {
+    repo.join(".handoff").join("ledger.db").is_file()
+}
+
 /// HFTASK-0034 (ADR-0004 §6 rev): the `.gitignore` residency guard must exist so a local
 /// ledger can never be committed. `git check-ignore -q .handoff/ledger.db` exits 0 iff the
 /// path is ignored — true for both `/.handoff/ledger.db` and `.handoff/**/ledger.db`
@@ -193,6 +228,11 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
             // present-but-gitignored .db is legitimate. The guard is required for any repo
             // that carries a .handoff continuity layer.
             let tracked_ledger = present && git_tracks_handoff_db(&repo);
+            // ADR-0018 D1: a repo with a local ledger must commit its JSONL text export.
+            let jsonl_export_missing = present
+                && has_handoff
+                && local_ledger_on_disk(&repo)
+                && !git_tracks_jsonl_export(&repo);
             let ledger_guard_missing = present && has_handoff && !ledger_guard_present(&repo);
             let walshm_guard_missing = present
                 && has_handoff
@@ -206,6 +246,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 project_name: capsule_field(&repo, "project_name"),
                 role: capsule_field(&repo, "role"),
                 plane: capsule_field(&repo, "plane"),
+                jsonl_export_missing,
                 tracked_ledger,
                 ledger_guard_missing,
                 walshm_guard_missing,
@@ -263,6 +304,14 @@ pub fn cmd_fleet_status(json: bool) {
     let with_handoff = rows.iter().filter(|r| r.has_handoff).count();
     // HFTASK-0034 (ADR-0004 §6 rev): two distinct P7 conditions.
     let mut warnings: Vec<String> = Vec::new();
+    // ADR-0018 D1 (HFTASK-0067): the NEW primary gate — a repo with a local ledger must commit its
+    // `.handoff/ledger.events.jsonl` text export (the durable continuity truth).
+    for r in rows.iter().filter(|r| r.jsonl_export_missing) {
+        warnings.push(format!(
+            "{}: has a local ledger but its `.handoff/ledger.events.jsonl` text export is NOT git-tracked — the committed continuity truth is missing (ADR-0018 D1; run `hf export` and commit it)",
+            r.name
+        ));
+    }
     for r in rows.iter().filter(|r| r.tracked_ledger) {
         warnings.push(format!(
             "{}: a ledger DB under .handoff is git-TRACKED — policy-P7 violation (ADR-0004 §6); committed binary ledger state is banned (gitignore it)",
@@ -325,6 +374,7 @@ pub fn cmd_fleet_status(json: bool) {
                 "project_name": r.project_name,
                 "role": r.role,
                 "plane": r.plane,
+                "jsonl_export_missing": r.jsonl_export_missing,
                 "tracked_ledger": r.tracked_ledger,
                 "ledger_guard_missing": r.ledger_guard_missing,
                 "walshm_guard_missing": r.walshm_guard_missing,
@@ -396,16 +446,19 @@ pub fn cmd_fleet_status(json: bool) {
             (Some(role), None) => role.clone(),
             _ => r.project_name.clone().unwrap_or_default(),
         };
-        // HFTASK-0034/0035 (ADR-0004 §6 rev): flag a git-TRACKED ledger and/or missing guards.
+        // ADR-0018 D1 + HFTASK-0034/0035: flag a missing JSONL export (the new primary gate),
+        // a git-TRACKED binary ledger, and/or missing binary-cache guards.
         let flag = match (
+            r.jsonl_export_missing,
             r.tracked_ledger,
             r.ledger_guard_missing,
             r.walshm_guard_missing,
         ) {
-            (true, _, _) => "  ⚠ tracked ledger.db (P7)",
-            (false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
-            (false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
-            (false, false, false) => "",
+            (true, _, _, _) => "  ⚠ no committed ledger.events.jsonl (P7)",
+            (false, true, _, _) => "  ⚠ tracked ledger.db (P7)",
+            (false, false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
+            (false, false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
+            (false, false, false, false) => "",
         };
         // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
         let chain = match &r.per_repo_chain {
@@ -733,6 +786,55 @@ other:
         assert!(
             super::git_tracks_handoff_db(&repo),
             "a git-TRACKED ledger.db IS the P7 violation"
+        );
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// ADR-0018 D1 (HFTASK-0067): the inverted primary gate — a repo with a local ledger on disk
+    /// must commit its `.handoff/ledger.events.jsonl` text export. Missing = violation; tracked =
+    /// conformant.
+    #[test]
+    fn p7_inversion_requires_tracked_jsonl_export() {
+        use std::process::Command;
+        let repo = std::env::temp_dir().join(format!(
+            "hf-p7-jsonl-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(repo.join(".handoff")).unwrap();
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .args(["-C", repo.to_str().unwrap()])
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@example.com"]);
+        git(&["config", "user.name", "t"]);
+
+        // No ledger on disk yet → nothing to export.
+        assert!(!super::local_ledger_on_disk(&repo));
+        assert!(!super::git_tracks_jsonl_export(&repo));
+
+        // A local ledger exists but the JSONL export is not committed → the violation condition.
+        std::fs::write(repo.join(".handoff/ledger.db"), b"x").unwrap();
+        assert!(super::local_ledger_on_disk(&repo));
+        assert!(
+            !super::git_tracks_jsonl_export(&repo),
+            "ledger on disk, no committed JSONL export → durable truth missing"
+        );
+
+        // Commit the JSONL export → conformant.
+        std::fs::write(repo.join(".handoff/ledger.events.jsonl"), "{}\n").unwrap();
+        git(&["add", "-f", ".handoff/ledger.events.jsonl"]);
+        assert!(
+            super::git_tracks_jsonl_export(&repo),
+            "committed ledger.events.jsonl satisfies the inverted P7 gate"
         );
 
         std::fs::remove_dir_all(&repo).ok();
