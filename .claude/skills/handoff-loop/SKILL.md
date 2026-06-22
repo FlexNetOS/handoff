@@ -96,6 +96,14 @@ The ledger records what happened; ICM records what was learned and decided. See 
    locks) → work in `.grit/worktrees/agent-N` → `grit done` (rebase+merge under file
    lock). Different symbols in the same file never collide, so cycles run truly
    parallel with zero discarded work. (`.grit/` is gitignored binary state.)
+   **Worktree lifecycle (ADR-0018 D10, HFTASK-0075):** the session worktree is reaped
+   **ONLY on a verified PR merge** — it is removed automatically by `hf done --pr` when
+   the `pr_merged`/`trunk_promoted` is witnessed (the "removed ON verified PR merge"
+   path), never before. An **abandoned/discarded batch keeps its worktree** until
+   reconciled: `hf session end` on an unmerged batch retains the worktree (fail-closed —
+   unmerged work is never destroyed), and `hf session reap` sweeps retained worktrees
+   that have since merged (`hf session reap --force` to deliberately tear down a
+   genuinely-abandoned batch).
 3. Note the wrap budget (ADR-0018 D3): with `wrap_strategy = "context"` (default) the loop runs
    until ~`context_budget_pct`% (default **50%**) of the context window is consumed, then ships +
    hands off; `cycle_flush` (default 4) is only an upper safety bound. With `wrap_strategy = "tasks"`

@@ -121,7 +121,22 @@ recorded rationale (the only allowed exception to D1).
 **D10 — Worktree per task batch; reaped on verified PR merge.**
 Every task batch starts a **new worktree** (grit worktree, ADR-0009); it is removed **on verified PR
 merge** (not before). Discarded/abandoned batches leave their worktree until reconciled. This makes
-parallel batches truly isolated and is the precondition that makes D1 (committed binary ledger) safe.
+parallel batches truly isolated.
+
+> **Resolution (HFTASK-0075) + D1 reconciliation.** The earlier rationale ("the precondition that
+> makes D1's *committed binary* ledger safe") is reconciled with the **D1 Resolution (HFTASK-0067)**:
+> committed continuity truth is the deterministic `.handoff/ledger.events.jsonl` export — the binary
+> `ledger.db` (+`*.rvf`) is a **gitignored per-worktree rebuild cache**, never committed. So the D10
+> isolation guarantee is *more* important, not less: each batch's worktree carries its **own** local
+> `ledger.db` cache + checkout, so parallel batches never share a working ledger and never corrupt
+> each other's witness chain/leases. The reap mechanism lives in `hf/src/session.rs`
+> (`reap_decide`/`batch_merge_verified`/`retained_worktrees`): `session_end` consults `reap_decide`
+> (decoupled from unconditional removal); `hf done --pr` reaps the open session on the witnessed
+> `pr_merged`/`trunk_promoted` (the "removed ON verified PR merge" path, non-fatal); `hf session reap
+> [--force]` sweeps retained (abandoned/in-flight) worktrees that have since merged. **Fail-closed:**
+> an unconfirmed merge ⇒ `Keep`, never `Reap` — unmerged work is never destroyed; only an explicit
+> `--reap`/`--force` reconcile override tears down a genuinely-abandoned batch. This also closes the
+> open ADR-0009 follow-up ("wire the grit worktree lifecycle in `session.rs`").
 
 **D11 — All PRs → `develop`; `develop` auto-merges to trunk.**
 The pipeline is fixed: branch off `develop` → PR `--base develop` → on green, `develop`

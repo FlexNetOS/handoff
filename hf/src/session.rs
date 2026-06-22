@@ -39,6 +39,41 @@ pub enum PreflightDecision {
     Refuse(String),
 }
 
+/// Outcome of the end-time reap decision (ADR-0018 D10), pure + testable.
+///
+/// D10 (post-ADR-0018-D1 / HFTASK-0067 reconciliation): a session worktree is the
+/// per-batch unit of isolation. Each worktree carries its own gitignored local
+/// `ledger.db` rebuild cache + checkout — committed continuity truth is the
+/// deterministic `.handoff/ledger.events.jsonl` export (D1), the binary is a
+/// per-worktree cache — so parallel batches never share a working ledger and never
+/// corrupt each other's witness chain/leases. The worktree is reaped ONLY on a
+/// witnessed verified PR merge (`pr_merged`/`trunk_promoted`); abandoned/in-flight
+/// batches KEEP their worktree until reconciled. NEVER reap on an unconfirmed merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReapDecision {
+    Reap,
+    Keep(String),
+}
+
+/// Decide whether a session worktree may be reaped. Pure: the merge signal is replayed
+/// from the witnessed ledger by the caller and passed in. Fail-closed — a `false`
+/// `merge_verified` (no confirmed merge, or a ledger read that could not confirm one)
+/// yields `Keep`, never `Reap`, so an abandoned/discarded batch retains its worktree.
+/// `force` (the explicit `--reap`/reconcile override) is the ONLY way to reap without a
+/// verified merge — a deliberate human/loop teardown of a genuinely-abandoned batch.
+pub fn reap_decide(merge_verified: bool, force: bool) -> ReapDecision {
+    if force {
+        return ReapDecision::Reap;
+    }
+    if merge_verified {
+        return ReapDecision::Reap;
+    }
+    ReapDecision::Keep(
+        "no verified PR merge for this batch — worktree kept until reconciled (ADR-0018 D10)"
+            .into(),
+    )
+}
+
 /// Decide whether a session may start, given git facts. Kept pure: the IO (git status,
 /// git fetch) is done by the caller and passed in, so the policy is fully testable.
 pub fn preflight_decide(
@@ -166,7 +201,7 @@ fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<Pat
     Ok(dest)
 }
 
-/// `hf session <start|end> [--recycle] [--base BRANCH]`
+/// `hf session <start|end|reap> [--recycle] [--reap] [--force] [--base BRANCH]`
 pub fn cmd_session(args: &[String]) {
     match args.first().map(|s| s.as_str()) {
         Some("start") => {
@@ -175,10 +210,19 @@ pub fn cmd_session(args: &[String]) {
         }
         Some("end") => {
             let recycle = args.iter().any(|a| a == "--recycle");
+            // ADR-0018 D10: `--recycle` does NOT imply force-reap — a recycled but unmerged
+            // batch keeps its old worktree. `--reap` is the explicit force-teardown override.
+            let force = args.iter().any(|a| a == "--reap");
             let base = flag(args, "--base");
-            session_end(recycle, base.as_deref(), &WeaveCli::from_env());
+            session_end(recycle, force, base.as_deref(), &WeaveCli::from_env());
         }
-        _ => eprintln!("usage: hf session <start|end> [--recycle] [--base BRANCH]"),
+        Some("reap") => {
+            let force = args.iter().any(|a| a == "--force" || a == "--reap");
+            cmd_session_reap(force);
+        }
+        _ => eprintln!(
+            "usage: hf session <start|end|reap> [--recycle] [--reap] [--force] [--base BRANCH]"
+        ),
     }
 }
 
@@ -261,7 +305,7 @@ fn session_start(base_override: Option<&str>, leaser: &dyn Leaser) {
     );
 }
 
-fn session_end(recycle: bool, base_override: Option<&str>, leaser: &dyn Leaser) {
+fn session_end(recycle: bool, force: bool, base_override: Option<&str>, leaser: &dyn Leaser) {
     let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let policy = Policy::load(Path::new(HF));
 
@@ -273,19 +317,43 @@ fn session_end(recycle: bool, base_override: Option<&str>, leaser: &dyn Leaser) 
     }
     let resource = session_resource(&branch);
 
-    // Remove the worktree (best-effort; never wall on cleanup). The worktree's `.grit`
-    // is inside the worktree dir, so it is torn down with it (ADR-0009).
-    if meta_available() {
-        if let Some(root) = meta_root(&repo_root) {
-            let _ = run_out_in(&root, "meta", &["git", "worktree", "remove", &branch]);
-        }
-    }
+    // ADR-0018 D10: the session is logically CLOSED here (lease released, session_end
+    // witnessed) regardless of the worktree decision. But the worktree is reaped ONLY on a
+    // verified PR merge for this batch (or the explicit `--reap` force) — an abandoned/
+    // in-flight batch KEEPS its worktree until reconciled (`hf session reap`). Fail-closed:
+    // an unconfirmable merge ⇒ Keep, so unmerged work is never destroyed at session end.
+    let merge_verified = batch_merge_verified(&replay_event_branches(), &branch);
+    let decision = reap_decide(merge_verified, force);
+
     let _ = leaser.release(&resource);
 
-    let payload = serde_json::json!({ "branch": branch, "recycle": recycle }).to_string();
-    // fail-open-audit R3: surface a lost witness loudly instead of a silent `if let Ok`.
-    crate::witness_lifecycle("session_end", "session", &payload);
-    println!("hf session end: closed {branch} (lease released, worktree removed)");
+    let reaped = matches!(decision, ReapDecision::Reap);
+    match &decision {
+        ReapDecision::Reap => {
+            // The worktree's `.grit` is inside the worktree dir, torn down with it (ADR-0009).
+            remove_worktree(&repo_root, &branch);
+            let payload =
+                serde_json::json!({ "branch": branch, "recycle": recycle, "reaped": true })
+                    .to_string();
+            // fail-open-audit R3: surface a lost witness loudly instead of a silent `if let Ok`.
+            crate::witness_lifecycle("session_end", "session", &payload);
+            println!("hf session end: closed {branch} (lease released, worktree reaped)");
+        }
+        ReapDecision::Keep(reason) => {
+            let payload = serde_json::json!({
+                "branch": branch, "recycle": recycle, "reaped": false, "keep_reason": reason,
+            })
+            .to_string();
+            crate::witness_lifecycle("session_end", "session", &payload);
+            println!(
+                "hf session end: closed {branch} (lease released) — worktree RETAINED: {reason}"
+            );
+            if worktree_dir_exists(&repo_root, &branch) {
+                println!("  retained worktree for {branch} — reconcile with `hf session reap` after merge, or `hf session end --reap` to force-remove");
+            }
+        }
+    }
+    let _ = reaped; // intent recorded in the witnessed payload above
 
     if recycle {
         println!("hf session end: --recycle → starting a fresh session");
@@ -327,6 +395,56 @@ pub(crate) fn session_state_from_events(events: &[(String, Option<String>)]) -> 
     }
 }
 
+/// Pure reducer (ADR-0018 D10): over ledger-ordered `(event_type, branch)` pairs (the
+/// same mapping shape as `session_state_from_events`), is `branch`'s most-recent batch
+/// verified-merged? Scan from the LAST `session_start` whose branch == `branch`; return
+/// true iff a `pr_merged` OR `trunk_promoted` event appears in that window (after that
+/// session_start). A merge witnessed BEFORE the session opened does not count — it
+/// belongs to a prior batch. Fail-closed: no session_start for `branch`, or no merge
+/// in the window, ⇒ false (KEEP).
+pub(crate) fn batch_merge_verified(events: &[(String, Option<String>)], branch: &str) -> bool {
+    // Find the index of the last session_start for this branch.
+    let mut start_idx: Option<usize> = None;
+    for (i, (event_type, b)) in events.iter().enumerate() {
+        if event_type == "session_start" && b.as_deref() == Some(branch) {
+            start_idx = Some(i);
+        }
+    }
+    let Some(start) = start_idx else {
+        return false;
+    };
+    events
+        .iter()
+        .skip(start + 1)
+        .any(|(et, _)| et == "pr_merged" || et == "trunk_promoted")
+}
+
+/// Pure reducer (ADR-0018 D10): branches whose worktree was RETAINED at session end —
+/// a `session_end` witnessed with `reaped:false` and NO later `worktree_reaped` for the
+/// same branch. These are the abandoned/in-flight batches `hf session reap` reconciles.
+/// Takes `(event_type, branch, reaped_flag)` triples (reaped_flag only meaningful for
+/// `session_end`). A later `worktree_reaped` for a branch clears its retained status.
+pub(crate) fn retained_worktrees(events: &[(String, Option<String>, Option<bool>)]) -> Vec<String> {
+    let mut retained: Vec<String> = Vec::new();
+    for (event_type, branch, reaped) in events {
+        let Some(b) = branch else { continue };
+        match event_type.as_str() {
+            "session_end" => {
+                // reaped:false ⇒ worktree kept; record it (dedup, keep latest intent).
+                retained.retain(|r| r != b);
+                if *reaped == Some(false) {
+                    retained.push(b.clone());
+                }
+            }
+            "worktree_reaped" => {
+                retained.retain(|r| r != b);
+            }
+            _ => {}
+        }
+    }
+    retained
+}
+
 /// IO wrapper: replay the ledger into a `LoopSessionState`.
 pub(crate) fn open_session_and_cycle() -> LoopSessionState {
     let events = Ledger::open(&ledger_path())
@@ -352,6 +470,170 @@ pub(crate) fn open_session_and_cycle() -> LoopSessionState {
 /// The branch of the currently-open session, if any (by ledger replay).
 fn latest_open_session_branch() -> Option<String> {
     open_session_and_cycle().open_branch
+}
+
+/// Map a ledger event's payload `branch` field, when the event type carries one. Used to
+/// build the `(event_type, branch)` pairs the pure reducers consume. `pr_merged`/
+/// `trunk_promoted` carry no branch field (they are task-scoped) — they map to `None`,
+/// which the reducers treat positionally (they only check the event TYPE for a merge).
+fn branch_of(event_type: &str, payload_json: &str) -> Option<String> {
+    if matches!(
+        event_type,
+        "session_start" | "session_end" | "worktree_reaped"
+    ) {
+        serde_json::from_str::<serde_json::Value>(payload_json)
+            .ok()
+            .and_then(|v| v.get("branch").and_then(|b| b.as_str()).map(String::from))
+    } else {
+        None
+    }
+}
+
+/// IO wrapper: replay the ledger into `(event_type, branch)` pairs (the shape the pure
+/// reducers consume). On any ledger read failure this returns an EMPTY vec — which makes
+/// `batch_merge_verified` return false (KEEP), the fail-closed default for the reap go/
+/// no-go: an unconfirmable merge must never reap.
+fn replay_event_branches() -> Vec<(String, Option<String>)> {
+    Ledger::open(&ledger_path())
+        .ok()
+        .and_then(|l| l.all_events().ok())
+        .unwrap_or_default()
+        .iter()
+        .map(|e| {
+            (
+                e.event_type.clone(),
+                branch_of(&e.event_type, &e.payload_json),
+            )
+        })
+        .collect()
+}
+
+/// IO wrapper: replay the ledger into `(event_type, branch, reaped_flag)` triples for
+/// `retained_worktrees`. The `reaped` flag is read from a `session_end` payload's
+/// `reaped` field. Empty on read failure (no retained worktrees surfaced — fail-closed).
+fn replay_event_triples() -> Vec<(String, Option<String>, Option<bool>)> {
+    Ledger::open(&ledger_path())
+        .ok()
+        .and_then(|l| l.all_events().ok())
+        .unwrap_or_default()
+        .iter()
+        .map(|e| {
+            let branch = branch_of(&e.event_type, &e.payload_json);
+            let reaped = if e.event_type == "session_end" {
+                serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                    .ok()
+                    .and_then(|v| v.get("reaped").and_then(|r| r.as_bool()))
+            } else {
+                None
+            };
+            (e.event_type.clone(), branch, reaped)
+        })
+        .collect()
+}
+
+/// Remove a session worktree by branch (best-effort, both engines). Mirrors the teardown
+/// in `session_end` so the reap paths (`hf session reap`, the `cmd_done` post-merge reap)
+/// share one implementation.
+fn remove_worktree(repo_root: &Path, branch: &str) {
+    if meta_available() {
+        if let Some(root) = meta_root(repo_root) {
+            let _ = run_out_in(&root, "meta", &["git", "worktree", "remove", branch]);
+        }
+    }
+}
+
+/// Does a retained session worktree dir for `branch` still exist on disk? Used by
+/// `hf session reap` to only act on worktrees that were not already removed out-of-band.
+fn worktree_dir_exists(repo_root: &Path, branch: &str) -> bool {
+    if let Some(root) = meta_root(repo_root) {
+        if root
+            .join(".worktrees")
+            .join(branch)
+            .join("handoff")
+            .is_dir()
+        {
+            return true;
+        }
+    }
+    repo_root
+        .parent()
+        .map(|p| p.join(format!(".handoff-wt-{branch}")).is_dir())
+        .unwrap_or(false)
+}
+
+/// `hf session reap [--force]` (ADR-0018 D10): sweep RETAINED worktrees (closed with
+/// `reaped:false`) whose dir still exists and whose batch is NOW verified-merged (or
+/// `--force`), reaping each + witnessing `worktree_reaped`. Fail-closed: an unmerged,
+/// un-forced retained worktree is reported Kept-with-reason, never removed.
+pub fn cmd_session_reap(force: bool) {
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let retained = retained_worktrees(&replay_event_triples());
+    if retained.is_empty() {
+        println!("hf session reap: no retained worktrees to reap");
+        return;
+    }
+    let pairs = replay_event_branches();
+    let mut reaped_any = false;
+    for branch in retained {
+        if !worktree_dir_exists(&repo_root, &branch) {
+            // Dir already gone (removed out-of-band) — record the reap so it leaves the
+            // retained set, keeping the read-model honest.
+            let payload =
+                serde_json::json!({ "branch": branch, "note": "worktree dir absent" }).to_string();
+            crate::witness_lifecycle("worktree_reaped", "session", &payload);
+            println!("hf session reap: {branch} — worktree dir already gone, marked reaped");
+            reaped_any = true;
+            continue;
+        }
+        let merge_verified = batch_merge_verified(&pairs, &branch);
+        match reap_decide(merge_verified, force) {
+            ReapDecision::Reap => {
+                remove_worktree(&repo_root, &branch);
+                let payload = serde_json::json!({
+                    "branch": branch, "merge_verified": merge_verified, "forced": force,
+                })
+                .to_string();
+                crate::witness_lifecycle("worktree_reaped", "session", &payload);
+                println!("hf session reap: reaped {branch} (merge_verified={merge_verified}, forced={force})");
+                reaped_any = true;
+            }
+            ReapDecision::Keep(reason) => {
+                println!("hf session reap: KEPT {branch} — {reason}");
+            }
+        }
+    }
+    if !reaped_any {
+        println!("hf session reap: nothing reaped (no verified merge; pass --force to override)");
+    }
+}
+
+/// Post-merge reap hook for `hf done --pr` (ADR-0018 D10): the "removed ON verified PR
+/// merge" path. Find the open/most-recent session branch; if its batch is now
+/// `batch_merge_verified`, remove that worktree + witness `worktree_reaped`. NON-FATAL
+/// and fail-closed: if no session/merge can be confirmed, do nothing (KEEP the worktree).
+pub fn reap_open_session_if_merged() {
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let pairs = replay_event_branches();
+    // The open session's branch, if a session is open; else the most-recent session_start.
+    let branch = open_session_and_cycle().open_branch.or_else(|| {
+        pairs
+            .iter()
+            .rev()
+            .find(|(et, b)| et == "session_start" && b.is_some())
+            .and_then(|(_, b)| b.clone())
+    });
+    let Some(branch) = branch else {
+        return; // no session to reap
+    };
+    if !batch_merge_verified(&pairs, &branch) {
+        return; // fail-closed: no confirmed merge for this batch
+    }
+    remove_worktree(&repo_root, &branch);
+    let payload =
+        serde_json::json!({ "branch": branch, "merge_verified": true, "trigger": "done" })
+            .to_string();
+    crate::witness_lifecycle("worktree_reaped", "session", &payload);
+    println!("hf done: reaped session worktree {branch} on verified PR merge (ADR-0018 D10)");
 }
 
 #[cfg(test)]
@@ -441,5 +723,86 @@ mod tests {
         let st = session_state_from_events(&events);
         assert_eq!(st.open_branch.as_deref(), Some("b"));
         assert_eq!(st.cycle, 1);
+    }
+
+    // --- ADR-0018 D10: reap decision + batch-merge reducers ---
+
+    #[test]
+    fn reap_decide_reaps_on_verified_merge() {
+        assert_eq!(reap_decide(true, false), ReapDecision::Reap);
+    }
+
+    #[test]
+    fn reap_decide_keeps_when_unmerged() {
+        // THE load-bearing fail-closed invariant: no verified merge ⇒ never reap.
+        match reap_decide(false, false) {
+            ReapDecision::Keep(reason) => assert!(reason.contains("no verified PR merge")),
+            ReapDecision::Reap => panic!("must NOT reap an unmerged (abandoned/in-flight) batch"),
+        }
+    }
+
+    #[test]
+    fn reap_decide_force_overrides_unmerged() {
+        // The explicit `--reap`/reconcile override is the ONLY way to reap without a merge.
+        assert_eq!(reap_decide(false, true), ReapDecision::Reap);
+    }
+
+    #[test]
+    fn batch_merge_verified_true_when_merge_in_window() {
+        let events = [
+            ev("session_start", Some("b1")),
+            ev("checkpoint", None),
+            ev("pr_merged", None),
+        ];
+        assert!(batch_merge_verified(&events, "b1"));
+    }
+
+    #[test]
+    fn batch_merge_verified_true_on_trunk_promoted() {
+        let events = [ev("session_start", Some("b1")), ev("trunk_promoted", None)];
+        assert!(batch_merge_verified(&events, "b1"));
+    }
+
+    #[test]
+    fn batch_merge_verified_false_when_merge_before_session() {
+        // A merge that landed BEFORE this batch's session_start belongs to a prior batch.
+        let events = [
+            ev("pr_merged", None),
+            ev("session_start", Some("b1")),
+            ev("checkpoint", None),
+        ];
+        assert!(!batch_merge_verified(&events, "b1"));
+    }
+
+    #[test]
+    fn batch_merge_verified_false_when_no_merge() {
+        let events = [ev("session_start", Some("b1")), ev("checkpoint", None)];
+        assert!(!batch_merge_verified(&events, "b1"));
+    }
+
+    #[test]
+    fn batch_merge_verified_false_for_unknown_branch() {
+        // No session_start for this branch ⇒ fail-closed false.
+        let events = [ev("session_start", Some("other")), ev("pr_merged", None)];
+        assert!(!batch_merge_verified(&events, "b1"));
+    }
+
+    fn ev3(t: &str, b: Option<&str>, r: Option<bool>) -> (String, Option<String>, Option<bool>) {
+        (t.to_string(), b.map(String::from), r)
+    }
+
+    #[test]
+    fn retained_worktrees_lists_kept_then_clears_on_reap() {
+        let events = [
+            ev3("session_start", Some("a"), None),
+            ev3("session_end", Some("a"), Some(false)), // kept
+            ev3("session_start", Some("b"), None),
+            ev3("session_end", Some("b"), Some(true)), // reaped at end → not retained
+            ev3("session_start", Some("c"), None),
+            ev3("session_end", Some("c"), Some(false)), // kept
+            ev3("worktree_reaped", Some("c"), None),    // later reaped → cleared
+        ];
+        let retained = retained_worktrees(&events);
+        assert_eq!(retained, vec!["a".to_string()]);
     }
 }
