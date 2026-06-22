@@ -1,0 +1,36 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0078",
+  "title": "Live differential-drive verification as a fleet handoff action workflow",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Owner directive (relay #134): a LIVE differential drive (drive the REAL binary/CLI and DIFF its actual output against an expectation) caught what 1000+ green unit tests missed; capture it as a fleet-deployable handoff action workflow that institutionalizes the FAIL-OPEN doctrine the kernel already lives by (green is not proof; cases-run must be > 0; ABSENCE is a FAILURE, never a silent pass). Add `.github/workflows/differential-drive.yml` — a GENERIC, repo-agnostic reusable (`workflow_call` + `workflow_dispatch`) GitHub Actions workflow that runs `scripts/differential-drive.sh`; it is DORMANT by default (no push/PR trigger) so deploying it never spams red checks on a repo that has not yet authored cases. Add `scripts/differential-drive.sh` — a self-contained, fail-closed harness exposing `drive <name> <cmd> <expected-substring>` (PASS iff exit 0 AND output contains the substring), sourcing optional repo-specific cases from `scripts/differential-drive.cases.sh`, asserting total-cases>0 (fail-closed with an actionable message when absent/empty), and emitting a libtest-compatible `test result:` summary so `hf test` COUNT-verifies it (the tests-ran>0 gate, HFTASK-0045/0063) rather than trusting exit code alone. Ship handoff's OWN `scripts/differential-drive.cases.sh` driving the real `hf` binary (CLI-contract invariants: usage exposes claim/ship/promote/drift/handoff) + a handoff-local `.github/workflows/differential-drive-ci.yml` caller (PR-triggered, advisory/NOT-required so it never blocks the develop->trunk promote gate, replicating ci.yml's RuVector-sibling layout) that dogfoods the harness. Deploy ONLY the generic workflow + harness fleet-wide via the canonical scripts/handoff-loop-init.sh deploy_diff_drive() (HFTASK-0065/0066 mechanism), idempotent, dry-run aware; the handoff-local caller + cases file are NOT deployed (each repo authors its own cases). Making the check branch-protection-REQUIRED is the follow-on (HFTASK-0073/D8) and is NOT done here (account-level wall).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Live differential-drive verification as a fleet handoff action workflow: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "bash -n scripts/differential-drive.sh",
+    "bash scripts/differential-drive.sh",
+    "bash -n scripts/handoff-loop-init.sh"
+  ],
+  "dependencies": [
+    "HFTASK-0045",
+    "HFTASK-0065"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:9a1d032a2be69476c923efecd873a56fa9f80ba8d6e85a3af221f4e46f3d3a46",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:d3795536595a1effda3efdf9a9bbeeae987c7df0a25dcf93580227f5215f5db4",
+    "constraint_hash": "blake3:fbef758038e67fce1835349babc1b96ca5f6afa8aa379bff405a717bf28ade29",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

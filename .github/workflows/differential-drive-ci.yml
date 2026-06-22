@@ -1,0 +1,47 @@
+name: differential-drive-ci
+
+# handoff-LOCAL dogfood of the relay-#134 live differential-drive doctrine against handoff's OWN
+# `hf` binary. ADVISORY — NOT one of the four required checks (Test ubuntu/macos, Clippy, Format),
+# so it never blocks the develop->trunk promotion gate (sync-master.yml / hf promote).
+#
+# This caller replicates ci.yml's RuVector-sibling layout because `ledger` path-deps
+# ../../RuVector/crates/rvf/rvf-crypto — so it cannot reuse the generic differential-drive.yml
+# (a workflow_call job runs on a fresh runner and cannot inherit a caller's filesystem). It is
+# therefore NOT part of the fleet-deployed bundle: deploy_diff_drive ships only the generic
+# differential-drive.yml + scripts/differential-drive.sh. Each repo authors its own cases file.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential-drive:
+    name: differential-drive (live)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+
+      - name: Build the real hf binary
+        working-directory: handoff
+        run: cargo build -p hf
+
+      - name: Live differential-drive (drive the REAL hf binary, diff output; fail-closed)
+        working-directory: handoff
+        run: bash scripts/differential-drive.sh
