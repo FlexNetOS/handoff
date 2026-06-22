@@ -41,9 +41,13 @@ command = "hf drift --json && hf policy check-handoff --json"  # drift gate — 
 timeout_seconds = 30
 fail_mode = "block"
 
+# Session end (the canonical lifecycle-end event — matches .claude/settings.json and the
+# deployed session-end.sh). Renamed from the pre-HFTASK-0069 `SessionStop`, which was a
+# dangling name the typed contract (CONTRACT_EVENTS) rejected. `hf export` refreshes the
+# committed `.handoff/ledger.events.jsonl` truth (ADR-0018 D1 / HFTASK-0067).
 [[hooks]]
-event = "SessionStop"
-command = "hf checkpoint --auto && hf handoff && hf sync --auto"
+event = "SessionEnd"
+command = "hf checkpoint --auto && hf handoff && hf export && hf sync --auto"
 timeout_seconds = 90
 fail_mode = "warn"
 

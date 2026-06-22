@@ -4,7 +4,8 @@
 # If a session ends without the loop reaching its own checkpoint/handoff step,
 # witness the current state and re-render the packet so the next session resumes
 # from truth, not from a half-finished turn. Mirrors the kernel contract
-# (.handoff/hooks/hooks.toml SessionStop: hf checkpoint --auto && hf handoff).
+# (.handoff/hooks/hooks.toml SessionEnd: hf checkpoint --auto && hf handoff && hf export
+# && hf sync --auto — the canonical event, renamed from SessionStop in HFTASK-0069).
 #
 # Idempotent and best-effort: never block session teardown.
 set -uo pipefail
