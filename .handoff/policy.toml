@@ -2,12 +2,19 @@
 # Read by `hf session` (preflight + worktree), `hf ship`/merge (remote+merge), `hf sync`.
 # Missing keys fall back to the compiled defaults in hf/src/policy.rs.
 
+# Trunk-name reconcile (HFTASK-0076 / ADR-0018 D11): the directive names `main`; this repo (and
+# the whole 60-repo fleet + live branch protection) is on `master`. Decision applied everywhere:
+# **`master` is the canonical trunk, `main` is a documented alias** — the card-authorized
+# lower-risk path. A fleet-wide rename would touch account-level branch protection (an owner wall)
+# and the live pipeline; the alias path needs no code change because `BranchPolicy::is_trunk()`
+# already treats both `master` and `main` as the trunk. Set `trunk_branch = "main"` here (and the
+# workflows accordingly) if/when the fleet ever standardizes on `main`.
 [remote]
 model        = "clone"            # "clone" | "fork"
 origin       = "FlexNetOS/handoff"
 base_branch  = "develop"          # branch sessions/worktrees start from
-trunk_branch = "master"           # protected trunk PRs target
-develop_mirrors_trunk = true
+trunk_branch = "master"           # protected trunk PRs target (canonical; `main` is its alias)
+develop_mirrors_trunk = true      # promote develop→trunk on merge (`hf promote`, auto at `hf done --pr`)
 
 [loop]
 wrap_strategy   = "context"       # ADR-0018 D3: "context" (budget) | "tasks" (legacy fixed count)

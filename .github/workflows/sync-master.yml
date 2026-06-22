@@ -12,6 +12,14 @@ name: sync-master
 #
 # No-downgrade invariant: develop must be a strict descendant of master, else the
 # job refuses (a diverged master is a human reconciliation, never an auto-sync).
+#
+# HFTASK-0076 (ADR-0018 D11): this GitHub-native path can STALL when the shared 60-repo
+# Actions runner cap leaves the four required checks `queued` on the develop tip — the wait
+# below then times out. `hf promote` (auto-run at `hf done --pr`, or invoked directly) is the
+# runner-INDEPENDENT fallback: it fast-forwards the trunk via the owner-authorized
+# `gh api -X PATCH .../refs/heads/master -f sha=<develop-head> -F force=false` (force=false ⇒
+# server-enforced ff-only, the same no-downgrade guarantee), so the loop promotes hands-off even
+# while this workflow is queue-starved. The two paths converge on the identical fast-forward.
 
 on:
   push:

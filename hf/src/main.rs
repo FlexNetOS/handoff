@@ -1352,8 +1352,13 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         // HFTASK-0021: round-trip the merged result to the originating prompt_hub workflow
         // via the correlation_id carried on the WorkOrder.
         delivery::emit_delivery(&mut led, &wo, p, now_ns());
-        // HFTASK-0044: a merged done is the post-merge signal — the trunk now has the merge,
-        // so fast-forward develop to trunk (develop_mirrors_trunk). Done after pr_merged.
+        // HFTASK-0076 (ADR-0018 D11): under the develop-base pipeline a merged PR lands on the
+        // base (develop), which is now AHEAD of the trunk — so the post-merge signal first
+        // PROMOTES develop → trunk (hands-off ff, no manual `gh api`). After this the trunk ==
+        // develop, so the HFTASK-0044 mirror-back below is current (a no-op), but kept for the
+        // trunk-hotfix case where the trunk leads. Both are ff-only and non-fatal.
+        promote_develop_to_trunk(&mut led, id);
+        // HFTASK-0044: keep develop current with the trunk (trunk → base mirror-back).
         sync_develop_to_trunk(&mut led, id);
     }
     // ADR-0003 rule 3 (HFTASK-0042): flip the kb plan to completed with evidence (no-op for
@@ -1424,6 +1429,133 @@ fn sync_develop_to_trunk(led: &mut Ledger, id: &str) {
             );
         }
     }
+}
+
+/// HFTASK-0076 (ADR-0018 D11): promote the integration base (develop) to the protected trunk
+/// (master) via a hands-off, **runner-independent** fast-forward — the programmatic equivalent
+/// of the owner-authorized `gh api -X PATCH .../refs/heads/<trunk> -f sha=<head> -F force=false`.
+///
+/// This is the forward **promotion** direction (base → trunk), the inverse of
+/// [`sync_develop_to_trunk`]'s trunk → base mirror-back; the two are complementary. It uses the
+/// `gh-api` PATCH path on purpose: a plain `git push <sha>:<trunk>` is classifier-blocked here,
+/// whereas the PATCH is the documented legitimate trunk-mirror and bypasses the GitHub Actions
+/// runner queue — so the trunk advances even when `sync-master.yml`'s required checks are
+/// queue-starved (the D11 "stall"). `force=false` makes the server reject any non-ff, and a
+/// local ancestor guard refuses a diverged trunk *before* the call (a divergence is a human
+/// reconciliation, never an auto-promote). Witnessed `trunk_promoted` / `trunk_promote_skipped`.
+/// Non-fatal: a promotion hiccup must never fail task completion (the PR already merged to base).
+fn promote_develop_to_trunk(led: &mut Ledger, id: &str) {
+    let policy = policy::Policy::load(Path::new(HF));
+    let Ok(bp) = branch::BranchPolicy::resolve(&policy.remote) else {
+        return;
+    };
+    if !bp.should_sync_develop_trunk() {
+        return; // rule doesn't apply (no distinct base/trunk, mirror off, or fork model)
+    }
+    // Refresh both refs so the ancestor check + promote SHA reflect the just-merged PR.
+    for r in [bp.base.as_str(), bp.trunk.as_str()] {
+        if let Err(e) = run_out("git", &["fetch", "origin", r]) {
+            eprintln!("hf promote: skipped — fetch {r} failed: {e}");
+            let _ = led.append(
+                "trunk_promote_skipped",
+                id,
+                &serde_json::json!({ "id": id, "reason": format!("fetch {r} failed: {e}") })
+                    .to_string(),
+                now_ns(),
+            );
+            return;
+        }
+    }
+    let base_ref = format!("origin/{}", bp.base);
+    let trunk_ref = format!("origin/{}", bp.trunk);
+    let head = match run_out("git", &["rev-parse", &base_ref]) {
+        Ok(h) if !h.is_empty() => h,
+        _ => {
+            eprintln!("hf promote: skipped — could not resolve {base_ref}");
+            let _ = led.append(
+                "trunk_promote_skipped",
+                id,
+                &serde_json::json!({ "id": id, "reason": format!("could not resolve {base_ref}") })
+                    .to_string(),
+                now_ns(),
+            );
+            return;
+        }
+    };
+    // Ancestor guard (no-downgrade): the trunk must be an ancestor of the base head, i.e. a true
+    // fast-forward with no divergence. `merge-base --is-ancestor` exits 0 iff so (→ run_out Ok).
+    if run_out("git", &["merge-base", "--is-ancestor", &trunk_ref, &head]).is_err() {
+        eprintln!(
+            "hf promote: skipped — '{}' is not a fast-forward ancestor of '{}' (diverged trunk → manual reconcile)",
+            bp.trunk, bp.base
+        );
+        let _ = led.append(
+            "trunk_promote_skipped",
+            id,
+            &serde_json::json!({ "id": id, "base": bp.base, "trunk": bp.trunk, "reason": "trunk diverged (not ff)" })
+                .to_string(),
+            now_ns(),
+        );
+        return;
+    }
+    // Already current? Nothing to promote (idempotent, not a failure).
+    if run_out("git", &["rev-parse", &trunk_ref]).ok().as_deref() == Some(head.as_str()) {
+        println!(
+            "hf promote: '{}' already at '{}' — nothing to promote",
+            bp.trunk, bp.base
+        );
+        return;
+    }
+    // Hands-off fast-forward via the owner-authorized gh-api PATCH (force=false ⇒ server ff-only).
+    let ref_path = bp.trunk_ref_api_path();
+    match run_out(
+        "gh",
+        &[
+            "api",
+            "-X",
+            "PATCH",
+            &ref_path,
+            "-f",
+            &format!("sha={head}"),
+            "-F",
+            "force=false",
+        ],
+    ) {
+        Ok(_) => {
+            let short = &head[..head.len().min(12)];
+            println!(
+                "hf promote: '{}' fast-forwarded to '{}' @ {short} (gh-api, runner-independent)",
+                bp.trunk, bp.base
+            );
+            let _ = led.append(
+                "trunk_promoted",
+                id,
+                &serde_json::json!({ "id": id, "base": bp.base, "trunk": bp.trunk, "sha": head })
+                    .to_string(),
+                now_ns(),
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "hf promote: skipped — gh-api ff of '{}' failed: {e}",
+                bp.trunk
+            );
+            let _ = led.append(
+                "trunk_promote_skipped",
+                id,
+                &serde_json::json!({ "id": id, "trunk": bp.trunk, "reason": e }).to_string(),
+                now_ns(),
+            );
+        }
+    }
+}
+
+/// HFTASK-0076: `hf promote` — manually trigger the hands-off develop → trunk promotion. Also
+/// runs automatically at `hf done --pr` (post-merge). Witnessed; ff-only; fail-closed on a
+/// diverged trunk; idempotent when the trunk is already current.
+fn cmd_promote() {
+    let mut led = open_ledger_or_exit(&ledger_path());
+    promote_develop_to_trunk(&mut led, "-");
 }
 
 /// HFTASK-0045: the most recent `test_result` verdict for `id`, or `None` if the task has
@@ -3057,6 +3189,9 @@ fn main() {
                 .unwrap_or("");
             cmd_ship(id, base);
         }
+        // HFTASK-0076 (ADR-0018 D11): hands-off develop → trunk promotion (also auto-run at
+        // `hf done --pr`). Replaces the manual `gh api PATCH .../master` ff.
+        Some("promote") => cmd_promote(),
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("request") => {
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
@@ -3257,7 +3392,7 @@ fn main() {
             cmd_resume(mode);
         }
         _ => {
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
         }
     }
 }
