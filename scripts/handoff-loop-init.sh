@@ -136,7 +136,7 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS+=("$cur")
 fi
 
-INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 DIFFDRIVE=0 OK=0 FAIL=0
+INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 DIFFDRIVE=0 RELAY=0 OK=0 FAIL=0
 
 deploy_hooks() {
   local dir="$1"
@@ -210,6 +210,44 @@ deploy_diff_drive() {
   return 0
 }
 
+# Deploy the canonical session-relay skills (ADR-0018 D5, HFTASK-0070): handoff owns the canonical
+# format/templates for session-relay-resume / session-relay-wrap-up — rendered from the witnessed
+# `hf` ledger/packet, NEVER hand-authored prose — and pushes them + ENFORCES byte-consistency to
+# every fleet member. Canonical source = handoff's own committed templates (dev checkout or the
+# vendored copy when ejected). Idempotent (plain overwrite); fails closed if no source is reachable.
+# Returns 0 if it deployed.
+deploy_session_relay() {
+  local dir="$1"
+  # Canonical source: the kernel checkout this script lives in (handoff dev or ejected-with-kernel),
+  # else the templates vendored beside this script under the plugin (HFTASK-0065 self-contained).
+  local src="$KERNEL_HOME/.claude/skills"
+  [ -d "$src/session-relay-resume" ] || src="$SCRIPT_DIR/../.claude/skills"
+  [ -d "$src/session-relay-resume" ] || src="$SCRIPT_DIR/skills"
+  if [ ! -d "$src/session-relay-resume" ] || [ ! -d "$src/session-relay-wrap-up" ]; then
+    say "  no session-relay sources reachable — skipping (HFTASK-0070)"
+    return 1
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "    DRY: deploy session-relay-{resume,wrap-up} skills -> $dir/.claude/skills"
+    return 0
+  fi
+  local skill
+  for skill in session-relay-resume session-relay-wrap-up; do
+    mkdir -p "$dir/.claude/skills/$skill"
+    # Byte-consistency ENFORCEMENT (HFTASK-0067 model): report drift, then overwrite with canonical.
+    if [ -f "$dir/.claude/skills/$skill/SKILL.md" ] \
+       && ! cmp -s "$src/$skill/SKILL.md" "$dir/.claude/skills/$skill/SKILL.md"; then
+      say "  session-relay drift in $skill — re-deploying canonical (byte-consistency)"
+    fi
+    cp "$src/$skill/SKILL.md" "$dir/.claude/skills/$skill/SKILL.md"
+    if [ -d "$src/$skill/scripts" ]; then
+      mkdir -p "$dir/.claude/skills/$skill/scripts"
+      cp -r "$src/$skill/scripts/." "$dir/.claude/skills/$skill/scripts/"
+    fi
+  done
+  return 0
+}
+
 for dir in "${TARGETS[@]}"; do
   [ -d "$dir/.git" ] || { say "skip $(basename "$dir") (not a git repo)"; continue; }
   name="$(basename "$dir")"
@@ -262,6 +300,9 @@ for dir in "${TARGETS[@]}"; do
   # (5b) differential-drive action workflow + harness (HFTASK-0078)
   deploy_diff_drive "$dir" && { DIFFDRIVE=$((DIFFDRIVE+1)); say "  differential-drive workflow + harness deployed"; }
 
+  # (5c) canonical session-relay skills, byte-enforced (HFTASK-0070, ADR-0018 D5)
+  deploy_session_relay "$dir" && { RELAY=$((RELAY+1)); say "  session-relay skills deployed (byte-enforced)"; }
+
   # (6) verify + render
   if [ "$DRY" = 0 ]; then
     ( cd "$dir" && "$HF" resume >/dev/null 2>&1 ) || true
@@ -270,7 +311,7 @@ for dir in "${TARGETS[@]}"; do
 
   # (commit)
   if [ "$DO_COMMIT" = 1 ] && [ "$DRY" = 0 ]; then
-    git -C "$dir" add .handoff .gitignore .claude/settings.json .github/workflows/differential-drive.yml scripts/differential-drive.sh 2>/dev/null
+    git -C "$dir" add .handoff .gitignore .claude/settings.json .github/workflows/differential-drive.yml scripts/differential-drive.sh .claude/skills/session-relay-resume .claude/skills/session-relay-wrap-up 2>/dev/null
     if git -C "$dir" diff --cached --quiet 2>/dev/null; then
       say "  nothing to commit"
     elif git -C "$dir" commit -q -m "chore: handoff-loop-init — .handoff upgrade + guards + auto-loop hooks"; then
@@ -282,6 +323,6 @@ for dir in "${TARGETS[@]}"; do
 done
 
 echo "---"
-echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED diffdrive=$DIFFDRIVE failed=$FAIL"
+echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED diffdrive=$DIFFDRIVE relay=$RELAY failed=$FAIL"
 [ "$DEFERRED" -gt 0 ] && echo "[init] $DEFERRED repo(s) had a live loop — re-run when idle to migrate their ledgers."
 exit 0

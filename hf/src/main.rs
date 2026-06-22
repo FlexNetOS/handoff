@@ -3018,6 +3018,18 @@ fn cmd_seed() {
                 "bash scripts/differential-drive.sh",
                 "bash -n scripts/handoff-loop-init.sh",
             ],
+            // ADR-0018 D5 / HFTASK-0070: handoff owns the canonical session-relay templates,
+            // rendered from the witnessed `hf` ledger/packet, and byte-deploys them fleet-wide
+            // via deploy_session_relay(). Evidence: the canonical templates exist in handoff,
+            // each REQUIRES the `hf` render (not "if reachable"), and the deploy script is valid.
+            "HFTASK-0070" => &[
+                "bash -n scripts/handoff-loop-init.sh",
+                "test -f .claude/skills/session-relay-resume/SKILL.md",
+                "test -f .claude/skills/session-relay-wrap-up/SKILL.md",
+                "grep -q 'hf resume' .claude/skills/session-relay-resume/SKILL.md",
+                "grep -q 'hf handoff' .claude/skills/session-relay-wrap-up/SKILL.md",
+                "grep -q deploy_session_relay scripts/handoff-loop-init.sh",
+            ],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -3455,6 +3467,51 @@ mod tests {
             Some(v) => std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", v),
             None => std::env::remove_var("HANDOFF_LEDGER_BACKUP_DIR"),
         }
+    }
+
+    #[test]
+    fn session_relay_templates_render_from_witnessed_ledger_and_are_deployed() {
+        // HFTASK-0070 (ADR-0018 D5): handoff owns the canonical session-relay templates, they
+        // render from the witnessed `hf` ledger/packet (NEVER hand-authored prose), and the
+        // /handoff-loop-init family deploys + byte-enforces them fleet-wide. Repo root is the
+        // parent of this crate's manifest dir (handoff/hf/.. == handoff/).
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("hf crate has a parent (repo root)")
+            .to_path_buf();
+
+        let resume =
+            std::fs::read_to_string(repo.join(".claude/skills/session-relay-resume/SKILL.md"))
+                .expect("canonical session-relay-resume SKILL.md exists in handoff");
+        let wrap_up =
+            std::fs::read_to_string(repo.join(".claude/skills/session-relay-wrap-up/SKILL.md"))
+                .expect("canonical session-relay-wrap-up SKILL.md exists in handoff");
+
+        // Render-from-witnessed-ledger contract: the `hf` render is the REQUIRED source, not prose.
+        assert!(
+            resume.contains("hf resume"),
+            "resume template must render from `hf resume` (the witnessed packet)"
+        );
+        assert!(
+            resume.contains("AUTHORITATIVE"),
+            "resume template must mark the `hf` render authoritative, not optional"
+        );
+        assert!(
+            wrap_up.contains("hf handoff") && wrap_up.contains("hf checkpoint"),
+            "wrap-up template must render from `hf checkpoint`/`hf handoff` (the witnessed packet)"
+        );
+
+        // Deploy + byte-consistency-enforcement contract lives in the /handoff-loop-init family.
+        let init = std::fs::read_to_string(repo.join("scripts/handoff-loop-init.sh"))
+            .expect("handoff-loop-init.sh exists");
+        assert!(
+            init.contains("deploy_session_relay"),
+            "handoff-loop-init.sh must define + wire deploy_session_relay (fleet deploy)"
+        );
+        assert!(
+            init.contains("cmp -s"),
+            "deploy_session_relay must enforce byte-consistency (cmp drift detection)"
+        );
     }
 
     #[test]
