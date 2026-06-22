@@ -1,0 +1,5 @@
+{
+  "commit": {"author":"FlexNetOS <flexnetos@de-flex.net>","changes":[{"change_type":"modified","content_hash":"77c66094f5b8c21554161867553203918afa29b1897c8bbea3b81e259fbc27a3","doc_type":"task","document_id":"019eedd2-0b40-7db3-8843-7ae1360646f2","metadata_changes":[{"field":"status","new_value":"backlog","old_value":"active"}],"new_version":3,"previous_commit_id":"019eedd2-2e57-7751-939d-aa112a24afd1","previous_hash":"501ab1adfa5b3fdb5c6d8dc28807a40da7a4cd7363c90fe54fc44960f8983851","previous_version":2,"slug":"tasks/seam-probe","title":"Seam probe task"}],"created_at":"2026-06-22T05:34:03.089369012Z","id":"019eedd2-4d57-7b91-9754-9742941995da","message":"handoff write-back: tasks/seam-probe released → backlog"},
+  "content_hash": "b8ee8f30b2cee4419708c0b8521adc22cd84fc05a4ca0fc8dc2cf9094adc8698",
+  "hash_version": 3
+}

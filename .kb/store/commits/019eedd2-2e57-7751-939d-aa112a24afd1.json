@@ -1,0 +1,5 @@
+{
+  "commit": {"author":"FlexNetOS <flexnetos@de-flex.net>","changes":[{"change_type":"modified","content_hash":"501ab1adfa5b3fdb5c6d8dc28807a40da7a4cd7363c90fe54fc44960f8983851","doc_type":"task","document_id":"019eedd2-0b40-7db3-8843-7ae1360646f2","metadata_changes":[{"field":"status","new_value":"active","old_value":"draft"}],"new_version":2,"previous_commit_id":"019eedd2-0b61-78d2-86b6-ee2aa9d67071","previous_hash":"7ebe075734b786b3471faac59608bf19822fd02de8d0cd5515682751e559934f","previous_version":1,"slug":"tasks/seam-probe","title":"Seam probe task"}],"created_at":"2026-06-22T05:33:55.153556193Z","id":"019eedd2-2e57-7751-939d-aa112a24afd1","message":"handoff write-back: tasks/seam-probe claimed → active"},
+  "content_hash": "8e92aaf47e3f8a3a1185348d83868f6e7c5538280c7b6459fe403768c97cf60e",
+  "hash_version": 3
+}

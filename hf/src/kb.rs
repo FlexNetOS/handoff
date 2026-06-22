@@ -8,8 +8,18 @@ use std::process::Command;
 
 use work_order::{Priority, Status, WorkOrder};
 
-/// The meta workspace root holding `.kb/` (where `git-kb` operates). `None` standalone.
-fn kb_root(repo_root: &Path) -> Option<PathBuf> {
+/// The directory holding the `.kb/` that `git-kb` should operate in. Pure (takes the cwd,
+/// probes the filesystem). Resolution order (HFTASK-0072 / ADR-0018 D7):
+///   1. the repo's OWN `.kb/` (`<repo_root>/.kb`) — handoff now has a full local `.kb`, so
+///      the seam binds to the repo's own planning plane first;
+///   2. the meta workspace `.kb/` (`<repo_root>/../.kb`) — the original FLEET behavior, kept
+///      as a no-downgrade fallback for repos that only have the meta-root kb.
+///
+/// `None` only when neither exists (standalone, no kb at all → the seam degrades to a no-op).
+pub fn kb_root(repo_root: &Path) -> Option<PathBuf> {
+    if repo_root.join(".kb").exists() {
+        return Some(repo_root.to_path_buf());
+    }
     let parent = repo_root.parent()?;
     if parent.join(".kb").exists() {
         Some(parent.to_path_buf())
@@ -132,11 +142,20 @@ pub fn work_order_from_kb_doc(slug: &str, doc: &str) -> WorkOrder {
     }
 }
 
-/// Where a kb-minted card is written: the FLEET tasks dir (`<meta-root>/.handoff/tasks`)
-/// when a meta root exists, else the standalone cwd `.handoff/tasks`. Pure (testable
-/// without git-kb / without touching the real ledgers). The second tuple element is a
-/// human-readable plane label for the success message.
-fn mint_target(meta_root: Option<PathBuf>) -> (PathBuf, &'static str) {
+/// Where a kb-minted card is written, keyed to the PLANE the kb slug came from. Pure
+/// (testable without git-kb / without touching the real ledgers). The second tuple element
+/// is a human-readable plane label for the success message.
+///
+/// HFTASK-0072 / ADR-0018 D7: now that handoff has its OWN local `.kb`, the card must land in
+/// the SAME plane as its source kb. `local_kb` is true when the slug was read from the repo's
+/// own `.kb` (`kb_root` == cwd): the card belongs in the repo's local `.handoff/tasks/`. When
+/// the slug came from the META `.kb` it is fleet-pickup-able by definition and belongs in the
+/// FLEET tasks dir (`<meta-root>/.handoff/tasks/`) — NEVER the cwd `.handoff/` (the historical
+/// contamination bug: envctl-domain KBTASK cards landing in handoff's KERNEL ledger).
+fn mint_target(local_kb: bool, meta_root: Option<PathBuf>) -> (PathBuf, &'static str) {
+    if local_kb {
+        return (crate::tasks_dir(), "LOCAL");
+    }
     match meta_root {
         Some(root) => (root.join(crate::HF).join("tasks"), "FLEET"),
         None => (crate::tasks_dir(), "standalone (no meta root)"),
@@ -151,7 +170,7 @@ pub fn cmd_mint_from_kb(slug: &str) {
     }
     let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let Some(root) = kb_root(&repo_root) else {
-        eprintln!("hf task mint: no meta `.kb/` found (need a meta workspace) — cannot mint");
+        eprintln!("hf task mint: no `.kb/` found (need a local or meta-root kb) — cannot mint");
         return;
     };
     let doc = match run_kb_in(&root, &["show", slug]) {
@@ -163,12 +182,12 @@ pub fn cmd_mint_from_kb(slug: &str) {
     };
     let wo = work_order_from_kb_doc(slug, &doc);
     let id = wo.id.clone();
-    // ADR-0003/0004: a kb-minted card is fleet/pickup-able by definition — it belongs
-    // in the FLEET tasks dir (`<meta-root>/.handoff/tasks/`), NEVER the cwd `.handoff/`
-    // (writing it cwd-relative from `handoff/` is exactly the contamination bug:
-    // envctl-domain KBTASK cards landed in handoff's KERNEL ledger). Fail-soft to the
-    // standalone cwd only when there is no meta root at all.
-    let (where_dir, plane) = mint_target(crate::fleet::find_meta_root());
+    // The card lands in the SAME plane as its source kb: LOCAL kb → repo `.handoff/tasks/`;
+    // META kb → FLEET tasks dir. `kb_root == repo_root` means the slug came from the repo's
+    // own `.kb` (HFTASK-0072). Routing a meta-domain slug to FLEET (never the cwd) preserves
+    // the anti-contamination invariant.
+    let local_kb = root == repo_root;
+    let (where_dir, plane) = mint_target(local_kb, crate::fleet::find_meta_root());
     crate::save_task_in(&where_dir, &wo);
     println!("hf task mint: {id} minted from kb {slug} (correlation_id = kb_ref = {slug})");
     println!("  wrote card to {} [{plane}]", where_dir.display());
@@ -313,7 +332,8 @@ mod tests {
         } else {
             PathBuf::from("/some/meta/root")
         };
-        let (dir, plane) = super::mint_target(Some(root.clone()));
+        // Not a local-kb mint → a meta-root slug routes to FLEET (never the cwd).
+        let (dir, plane) = super::mint_target(false, Some(root.clone()));
         // FLEET tasks dir = <meta-root>/.handoff/tasks — NOT a cwd-relative path.
         assert_eq!(dir, root.join(crate::HF).join("tasks"));
         assert_eq!(plane, "FLEET");
@@ -322,10 +342,49 @@ mod tests {
 
     #[test]
     fn mint_target_falls_back_to_cwd_standalone() {
-        let (dir, plane) = super::mint_target(None);
+        let (dir, plane) = super::mint_target(false, None);
         // Standalone fallback = the cwd-relative local tasks dir (edge case only).
         assert_eq!(dir, crate::tasks_dir());
         assert!(plane.starts_with("standalone"));
+    }
+
+    #[test]
+    fn mint_target_is_local_when_slug_came_from_repo_kb() {
+        // HFTASK-0072: a slug read from the repo's OWN `.kb` lands in the LOCAL `.handoff/tasks`,
+        // not FLEET — even when a meta root exists. local_kb wins over the meta root.
+        let meta = if cfg!(windows) {
+            PathBuf::from("C:\\some\\meta\\root")
+        } else {
+            PathBuf::from("/some/meta/root")
+        };
+        let (dir, plane) = super::mint_target(true, Some(meta));
+        assert_eq!(dir, crate::tasks_dir());
+        assert_eq!(plane, "LOCAL");
+    }
+
+    #[test]
+    fn kb_root_prefers_local_kb_then_meta_then_none() {
+        // HFTASK-0072: kb_root discovers the repo's OWN `.kb` first, the meta-root `.kb`
+        // second, and returns None when neither exists. Build a fixture tree to prove it.
+        let mut base = std::env::temp_dir();
+        base.push(format!("hf-kbroot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let meta = base.join("meta");
+        let repo = meta.join("handoff");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        // (1) neither kb exists → None
+        assert_eq!(super::kb_root(&repo), None);
+
+        // (2) only the meta-root kb exists → meta root (the FLEET fallback, no downgrade)
+        std::fs::create_dir_all(meta.join(".kb")).unwrap();
+        assert_eq!(super::kb_root(&repo), Some(meta.clone()));
+
+        // (3) the repo's OWN kb exists → the repo wins (the local planning plane)
+        std::fs::create_dir_all(repo.join(".kb")).unwrap();
+        assert_eq!(super::kb_root(&repo), Some(repo.clone()));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -339,7 +398,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
 
         let wo = work_order_from_kb_doc("tasks/demo-fleet", DOC);
-        let (dir, plane) = super::mint_target(Some(tmp.clone()));
+        let (dir, plane) = super::mint_target(false, Some(tmp.clone()));
         crate::save_task_in(&dir, &wo);
 
         let expected = tmp
