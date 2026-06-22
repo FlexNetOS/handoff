@@ -22,6 +22,9 @@ rvf-crypto = { path = "../../RuVector/crates/rvf/rvf-crypto", features = ["std"]
 # ledger.db and streams it into redb. Opt-in via the `legacy-sqlite` feature.
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 [features]
 # Default keeps the v2 RVF recall overlay (parity with the pre-port default) — now redb-backed
 # and C-free. `redb-store` alone (no overlay) is available for minimal/embedded builds.
