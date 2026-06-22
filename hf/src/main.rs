@@ -2353,6 +2353,114 @@ fn machine_summary(tasks: &[WorkOrder], replay: &[(String, Status)]) -> serde_js
     summary_json(tasks, replay, witness)
 }
 
+/// HFTASK-0071 (ADR-0018 D4): the explicit **Next Action / Direction** block — the single
+/// next safe task, the exact next command, WHY it is next, the cycle/context-budget wrap
+/// rule, and the blocking walls. Rendered identically into `hf resume` (Full) and the
+/// `packets/latest.md` packet so a fresh agent needs zero archaeology: it is told *what to
+/// do next*, not just handed state. Every field is DERIVED from the witnessed ledger
+/// (`replay`/`tasks`/`next`), the session counter (`sess`), and `.handoff/policy.toml`
+/// (`policy`) — never hardcoded. Pure over its inputs so it is unit-testable.
+fn direction_block(
+    tasks: &[WorkOrder],
+    replay: &[(String, Status)],
+    next: Option<&WorkOrder>,
+    policy: &policy::Policy,
+    sess: &session::LoopSessionState,
+) -> String {
+    let mut md = String::new();
+    md.push_str("## 0. Next Action / Direction\n");
+
+    match next {
+        Some(n) => {
+            let status = status_of(&n.id, replay, n);
+            // The exact command depends on whether the task is already in-progress (resume it)
+            // or a fresh backlog card (claim it) — same precedence `next_safe` uses.
+            let in_progress = matches!(
+                status,
+                Status::Claimed | Status::Checkpointed | Status::Active | Status::Review
+            );
+            let command = if in_progress {
+                format!("hf checkpoint {}", n.id)
+            } else {
+                format!("hf claim {}", n.id)
+            };
+            // WHY it is next: in-progress tasks are resumed first; otherwise it is the
+            // highest-priority backlog card whose dependencies are all Done.
+            let rationale = if in_progress {
+                format!(
+                    "resume the in-progress task (status {status:?}) before starting any new work"
+                )
+            } else {
+                let deps = if n.dependencies.is_empty() {
+                    "no dependencies".to_string()
+                } else {
+                    format!("deps satisfied ({})", n.dependencies.join(", "))
+                };
+                format!(
+                    "first backlog card that is unblocked — {deps}, priority {}",
+                    n.priority_str()
+                )
+            };
+            md.push_str(&format!("- **Next safe task:** {} — {}\n", n.id, n.title));
+            md.push_str(&format!("- **Next command:** `{command}`\n"));
+            md.push_str(&format!("- **Why it is next:** {rationale}.\n"));
+        }
+        None => {
+            md.push_str("- **Next safe task:** none — backlog is exhausted (all cards Done).\n");
+            md.push_str("- **Next command:** `hf handoff` (render the closing packet).\n");
+            md.push_str("- **Why it is next:** no Backlog/in-progress card remains.\n");
+        }
+    }
+
+    // Cycle / context-budget state (ADR-0018 D3): how the loop decides when to wrap.
+    let lc = &policy.loop_cfg;
+    let wrap = match lc.wrap_strategy.as_str() {
+        "tasks" => format!(
+            "tasks — wrap (checkpoint → handoff) at cycle_flush={} tasks; this session is at cycle {}/{}",
+            lc.cycle_flush, sess.cycle, lc.cycle_flush
+        ),
+        // unknown values fall back to "context" (matches policy.rs doc + Default)
+        _ => format!(
+            "context — wrap at ~{}% of the context window (cycle_flush={} caps a runaway cycle); this session is at cycle {}/{}",
+            lc.context_budget_pct, lc.cycle_flush, sess.cycle, lc.cycle_flush
+        ),
+    };
+    let ready = sess.cycle >= lc.cycle_flush;
+    md.push_str(&format!("- **Cycle / context budget:** {wrap}.\n"));
+    md.push_str(&format!(
+        "- **Ready to ship:** {} (`hf ship` once the cycle is full / context budget hit).\n",
+        if ready { "yes" } else { "no" }
+    ));
+
+    // Blocking walls: any card in Blocked status, or carrying explicit blocked_by ids, or a
+    // NEEDS-HUMAN marker in its objective (the genuine owner walls). Derived, never assumed.
+    let mut walls: Vec<String> = Vec::new();
+    for t in tasks {
+        let st = status_of(&t.id, replay, t);
+        let needs_human = t.objective.contains("NEEDS-HUMAN");
+        if st == Status::Blocked || !t.blocked_by.is_empty() || needs_human {
+            let mut why = Vec::new();
+            if st == Status::Blocked {
+                why.push("status Blocked".to_string());
+            }
+            if !t.blocked_by.is_empty() {
+                why.push(format!("blocked_by {}", t.blocked_by.join(", ")));
+            }
+            if needs_human {
+                why.push("NEEDS-HUMAN".to_string());
+            }
+            walls.push(format!("{} ({})", t.id, why.join("; ")));
+        }
+    }
+    if walls.is_empty() {
+        md.push_str("- **Blocking walls:** none.\n");
+    } else {
+        md.push_str(&format!("- **Blocking walls:** {}\n", walls.join(" · ")));
+    }
+    md.push('\n');
+    md
+}
+
 /// Render the handoff.packet.v2 markdown from already-known facts. Pure over its inputs
 /// (the witness count is computed by the caller) so both `hf handoff` (which persists it)
 /// and `hf resume` (which renders it LIVE, never reading the frozen file) share one
@@ -2388,6 +2496,16 @@ fn render_packet_md(tasks: &[WorkOrder], replay: &[(String, Status)], witness: u
         done.len(),
         tasks.len(),
         witness
+    ));
+    // HFTASK-0071 (ADR-0018 D4): explicit next-action steering — what to DO next, derived
+    // from the witnessed ledger + session counter + policy. Rendered into BOTH the packet
+    // and `hf resume` (same renderer) so a fresh agent needs zero archaeology.
+    md.push_str(&direction_block(
+        tasks,
+        replay,
+        next,
+        &policy::Policy::load(Path::new(HF)),
+        &session::open_session_and_cycle(),
     ));
     md.push_str("## 4. Remaining (next safe first)\n");
     for t in &remaining {
@@ -3029,6 +3147,16 @@ fn cmd_seed() {
                 "grep -q 'hf resume' .claude/skills/session-relay-resume/SKILL.md",
                 "grep -q 'hf handoff' .claude/skills/session-relay-wrap-up/SKILL.md",
                 "grep -q deploy_session_relay scripts/handoff-loop-init.sh",
+            ],
+            // ADR-0018 D4 / HFTASK-0071: the explicit Next Action / Direction block. The unit
+            // test proves the renderer emits next-action/exact-command/budget/walls fields;
+            // the live drive proves the real `hf resume` binary renders the block with its
+            // next-command + context-budget markers (the fresh-agent-zero-archaeology contract).
+            "HFTASK-0071" => &[
+                "cargo test -p hf direction_block",
+                "./target/debug/hf resume | grep -q 'Next Action / Direction'",
+                "./target/debug/hf resume | grep -q 'Next command:'",
+                "./target/debug/hf resume | grep -q 'Cycle / context budget:'",
             ],
             _ => continue,
         };
@@ -3889,6 +4017,125 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         ];
         let md_both = render_packet_md(&tasks, &replay_both, 371);
         assert!(md_both.contains("Done: 2/2."));
+    }
+
+    /// HFTASK-0071 (ADR-0018 D4): the Next Action / Direction block must emit explicit
+    /// next-action steering — the next safe task, the EXACT next command, WHY it is next,
+    /// the cycle/context-budget wrap rule, and the blocking walls — all derived from the
+    /// witnessed inputs, not hardcoded. A fresh agent must need zero archaeology.
+    #[test]
+    fn direction_block_emits_next_action_command_budget_and_walls() {
+        let wo = |id: &str, status: Status, deps: &[&str], blocked: &[&str], obj: &str| WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: id.into(),
+            title: format!("title {id}"),
+            status,
+            priority: Priority::P1,
+            objective: obj.into(),
+            path_scope: vec!["handoff/**".into()],
+            acceptance_criteria: vec!["impl".into()],
+            test_commands: vec![],
+            dependencies: deps.iter().map(|s| s.to_string()).collect(),
+            blocked_by: blocked.iter().map(|s| s.to_string()).collect(),
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "t".into(),
+            role: None,
+            intent_lock: WorkOrder::compute_intent_lock(
+                obj,
+                &["handoff/**".to_string()],
+                &["impl".to_string()],
+            ),
+        };
+        // A: a Done dep, the next backlog card (deps satisfied), and a genuine wall.
+        let tasks = vec![
+            wo("HFTASK-0001", Status::Done, &[], &[], "done dep"),
+            wo(
+                "HFTASK-0002",
+                Status::Backlog,
+                &["HFTASK-0001"],
+                &[],
+                "the next safe card",
+            ),
+            wo(
+                "HFTASK-0003",
+                Status::Blocked,
+                &[],
+                &["HFTASK-0099"],
+                "needs the broker — NEEDS-HUMAN account wall",
+            ),
+        ];
+        let replay = vec![(tasks[0].id.clone(), Status::Done)];
+        let next = next_safe(&tasks, &replay);
+        let policy = policy::Policy::default(); // context strategy, cycle_flush=4, budget 50%
+        let sess = session::LoopSessionState {
+            open_branch: Some("feat/x".into()),
+            cycle: 2,
+        };
+
+        let md = direction_block(&tasks, &replay, next, &policy, &sess);
+
+        // next safe task + EXACT claim command (backlog card → claim, not checkpoint)
+        assert!(
+            md.contains("Next Action / Direction"),
+            "header missing:\n{md}"
+        );
+        assert!(
+            md.contains("Next safe task:** HFTASK-0002"),
+            "next task missing:\n{md}"
+        );
+        assert!(
+            md.contains("Next command:** `hf claim HFTASK-0002`"),
+            "exact command missing:\n{md}"
+        );
+        // decision rationale cites satisfied deps
+        assert!(
+            md.contains("deps satisfied (HFTASK-0001)"),
+            "rationale must justify why it is next:\n{md}"
+        );
+        // cycle / context-budget wrap rule, derived from policy + the live session counter
+        assert!(
+            md.contains("context — wrap at ~50%"),
+            "budget rule missing:\n{md}"
+        );
+        assert!(md.contains("cycle 2/4"), "live cycle state missing:\n{md}");
+        // blocking walls: the Blocked + NEEDS-HUMAN card surfaces with its reasons
+        assert!(md.contains("HFTASK-0003"), "wall task missing:\n{md}");
+        assert!(
+            md.contains("status Blocked"),
+            "wall reason (Blocked) missing:\n{md}"
+        );
+        assert!(
+            md.contains("NEEDS-HUMAN"),
+            "wall reason (NEEDS-HUMAN) missing:\n{md}"
+        );
+
+        // B: an in-progress task is RESUMED first → the command is checkpoint, not claim,
+        // and clear walls render "none".
+        let tasks_b = vec![
+            wo("HFTASK-0010", Status::Checkpointed, &[], &[], "in progress"),
+            wo("HFTASK-0011", Status::Backlog, &[], &[], "later"),
+        ];
+        let replay_b = vec![(tasks_b[0].id.clone(), Status::Checkpointed)];
+        let next_b = next_safe(&tasks_b, &replay_b);
+        let md_b = direction_block(&tasks_b, &replay_b, next_b, &policy, &sess);
+        assert!(
+            md_b.contains("Next command:** `hf checkpoint HFTASK-0010`"),
+            "in-progress task must resume via checkpoint:\n{md_b}"
+        );
+        assert!(
+            md_b.contains("Blocking walls:** none."),
+            "should report no walls:\n{md_b}"
+        );
+
+        // C: the "tasks" wrap strategy renders the legacy fixed-count rule.
+        let mut policy_tasks = policy::Policy::default();
+        policy_tasks.loop_cfg.wrap_strategy = "tasks".into();
+        let md_c = direction_block(&tasks_b, &replay_b, next_b, &policy_tasks, &sess);
+        assert!(
+            md_c.contains("tasks — wrap (checkpoint → handoff) at cycle_flush=4"),
+            "tasks strategy must render the fixed-count rule:\n{md_c}"
+        );
     }
 
     #[test]
