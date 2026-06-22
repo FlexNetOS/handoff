@@ -1,32 +1,26 @@
 /target
 node_modules/
-# === .handoff durability policy (ADR-0016 / HFTASK-0058) ===
-# The kernel owns the canonical commit-vs-ignore taxonomy. The contents-form rules below are
-# the durability fragment `hf gitignore` ships; `hf gitignore --check` / `hf doctor` fail-closed
-# if a DURABLE path (tasks/, decisions/, loop/*.md, context/) is ever swallowed. Never add a
-# bare `.handoff/` or `.claude/` ignore — Git can't re-include past an excluded parent dir.
-# HFTASK-0035 (ADR-0004 §3.3/§6 rev): the local ledger is gitignored (legitimate per-repo
-# source of record, never committed). `**` also covers the top-level path + grit worktrees.
+# === .handoff durability policy (ADR-0016 / ADR-0018 D1 — HFTASK-0067) ===
+# The kernel owns the canonical commit-vs-ignore taxonomy. ADR-0018 D1: COMMIT all durable
+# .handoff state — tasks/, decisions/, context/, hooks/, policy.toml, the rendered views
+# (packets/, active.md, deliveries/), AND `.handoff/ledger.events.jsonl` (the committed
+# continuity truth, the deterministic JSONL export). Only the BINARY LEDGER CACHE + ephemeral
+# runtime + out-of-tree migration artifacts are ignored below — the binary ledger is re-derived
+# from the JSONL via `hf import`. Never add a bare `.handoff/`/`.claude/` ignore (Git can't
+# re-include past an excluded parent dir). `**` also covers the top-level path + grit worktrees.
 .handoff/**/ledger.db
 .handoff/**/*.db-wal
 .handoff/**/*.db-shm
 .handoff/**/*.rvf
 .handoff/**/*.rvf.lock
-/.handoff/packets/
+.handoff/**/*.sqlite.bak
+.handoff/**/*.redb.tmp
 /.handoff/workspaces/
 
 .grit
 /_workspace/
 /_workspace_prev/
 
-# HFTASK-0037: active.md is a derived view (hf renders it); like packets/, never committed.
-/.handoff/active.md
-
 # HFTASK-0048: the on-disk lock mirror is ephemeral advisory state (the ledger is
-# authoritative); like the ledger.db, it is never committed.
+# authoritative); like the binary ledger cache, it is never committed.
 /.handoff/locks/
-
-# HFTASK-0021: delivery artifacts are generated from the authoritative ledger events
-# (`.handoff/deliveries/<correlation_id>.delivery.json`). They are a front-door polling cache,
-# not source truth, so they are never committed.
-/.handoff/deliveries/

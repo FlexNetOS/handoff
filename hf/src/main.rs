@@ -358,10 +358,12 @@ fn is_kernel_home() -> bool {
     Path::new("docs/adr-0001-flexnetos-autopilot-keystone.md").exists()
 }
 
-/// Mirror of `fleet-rollout.sh`'s `ensure_ledger_guard` (HFTASK-0035, ADR-0004 §3.3/§6):
-/// guarantee the repo's `.gitignore` ignores the local ledger so a freshly-init'd repo is
-/// P7-conformant out of the box (`hf fleet status` requires the guard). Idempotent — returns
-/// `true` iff it ADDED the guard, `false` if git already ignores `.handoff/ledger.db`.
+/// Guarantee the repo's `.gitignore` ignores the **binary ledger cache** so a freshly-init'd
+/// repo is P7-conformant out of the box (`hf fleet status` requires the guard). ADR-0018 D1
+/// (HFTASK-0067): the cache covers `ledger.db`/`-wal`/`-shm`/`*.rvf*` + the out-of-tree migration
+/// artifacts — it does NOT ignore the rendered views (`packets/`/`active.md`/`deliveries/`) or the
+/// `ledger.events.jsonl` text export, which are now committed. Idempotent — returns `true` iff it
+/// ADDED the guard, `false` if git already ignores `.handoff/ledger.db`.
 fn ensure_ledger_guard() -> bool {
     let already = std::process::Command::new("git")
         .args(["check-ignore", "-q", ".handoff/ledger.db"])
@@ -371,9 +373,11 @@ fn ensure_ledger_guard() -> bool {
     if already {
         return false;
     }
-    let block =
-        "\n# handoff continuity: local ledger is gitignored (ADR-0004 §3.3/§6 rev, HFTASK-0035)\n\
-        .handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n";
+    let block = "\n# handoff continuity: the binary ledger is a gitignored LOCAL CACHE — the\n\
+        # committed truth is `.handoff/ledger.events.jsonl` (ADR-0018 D1 / HFTASK-0067).\n\
+        .handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n\
+        .handoff/**/*.rvf\n.handoff/**/*.rvf.lock\n\
+        .handoff/**/*.sqlite.bak\n.handoff/**/*.redb.tmp\n";
     let prev = fs::read_to_string(".gitignore").unwrap_or_default();
     let _ = fs::write(".gitignore", format!("{prev}{block}"));
     true
@@ -468,12 +472,13 @@ fn cmd_init(args: &[String]) {
     let readme = Path::new(HF).join("README.md");
     if !kernel && !readme.exists() {
         let body = format!(
-            "# .handoff (ADR-0004 §3.3/§6 rev)\n\n\
-            Continuity layer for `{name}`. **Committed content is git-text only** (capsule, cards,\n\
-            packets). A local `ledger.db` is **gitignored** (legitimate per-repo source of record — it\n\
-            rolls up into the FLEET ledger at `meta/.handoff/ledger.db`); a *committed* binary ledger is\n\
-            banned. This repo's packet compiles centrally via `hf fleet render {name}`. See\n\
-            `meta/handoff/FLEET_GUIDE.md`.\n\n\
+            "# .handoff (ADR-0004 §3.3/§6 rev; ADR-0018 D1)\n\n\
+            Continuity layer for `{name}`. **All durable `.handoff` state is committed** — capsule,\n\
+            cards, decisions, the rendered views (`packets/`, `active.md`, `deliveries/`), and the\n\
+            `ledger.events.jsonl` text export (the committed continuity truth). The binary `ledger.db`\n\
+            (+ `*.rvf` sidecar) is a **gitignored local rebuild cache** re-derived via `hf import`; a\n\
+            *committed* binary ledger is banned (commit the JSONL text, not the binary). Events roll up\n\
+            into the FLEET ledger at `meta/.handoff/`. See `meta/handoff/FLEET_GUIDE.md`.\n\n\
             Cold start: read `context/capsule.json`, then run `hf resume`.\n"
         );
         let _ = fs::write(&readme, body);
@@ -2851,6 +2856,15 @@ fn cmd_seed() {
             "HFTASK-0066" => &[
                 "bash -n scripts/fleet-rollout.sh",
                 "bash -n scripts/handoff-lib.sh",
+            ],
+            // ADR-0018 D1 atomic flip: durability taxonomy + fleet P7 inversion + export, plus a
+            // syntax check on the two scripts whose guards changed.
+            "HFTASK-0067" => &[
+                "cargo test -p hf durability::",
+                "cargo test -p hf fleet::",
+                "cargo test -p ledger export",
+                "bash -n scripts/handoff-lib.sh",
+                "bash -n scripts/fleet-rollout.sh",
             ],
             _ => continue,
         };

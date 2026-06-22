@@ -54,16 +54,16 @@ role_for() {
   tags="${tags#*tags:}"; tags="${tags//[\[\] ]/}"; tags="${tags%%,*}"; echo "${tags:-tool}"
 }
 
-# HFTASK-0066: the .gitignore residency guards live in ONE place — `scripts/handoff-lib.sh`
-# (ADR-0004 §3.3/§6 rev, HFTASK-0035/0037; extended for the redb cutover HFTASK-0053 with the
-# `*.sqlite.bak`/`*.redb.tmp` migration-artifact guards). This script previously kept its own
-# copy of `ensure_ledger_guard`/`ensure_active_md_guard`, which drifted (it lacked the migration
-# guards). Source the canonical lib so there is exactly one definition; the functions are
-# signature-compatible drop-ins (each takes a dir, returns 0 if it ADDED a guard, 1 if present).
+# HFTASK-0066: the .gitignore residency guards live in ONE place — `scripts/handoff-lib.sh`.
+# ADR-0018 D1 (HFTASK-0067): the guard now covers only the BINARY LEDGER CACHE
+# (`ledger.db`/`-wal`/`-shm`/`*.rvf*` + `*.sqlite.bak`/`*.redb.tmp`); the rendered views
+# (`packets/`, `active.md`, `deliveries/`) and the `ledger.events.jsonl` text export are now
+# COMMITTED, so the old `ensure_active_md_guard` was removed. Source the canonical lib so there
+# is exactly one definition (`ensure_ledger_guard` takes a dir, returns 0 if it ADDED a guard).
 # shellcheck source=scripts/handoff-lib.sh
 . "$(dirname "$0")/handoff-lib.sh"
 
-GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0; ACTIVE_GUARDED=0
+GENERATED=0; SKIPPED=0; COMMITTED=0; PUSHED=0; FAILED=0; GUARDED=0
 if [ ${#ONLY[@]} -gt 0 ]; then
   TARGETS=("${ONLY[@]}")
 else
@@ -78,14 +78,13 @@ for repo in "${TARGETS[@]}"; do
   # (back-fill). Ensure them (idempotent), commit just the .gitignore if requested, then skip
   # the rest of generation.
   if [ -d "$dir/.handoff" ]; then
-    local ledger_changed=0 active_changed=0
+    local ledger_changed=0
     ensure_ledger_guard "$dir" && { ledger_changed=1; GUARDED=$((GUARDED+1)); }
-    ensure_active_md_guard "$dir" && { active_changed=1; ACTIVE_GUARDED=$((ACTIVE_GUARDED+1)); }
-    if [ "$ledger_changed" = 1 ] || [ "$active_changed" = 1 ]; then
-      echo "guard added $repo (ledger=$ledger_changed active=$active_changed)"
+    if [ "$ledger_changed" = 1 ]; then
+      echo "guard added $repo (binary-cache ledger guard)"
       if [ "$DO_COMMIT" = 1 ]; then
         if git -C "$dir" add .gitignore && \
-           git -C "$dir" commit -q -m "chore: gitignore handoff derived state (ADR-0004 §6 / HFTASK-0035 / HFTASK-0037)"; then
+           git -C "$dir" commit -q -m "chore: gitignore binary ledger cache (ADR-0018 D1 / HFTASK-0067)"; then
           COMMITTED=$((COMMITTED+1))
           [ "$DO_PUSH" = 1 ] && { git -C "$dir" push -q 2>/dev/null && PUSHED=$((PUSHED+1)) || { echo "  push FAILED $repo"; FAILED=$((FAILED+1)); }; }
         else echo "  guard commit FAILED $repo"; FAILED=$((FAILED+1)); fi
@@ -109,20 +108,21 @@ for repo in "${TARGETS[@]}"; do
 }
 JSON
   cat > "$dir/.handoff/README.md" <<MD
-# .handoff (ADR-0004 §3.3/§6 rev)
+# .handoff (ADR-0004 §3.3/§6 rev; ADR-0018 D1)
 
-Continuity layer for \`${repo}\`. **Committed content is git-text only** (capsule, cards,
-packets). Local derived views — \`ledger.db\`, \`active.md\`, and \`packets/latest.md\` — are
-**gitignored**; the ledger is the per-repo source of record that rolls up into the FLEET
-ledger at \`meta/.handoff/ledger.db\`. A *committed* binary ledger or derived view is banned.
-This repo's packet compiles centrally via \`hf fleet render ${repo}\`. See
-\`meta/handoff/FLEET_GUIDE.md\`.
+Continuity layer for \`${repo}\`. **All durable \`.handoff\` state is committed** — capsule,
+cards, decisions, the rendered views (\`packets/\`, \`active.md\`, \`deliveries/\`), and the
+\`ledger.events.jsonl\` text export (the committed continuity truth). The binary \`ledger.db\`
+(+ \`*.rvf\` sidecar) is a **gitignored local rebuild cache** re-derived via \`hf import\`; a
+*committed* binary ledger is banned (commit the JSONL text, not the binary). Events roll up
+into the FLEET ledger at \`meta/.handoff/\`. This repo's packet compiles centrally via
+\`hf fleet render ${repo}\`. See \`meta/handoff/FLEET_GUIDE.md\`.
 
 Cold start: read \`context/capsule.json\`, then run \`hf resume\`.
 MD
-  # HFTASK-0035/0037: newly-seeded repos get the ledger and active.md .gitignore guards.
+  # ADR-0018 D1 (HFTASK-0067): newly-seeded repos get the binary-cache .gitignore guard only;
+  # the rendered views + JSONL export are committed.
   ensure_ledger_guard "$dir" && GUARDED=$((GUARDED+1))
-  ensure_active_md_guard "$dir" && ACTIVE_GUARDED=$((ACTIVE_GUARDED+1))
   GENERATED=$((GENERATED+1)); echo "generated $repo (role=$role plane=$plane)"
 
   # grit (ADR-0009): initialize the parallel-agent coordination layer per repo (local
@@ -151,4 +151,4 @@ MD
 done
 
 echo "---"
-echo "generated=$GENERATED guarded(ledger .gitignore)=$GUARDED active-guarded=$ACTIVE_GUARDED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"
+echo "generated=$GENERATED guarded(binary-cache .gitignore)=$GUARDED skipped(existing)=$SKIPPED committed=$COMMITTED pushed=$PUSHED failed=$FAILED"

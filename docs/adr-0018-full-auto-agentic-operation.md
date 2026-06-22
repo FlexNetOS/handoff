@@ -42,16 +42,33 @@ fresh clone of any member carries its full continuity state; cross-fleet sync ri
 - `hf init`, `scripts/fleet-rollout.sh`, and `scripts/handoff-lib.sh` no longer emit the
   `.handoff/**/ledger.db` (+ wal/shm/rvf/active.md/locks/deliveries) ignore block; existing blocks
   are removed.
-- `hf fleet status` P7 (HFTASK-0034) **inverts**: a git-*tracked* `.handoff/ledger.db` becomes the
-  conformant state; a *missing* ledger / *present* ignore-guard becomes the violation.
+- `hf fleet status` P7 (HFTASK-0034) **inverts**: a *missing* committed continuity truth becomes the
+  violation where committing ledger state was previously banned (see Resolution below for the exact
+  gate).
 - The redb cutover migration artifacts (`*.sqlite.bak`/`*.redb.tmp`, HFTASK-0053) are **relocated
   out-of-tree** rather than committed (already true for `hf migrate` since PR #114) — only durable
   state is committed, never scratch.
 - **Binary-churn caveat (Consequences):** `ledger.db` is a binary redb file; committing it means
-  parallel worktrees can conflict on it. Mitigation is the existing isolation model — each batch works
-  in its own worktree (D10), the FLEET rollup ledger is the cross-repo source, and the per-repo
-  ledger is reconciled on the serialized merge. The implementing card decides the conflict story
-  (commit binary + merge=ours-then-replay, or commit a deterministic text export beside it).
+  parallel worktrees can conflict on it. The implementing card decides the conflict story (commit
+  binary + merge=ours-then-replay, or commit a deterministic text export beside it).
+
+> **Resolution (HFTASK-0067, implemented).** The conflict story is settled on the **deterministic
+> text-export** branch — the engineering best-practice choice (never commit a churning binary DB):
+> - **Committed continuity truth = `.handoff/ledger.events.jsonl`** — the deterministic, seq-ordered
+>   JSONL export of the witnessed ledger (increment 1, PR #121). It diffs/merges in git, and a fresh
+>   clone re-derives its binary cache via `hf import` (fail-closed witness re-verify).
+> - **Binary `ledger.db` (+ `*.rvf` sidecar) stays a gitignored LOCAL REBUILD CACHE.** "Commit all
+>   dotfiles" means all *durable* state; the binary is a cache (category: like `target/`), so the
+>   binary-residency guards from HFTASK-0034/0035 **remain valid** (a tracked binary `.db` is still a
+>   violation — commit the JSONL, not the binary).
+> - **Rendered views (`packets/`, `active.md`, `deliveries/`) move from ignored → committed** so a
+>   fresh clone / external observer sees rendered state without running `hf`. The durability taxonomy
+>   (ADR-0016 / `durability.rs`) moves them DURABLE; `repair_gitignore` strips the retired view
+>   ignores on migration; `swallow_report` flags any repo still ignoring them.
+> - **P7 inversion (exact gate):** a member with a local ledger on disk whose `.handoff/
+>   ledger.events.jsonl` is **NOT git-tracked** is the violation (`jsonl_export_missing` — run
+>   `hf export` + commit). `hf export` is wired into the session-end hook so the committed truth stays
+>   fresh. The binary stays out-of-tree, so worktree-per-batch (D10) never conflicts on it.
 
 **D2 — Better pre/post hook design for agent automation.**
 A single, centrally-formatted hook contract covering SessionStart/SessionResume/SessionEnd,

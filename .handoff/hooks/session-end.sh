@@ -20,6 +20,10 @@ fi
 # Witness whatever progress exists, then re-render the packet/active from ledger truth.
 "$HF" checkpoint --auto --quiet 2>/dev/null || true
 "$HF" handoff 2>/dev/null || true
+# ADR-0018 D1 (HFTASK-0067): refresh the COMMITTED continuity truth — the deterministic
+# `.handoff/ledger.events.jsonl` text export — from the (now-quiescent) binary ledger. Runs as a
+# separate process at this commit point, NOT inside a mutating verb (redb is single-writer).
+"$HF" export 2>/dev/null || true
 # HFTASK-0052 / fleet auto-sync: roll every member's per-repo ledger into the central
 # FLEET ledger. Best-effort and idempotent; degrades gracefully when no meta root exists.
 "$HF" sync --auto 2>/dev/null || true

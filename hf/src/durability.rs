@@ -15,15 +15,30 @@
 //! stages zero, continuity dies, and nothing detects it. Only `git check-ignore` on a
 //! representative durable path surfaces it — which is exactly what [`swallow_report`] does.
 //!
-//! ## The taxonomy (ADR-0016)
+//! ## The taxonomy (ADR-0016, REVISED by ADR-0018 D1)
+//!
+//! ADR-0018 D1 (full-auto: commit ALL dotfiles, incl. rendered views) **moves the rendered
+//! views into the durable set** and settles the ledger as a *text* export (HFTASK-0067):
 //!
 //! - **DURABLE** (commit; un-ignored): [`DURABLE_PROBES`] — `tasks/`, `decisions/`,
-//!   `context/` (capsule), loop `*.md` ledgers, `hooks/`, `policy.toml`, `README.md`.
-//! - **REGENERABLE** (ignore; rebuilt): [`REGENERABLE_PROBES`] — `*.db*` / `*.rvf`,
-//!   `packets/`, `workspaces/`, `locks/`, `deliveries/`, `active.md`.
+//!   `context/` (capsule), loop `*.md` ledgers, `hooks/`, `policy.toml`, `README.md`,
+//!   **`ledger.events.jsonl`** (the committed continuity truth — the deterministic JSONL
+//!   export, ADR-0018 D1 / increment 1), and the **rendered views** `packets/`, `active.md`,
+//!   `deliveries/` (now committed so a fresh clone / observer sees rendered state).
+//! - **REGENERABLE** (ignore; local rebuild cache): [`REGENERABLE_PROBES`] — the binary
+//!   ledger cache `*.db*` / `*.rvf*` (re-derived from `ledger.events.jsonl` via `hf import`),
+//!   the ephemeral `workspaces/` + `locks/`, and the out-of-tree migration artifacts
+//!   `*.sqlite.bak` / `*.redb.tmp`.
+//!
+//! Why the binary stays ignored while "commit ALL dotfiles" holds: a churning binary DB is
+//! never committable best-practice (merge hell, bloat) — so the *durable text* form (the
+//! JSONL export) is the committed artifact and the binary is its local cache. This is the
+//! "deterministic text export beside it" branch HFTASK-0067 authorizes.
 //!
 //! The kernel SHIPS [`CANONICAL_GITIGNORE_FRAGMENT`] (contents-form only) so consumers
-//! inherit the policy instead of hand-rolling it, and [`repair_gitignore`] writes/repairs it.
+//! inherit the policy instead of hand-rolling it, and [`repair_gitignore`] writes/repairs it
+//! — and now also **strips the retired derived-view ignores** ([`RETIRED_VIEW_IGNORES`]) so a
+//! repo migrating off the old policy re-includes its rendered views.
 
 use std::path::Path;
 use std::process::Command;
@@ -39,29 +54,51 @@ pub const DURABLE_PROBES: &[&str] = &[
     ".handoff/hooks/probe.sh",
     ".handoff/policy.toml",
     ".handoff/README.md",
+    // ADR-0018 D1: the committed continuity truth (the JSONL export — HFTASK-0067 increment 1)
+    // and the rendered views are now DURABLE (committed), not regenerable-ignored.
+    ".handoff/ledger.events.jsonl",
+    ".handoff/packets/latest.md",
+    ".handoff/active.md",
+    ".handoff/deliveries/corr.delivery.json",
 ];
 
-/// Representative **regenerable** `.handoff` paths that MUST stay gitignored (the kernel
-/// rebuilds them from the authoritative ledger). Used to detect *under-ignoring* regressions.
+/// Representative **regenerable** `.handoff` paths that MUST stay gitignored — the local rebuild
+/// cache (re-derived from the committed `ledger.events.jsonl` via `hf import`), the ephemeral
+/// runtime state, and the out-of-tree migration artifacts. Used to detect *under-ignoring*
+/// regressions. ADR-0018 D1: the rendered views (`packets/`, `active.md`, `deliveries/`) left
+/// this set — they are now committed.
 pub const REGENERABLE_PROBES: &[&str] = &[
     ".handoff/ledger.db",
     ".handoff/ledger.db-wal",
     ".handoff/ledger.db-shm",
     ".handoff/ledger.db.rvf",
     ".handoff/ledger.db.rvf.lock",
-    ".handoff/packets/latest.md",
+    ".handoff/ledger.db.sqlite.bak",
+    ".handoff/ledger.redb.tmp",
     ".handoff/workspaces/main/scratch",
     ".handoff/locks/task.lock",
-    ".handoff/deliveries/corr.delivery.json",
+];
+
+/// ADR-0018 D1 migration: the derived-view `.gitignore` lines the old (pre-0067) policy shipped
+/// that MUST now be stripped — the rendered views are durable/committed. [`repair_gitignore`]
+/// removes any line whose normalized form matches one of these so a migrating repo re-includes
+/// its views; [`swallow_report`] independently flags them as swallowed-durable. Normalized form:
+/// trimmed, leading `**/` and surrounding `/` removed (matches [`normalize_ignore_line`]).
+pub const RETIRED_VIEW_IGNORES: &[&str] = &[
+    ".handoff/packets",
     ".handoff/active.md",
+    ".handoff/deliveries",
 ];
 
 /// Continuity directories that must NEVER be excluded in dir-form (a bare ignore of the whole
 /// directory swallows durable children that negations cannot rescue).
 const SWALLOW_DIRS: &[&str] = &[".handoff", ".claude"];
 
-/// Marker line identifying the kernel-shipped fragment in a consumer `.gitignore` (idempotency).
-pub const FRAGMENT_MARKER: &str = "canonical .handoff durability policy (ADR-0016)";
+/// Marker substring identifying the kernel-shipped fragment in a consumer `.gitignore`
+/// (idempotency). Deliberately ADR-suffix-free so it matches both the original
+/// `(ADR-0016)` header and the ADR-0018-D1-revised `(ADR-0016 / ADR-0018 D1)` header — a repo
+/// that adopted the old fragment is still recognized as having it (no duplicate append on migrate).
+pub const FRAGMENT_MARKER: &str = "canonical .handoff durability policy";
 
 /// The canonical, **contents-form** `.gitignore` fragment the kernel ships. Every rule targets
 /// a specific regenerable subpath — there is deliberately no bare `.handoff/` / `.claude/`
@@ -69,8 +106,12 @@ pub const FRAGMENT_MARKER: &str = "canonical .handoff durability policy (ADR-001
 /// `context/`, loop `*.md`, `hooks/`, `policy.toml`, `README.md`) are intentionally absent
 /// here so they stay committed.
 pub const CANONICAL_GITIGNORE_FRAGMENT: &str = "\
-# === handoff continuity kernel — canonical .handoff durability policy (ADR-0016) ===
-# REGENERABLE .handoff state (rebuilt by `hf` from the authoritative ledger): never commit.
+# === handoff continuity kernel — canonical .handoff durability policy (ADR-0016 / ADR-0018 D1) ===
+# REGENERABLE .handoff state — the LOCAL rebuild cache (the binary ledger is re-derived from the
+# committed `.handoff/ledger.events.jsonl` via `hf import`) + ephemeral runtime + out-of-tree
+# migration artifacts: never commit. The committed continuity truth is the JSONL export and the
+# rendered views (packets/, active.md, deliveries/) — those are DURABLE and intentionally absent
+# here so they stay committed (ADR-0018 D1).
 # CONTENTS-FORM only — NEVER a bare `.handoff/` or `.claude/` ignore: Git cannot re-include a
 # path past an excluded parent dir, so a dir-form ignore silently SWALLOWS durable ledgers
 # (tasks/, decisions/, loop/*.md). Run `hf gitignore --check` (or `hf doctor`) to detect it.
@@ -79,11 +120,10 @@ pub const CANONICAL_GITIGNORE_FRAGMENT: &str = "\
 .handoff/**/*.db-shm
 .handoff/**/*.rvf
 .handoff/**/*.rvf.lock
-/.handoff/packets/
+.handoff/**/*.sqlite.bak
+.handoff/**/*.redb.tmp
 /.handoff/workspaces/
 /.handoff/locks/
-/.handoff/deliveries/
-/.handoff/active.md
 ";
 
 /// A single `.gitignore` line normalized for dir-form comparison: trimmed, comments/negations
@@ -110,6 +150,19 @@ pub fn scan_dir_form_ignores(gitignore: &str) -> Vec<String> {
         .lines()
         .filter(|line| {
             normalize_ignore_line(line).is_some_and(|n| SWALLOW_DIRS.contains(&n.as_str()))
+        })
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+/// ADR-0018 D1 migration: scan `.gitignore` text for the retired derived-view ignore lines
+/// (`packets/`, `active.md`, `deliveries/`) the old policy shipped — those views are now
+/// committed, so these lines must be stripped. Returns the raw matching lines. Pure.
+pub fn scan_retired_view_ignores(gitignore: &str) -> Vec<String> {
+    gitignore
+        .lines()
+        .filter(|line| {
+            normalize_ignore_line(line).is_some_and(|n| RETIRED_VIEW_IGNORES.contains(&n.as_str()))
         })
         .map(|l| l.trim().to_string())
         .collect()
@@ -172,30 +225,39 @@ pub fn swallow_report(repo: &Path) -> SwallowReport {
 pub struct RepairOutcome {
     /// Dir-form continuity-ignore lines that were removed (they swallow durable state).
     pub removed_dir_form: Vec<String>,
+    /// ADR-0018 D1: retired derived-view ignore lines removed (`packets/`/`active.md`/`deliveries/`
+    /// — those views are now committed).
+    pub removed_retired_views: Vec<String>,
     /// Whether the canonical fragment was appended (false if it was already present).
     pub added_fragment: bool,
 }
 
 impl RepairOutcome {
     pub fn changed(&self) -> bool {
-        self.added_fragment || !self.removed_dir_form.is_empty()
+        self.added_fragment
+            || !self.removed_dir_form.is_empty()
+            || !self.removed_retired_views.is_empty()
     }
 }
 
 /// Write/repair `repo/.gitignore` to the canonical policy, idempotently and non-destructively
-/// except for the one thing that MUST go: it strips any dir-form `.handoff`/`.claude` exclude
-/// (the swallow culprit — removing it re-includes durable state, which also aligns with the
-/// commit-dotfiles policy) and appends [`CANONICAL_GITIGNORE_FRAGMENT`] if the marker is
-/// absent. All other lines are preserved verbatim.
+/// except for the two things that MUST go: (1) any dir-form `.handoff`/`.claude` exclude (the
+/// swallow culprit — removing it re-includes durable state) and (2) the retired derived-view
+/// ignores (`packets/`/`active.md`/`deliveries/` — now committed per ADR-0018 D1). It then
+/// appends [`CANONICAL_GITIGNORE_FRAGMENT`] if the marker is absent. All other lines are
+/// preserved verbatim.
 pub fn repair_gitignore(repo: &Path) -> std::io::Result<RepairOutcome> {
     let path = repo.join(".gitignore");
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let removed = scan_dir_form_ignores(&text);
+    let removed_views = scan_retired_view_ignores(&text);
 
     let kept: Vec<&str> = text
         .lines()
         .filter(|line| {
-            normalize_ignore_line(line).is_none_or(|n| !SWALLOW_DIRS.contains(&n.as_str()))
+            normalize_ignore_line(line).is_none_or(|n| {
+                !SWALLOW_DIRS.contains(&n.as_str()) && !RETIRED_VIEW_IGNORES.contains(&n.as_str())
+            })
         })
         .collect();
     let mut out = kept.join("\n");
@@ -216,6 +278,7 @@ pub fn repair_gitignore(repo: &Path) -> std::io::Result<RepairOutcome> {
     std::fs::write(&path, out)?;
     Ok(RepairOutcome {
         removed_dir_form: removed,
+        removed_retired_views: removed_views,
         added_fragment,
     })
 }
@@ -327,6 +390,65 @@ mod tests {
         assert!(!again.added_fragment);
         assert!(again.removed_dir_form.is_empty());
 
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// ADR-0018 D1 migration: a repo carrying the OLD policy (the retired derived-view ignores
+    /// `packets/`/`active.md`/`deliveries/`) is unhealthy — those views are now durable, so they
+    /// read as swallowed — and `repair_gitignore` strips the retired lines so they re-include,
+    /// while the binary cache stays ignored.
+    #[test]
+    fn migration_strips_retired_view_ignores_and_recommits_views() {
+        let repo = temp_repo();
+
+        // OLD-POLICY STATE: the pre-0067 contents-form fragment ignored the rendered views.
+        std::fs::write(
+            repo.join(".gitignore"),
+            "/target\n.handoff/**/ledger.db\n/.handoff/packets/\n/.handoff/active.md\n/.handoff/deliveries/\n",
+        )
+        .unwrap();
+
+        // The rendered views read as swallowed-durable (they are now durable, still ignored).
+        let before = swallow_report(&repo);
+        assert!(
+            !before.is_healthy(),
+            "old retired-view ignores must read unhealthy: {before:?}"
+        );
+        assert!(
+            before
+                .swallowed_durable
+                .iter()
+                .any(|p| p.contains("active.md")),
+            "active.md must read as a swallowed durable view: {before:?}"
+        );
+        assert_eq!(
+            scan_retired_view_ignores(&std::fs::read_to_string(repo.join(".gitignore")).unwrap())
+                .len(),
+            3,
+            "all three retired-view ignore lines must be detected"
+        );
+
+        // REPAIR strips the retired-view lines (and appends the new canonical fragment).
+        let outcome = repair_gitignore(&repo).unwrap();
+        assert!(outcome.changed());
+        assert_eq!(
+            outcome.removed_retired_views.len(),
+            3,
+            "all three retired-view ignores removed: {outcome:?}"
+        );
+
+        // FIXED: views committable, binary cache still ignored, no regression.
+        let after = swallow_report(&repo);
+        assert!(after.is_healthy(), "after migration repair: {after:?}");
+        assert!(after.swallowed_durable.is_empty());
+        assert!(
+            after.regenerable_unignored.is_empty(),
+            "binary cache + ephemeral state still ignored: {:?}",
+            after.regenerable_unignored
+        );
+        // The ledger guard (a non-view line) is preserved.
+        let gi = std::fs::read_to_string(repo.join(".gitignore")).unwrap();
+        assert!(gi.contains(".handoff/**/ledger.db"));
         std::fs::remove_dir_all(&repo).ok();
     }
 
