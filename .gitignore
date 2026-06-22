@@ -24,3 +24,16 @@ node_modules/
 # HFTASK-0048: the on-disk lock mirror is ephemeral advisory state (the ledger is
 # authoritative); like the binary ledger cache, it is never committed.
 /.handoff/locks/
+
+# === .kb durability policy (ADR-0003 / ADR-0018 D7 — HFTASK-0072) ===
+# Same text-vs-binary precedent as the .handoff ledger above (HFTASK-0067): COMMIT the
+# DURABLE TEXT of the kb (`.kb/store/**` — the markdown documents + JSON commits/refs/
+# manifest, the committed planning truth, analogous to `ledger.events.jsonl`) and ignore
+# ONLY the BINARY DB CACHE (`.kb/.cache/gitkb.db*`, re-derived via `git kb code index`) plus
+# the EPHEMERAL editing surface (`.kb/workspaces/` — checked-out copies, rebuilt from store).
+# NOTE: `git kb init` wrongly ignores `.kb/store/` by default; we OVERRIDE that here so the
+# durable continuity text is committed, never the churning binary. Never commit a binary DB.
+.kb/.cache/
+.kb/workspace/
+.kb/workspaces/
+.kb/config.toml

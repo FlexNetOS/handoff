@@ -1,0 +1,5 @@
+{
+  "commit": {"author":"FlexNetOS <flexnetos@de-flex.net>","changes":[{"change_type":"deleted","doc_type":"task","document_id":"019eedd2-0b40-7db3-8843-7ae1360646f2","new_version":4,"previous_commit_id":"019eedd2-4d57-7b91-9754-9742941995da","previous_hash":"77c66094f5b8c21554161867553203918afa29b1897c8bbea3b81e259fbc27a3","previous_version":3,"slug":"tasks/seam-probe","title":"Seam probe task"}],"created_at":"2026-06-22T05:34:03.191295334Z","id":"019eedd2-4dbb-7ae0-9df8-0a1877886797","message":"HFTASK-0072: remove seam-probe (verification artifact)"},
+  "content_hash": "5b754989990204cafa16c5ba7f1303f3ee7998b9d4ad26ec1687cf86c829e581",
+  "hash_version": 3
+}

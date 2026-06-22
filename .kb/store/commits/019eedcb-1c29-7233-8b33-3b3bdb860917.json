@@ -1,0 +1,5 @@
+{
+  "commit": {"author":"FlexNetOS <flexnetos@de-flex.net>","changes":[{"change_type":"deleted","doc_type":"task","document_id":"019eedca-941e-7510-81af-9a3277452431","new_version":2,"previous_commit_id":"019eedca-a7b5-73e0-b195-e047a91a9690","previous_hash":"a6ed5f89f6899beb7279e2fae768c312d0d63c2f30e1672a4dfef2bbce22a884","previous_version":1,"slug":"tasks/probe","title":"Probe doc"}],"created_at":"2026-06-22T05:26:11.748365210Z","id":"019eedcb-1c29-7233-8b33-3b3bdb860917","message":"remove probe doc"},
+  "content_hash": "67426213a1973f848b3958646271de5a326a793e2d1cc991add0da829d82700a",
+  "hash_version": 3
+}

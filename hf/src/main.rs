@@ -3158,6 +3158,17 @@ fn cmd_seed() {
                 "./target/debug/hf resume | grep -q 'Next command:'",
                 "./target/debug/hf resume | grep -q 'Cycle / context budget:'",
             ],
+            // ADR-0018 D7 / HFTASK-0072: full `.kb` adoption + the two-way seam. Evidence: the
+            // durable `.kb` is initialized (the text store exists, the binary cache is ignored),
+            // the seam verb is exposed, and the seam unit tests (kb_root local-first resolution,
+            // plane-aware mint target, write-back direction) are green.
+            "HFTASK-0072" => &[
+                "cargo test -p hf kb::",
+                "test -d .kb/store/documents/context",
+                "test -f .kb/store/documents/context/immutable/project-brief.md",
+                "git check-ignore .kb/.cache/gitkb.db",
+                "./target/debug/hf 2>&1 | grep -q 'task mint'",
+            ],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();

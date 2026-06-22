@@ -35,6 +35,31 @@ points here — not a hardcoded string (ADR-0006).
 
 Maintain this repository through the Continuity Ledger Kernel (`.handoff`) protocol. The repo is the source of truth. Chat history is not authoritative.
 
+## Knowledge base — the planning plane (`.kb`, ADR-0003 / ADR-0018 D7)
+
+handoff fully adopts the FlexNetOS agent guide (`../.kb/AGENTS.md`) with its OWN durable
+`.kb/`. Detect KB state and load context BEFORE planning non-trivial work:
+
+```bash
+git kb list --path context/      # PATH A (empty) / PATH B (populated) / PATH C (resume)
+git kb checkout --path context/  # load the seven context documents
+git kb board                     # task kanban
+```
+
+- **Create-first discipline:** for a non-trivial feature/bug, create the kb document
+  FIRST (`git kb create task|incident …`) — the document IS your plan — then explore.
+  Trivial typo/one-liner changes are exempt.
+- **Traceability:** commit messages reference the task (`Implements [[tasks/<slug>]]` /
+  the HFTASK id); tasks link incidents/specs; children link parents.
+- **Two-way seam (ONE-WAY authority — kb never overrides execution truth):**
+  `hf task mint --from-kb <slug>` mints a witnessed card IN; `hf claim`/`checkpoint`/
+  `done`/`release` mirror the transition back OUT (active/+progress/completed/backlog).
+  `hf status` / `hf resume` (the ledger) is authoritative; the kb informs the plan.
+- **Residency:** `.kb/store/**` (durable text) is committed; `.kb/.cache/` (binary
+  cache) + `.kb/workspaces/` (ephemeral) + `.kb/config.toml` are gitignored.
+
+See `.claude/rules/knowledge-management.md` for the full lifecycle.
+
 ## Hard rules
 
 - Do not edit files without a task claim.
@@ -87,4 +112,5 @@ PreHandoff/TaskClaim/PreEdit hard gates. Run `hf drift` before any handoff.)
 3. `.handoff/packets/latest.md`
 4. `.handoff/tasks/` (task cards) · `.handoff/decisions/` (ADRs)
 5. `docs/Continuity_Ledger_Kernel_PRD.md`
-6. Fleet canon (the why): `../NORTH-STAR.md` · `../ARCHITECTURE-TRUTH.md` · `../RUVECTOR-RUNBOOK.md`
+6. Planning plane: `git kb checkout --path context/` (the `.kb` context documents) · `git kb board`
+7. Fleet canon (the why): `../NORTH-STAR.md` · `../ARCHITECTURE-TRUTH.md` · `../RUVECTOR-RUNBOOK.md`
