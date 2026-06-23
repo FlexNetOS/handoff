@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0059",
   "title": "Bounded SQLITE_BUSY retry for concurrent ledger writes",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "busy_timeout (set in Ledger::open) handles most contention, but under heavy concurrency — especially Windows file-locking — a BEGIN IMMEDIATE write can still surface SQLITE_BUSY (cumulative wait across serialized writers exceeds the timeout, or SQLite returns busy without invoking the handler on a lock upgrade). Wrap each ledger write transaction in with_busy_retry: retry the whole closure on transient SQLITE_BUSY/SQLITE_LOCKED with a short capped linear backoff. Safe for every write because each attempt re-reads the authoritative tail (seq + prev_hash) inside a fresh BEGIN IMMEDIATE, so no fork/duplicate seq can result; bounded by an attempt cap so a genuinely stuck lock still surfaces as an error. Shipped PR #96.",
   "path_scope": [

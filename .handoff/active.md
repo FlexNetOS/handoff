@@ -1,4 +1,4 @@
 # Active
 
-Next: HFTASK-0073
-Done 73/76 · witness-verified 265 events
+Next: —
+Done 76/76 · witness-verified 327 events

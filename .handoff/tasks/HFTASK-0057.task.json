@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0057",
   "title": "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "PRD §7.3 (lines 256-257: schemars for generation, jsonschema for validation), §20.1, §23 TASK-0002 acceptance ('JSON Schema is generated or checked in' + 'Invalid task cards fail validation'): there is NO schemars/jsonschema dependency; only 3 hand-written schemas (schemas/{task,session,packet}.schema.json) exist and nothing validates against them, so a malformed task card is NOT rejected at load. Build schema generation for the handoff.*.v1 types via schemars (or keep curated schemas in lockstep) AND wire jsonschema runtime validation so an invalid card fails closed instead of loading. No-downgrade: completes the typed-contract guarantee (HFTASK-0052 added Rust hook types but not schema gen/validation).",
   "path_scope": [

@@ -8,6 +8,7 @@
 #   4. migrate a legacy SQLite ledger -> redb (out-of-tree backup), ONLY if quiescent
 #   5. deploy the auto-loop hooks (SessionStart loop-entry + SessionEnd safety net)
 #      + the generic live differential-drive action workflow + harness (HFTASK-0078, relay-#134)
+#      + canonical `.claude/rules/*` full-auto rules (ADR-0018 D6 / HFTASK-0077)
 #   6. verify conformance (hf drift + hf fleet status) and render the resume packet
 #
 # Idempotent and FAIL-CLOSED on the one dangerous step (ledger migration): a repo that
@@ -136,7 +137,7 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS+=("$cur")
 fi
 
-INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 DIFFDRIVE=0 RELAY=0 OK=0 FAIL=0
+INIT=0 GUARD=0 MIGRATED=0 DEFERRED=0 HOOKED=0 DIFFDRIVE=0 RELAY=0 RULES=0 OK=0 FAIL=0
 
 deploy_hooks() {
   local dir="$1"
@@ -248,8 +249,41 @@ deploy_session_relay() {
   return 0
 }
 
+# Deploy canonical `.claude/rules/*` (ADR-0018 D6, HFTASK-0077). These rules are the
+# fleet-facing operating contract for full-auto work: committed durable dotfiles, full `.kb`
+# adoption, worktree-per-batch, context-budget wrap, grit+GitHub grounding, and
+# designated-agent-as-reviewer. Byte-consistency is enforced the same way session-relay is:
+# report drift, then overwrite with canonical source. Dry-run prints the intended copy only.
+deploy_rules() {
+  local dir="$1"
+  local src="$KERNEL_HOME/.claude/rules"
+  [ -d "$src" ] || src="$SCRIPT_DIR/../.claude/rules"
+  [ -d "$src" ] || src="$SCRIPT_DIR/rules"
+  if [ ! -d "$src" ]; then
+    say "  no canonical .claude/rules sources reachable — skipping (HFTASK-0077)"
+    return 1
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "    DRY: deploy canonical .claude/rules/* -> $dir/.claude/rules"
+    return 0
+  fi
+  mkdir -p "$dir/.claude/rules"
+  local f base
+  shopt -s nullglob
+  for f in "$src"/*.md; do
+    base="$(basename "$f")"
+    if [ -f "$dir/.claude/rules/$base" ] && ! cmp -s "$f" "$dir/.claude/rules/$base"; then
+      say "  .claude/rules drift in $base — re-deploying canonical (byte-consistency)"
+    fi
+    cp "$f" "$dir/.claude/rules/$base"
+  done
+  shopt -u nullglob
+  return 0
+}
+
 for dir in "${TARGETS[@]}"; do
-  [ -d "$dir/.git" ] || { say "skip $(basename "$dir") (not a git repo)"; continue; }
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { say "skip $(basename "$dir") (not a git repo)"; continue; }
   name="$(basename "$dir")"
   say "── $name ($dir)"
 
@@ -264,13 +298,13 @@ for dir in "${TARGETS[@]}"; do
     fi
   fi
 
-  # (3) guards
-  gl=0; ga=0
-  if [ "$DRY" = 1 ]; then echo "    DRY: ensure ledger + active.md + migration-artifact guards"; else
-    ensure_ledger_guard "$dir"   && gl=1
-    ensure_active_md_guard "$dir" && ga=1
+  # (3) guards. ADR-0018 D1 flipped rendered views (active.md/packets/deliveries) to
+  # committed durable text; only binary ledger caches + migration artifacts are ignored.
+  gl=0
+  if [ "$DRY" = 1 ]; then echo "    DRY: ensure ledger-cache + migration-artifact guards"; else
+    ensure_ledger_guard "$dir" && gl=1
   fi
-  [ "$gl" = 1 ] || [ "$ga" = 1 ] && { GUARD=$((GUARD+1)); say "  guards updated (ledger=$gl active=$ga)"; }
+  [ "$gl" = 1 ] && { GUARD=$((GUARD+1)); say "  guards updated (ledger=$gl)"; }
 
   # (4) ledger migration (fail-closed on quiescence)
   if [ "$NO_MIGRATE" = 0 ]; then
@@ -303,6 +337,9 @@ for dir in "${TARGETS[@]}"; do
   # (5c) canonical session-relay skills, byte-enforced (HFTASK-0070, ADR-0018 D5)
   deploy_session_relay "$dir" && { RELAY=$((RELAY+1)); say "  session-relay skills deployed (byte-enforced)"; }
 
+  # (5d) canonical full-auto rule files, byte-enforced (HFTASK-0077, ADR-0018 D6)
+  deploy_rules "$dir" && { RULES=$((RULES+1)); say "  .claude/rules deployed (byte-enforced)"; }
+
   # (6) verify + render
   if [ "$DRY" = 0 ]; then
     ( cd "$dir" && "$HF" resume >/dev/null 2>&1 ) || true
@@ -311,7 +348,7 @@ for dir in "${TARGETS[@]}"; do
 
   # (commit)
   if [ "$DO_COMMIT" = 1 ] && [ "$DRY" = 0 ]; then
-    git -C "$dir" add .handoff .gitignore .claude/settings.json .github/workflows/differential-drive.yml scripts/differential-drive.sh .claude/skills/session-relay-resume .claude/skills/session-relay-wrap-up 2>/dev/null
+    git -C "$dir" add .handoff .gitignore .claude/settings.json .github/workflows/differential-drive.yml scripts/differential-drive.sh .claude/skills/session-relay-resume .claude/skills/session-relay-wrap-up .claude/rules 2>/dev/null
     if git -C "$dir" diff --cached --quiet 2>/dev/null; then
       say "  nothing to commit"
     elif git -C "$dir" commit -q -m "chore: handoff-loop-init — .handoff upgrade + guards + auto-loop hooks"; then
@@ -323,6 +360,6 @@ for dir in "${TARGETS[@]}"; do
 done
 
 echo "---"
-echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED diffdrive=$DIFFDRIVE relay=$RELAY failed=$FAIL"
+echo "[init] targets=$OK init=$INIT guarded=$GUARD migrated=$MIGRATED deferred(busy)=$DEFERRED hooked=$HOOKED diffdrive=$DIFFDRIVE relay=$RELAY rules=$RULES failed=$FAIL"
 [ "$DEFERRED" -gt 0 ] && echo "[init] $DEFERRED repo(s) had a live loop — re-run when idle to migrate their ledgers."
 exit 0

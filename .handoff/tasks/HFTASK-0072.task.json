@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0072",
   "title": "ADR-0018 D7: full adoption of meta/.kb/AGENTS.md (init full .kb + create-first + two-way seam)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0018 D7: fully adopt the FlexNetOS agent guide meta/.kb/AGENTS.md (765 lines: document-before-implement, context docs, `git kb board`, traceability) in handoff. Init the FULL `.kb` (handoff is code-intelligence-only today: `git kb init`), wire the create-first discipline + board + traceability into the loop, and bind the planning<->execution seam (ADR-0003) BOTH ways per the guide (mint-in + write-back). No downgrade of the existing one-way ledger->kb mirror; kb still never overrides execution truth.",
   "path_scope": [

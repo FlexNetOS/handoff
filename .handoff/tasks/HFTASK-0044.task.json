@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0044",
   "title": "ADR-0001-B: hf ship performs the real develop->trunk fast-forward",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001-B (develop_mirrors_trunk=true) requires ff develop->trunk after each merge so develop==trunk. Today hf ship only println!s a note (main.rs ~475-480); should_sync_develop_trunk() is consulted but NO git ff is performed. Implement the actual fast-forward (fetch + ff-only push of develop to trunk, fail-closed, permission-gated, never force) so the branch model the policy claims is real.",
   "path_scope": [

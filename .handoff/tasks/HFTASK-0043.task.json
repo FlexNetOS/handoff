@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0043",
   "title": "ADR-0012 v2 + keystone T5: wire BetaParams::update to ledger outcomes",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0012 shipped Thompson-style routing but the contextual bandit never LEARNS: BetaParams::update (routing.rs:12) is unwired, so posteriors come only from the priority prior. Wire ledger outcomes into the update step — done = success reward, reopen/deny = failure — closing the keystone ADR-0001 §5.5 T5 co-learning loop so next-task value selection improves from real outcomes.",
   "path_scope": [

@@ -1,0 +1,62 @@
+name: AI Gatekeeper
+
+# ADR-0018 D8 / gh-aw #25439: model/steward judgment is a REQUIRED STATUS CHECK,
+# not a bot approval. Branch protection should require this job name: "AI Gatekeeper".
+
+on:
+  pull_request:
+    branches: [master, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+env:
+  CARGO_TERM_COLOR: always
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  gatekeeper:
+    name: AI Gatekeeper
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      - name: Clone envctl provider (envctl)
+        shell: bash
+        run: |
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+            mkdir -p envctl/crates/secrets-engine/src
+            {
+              printf '%s\n' '[package]'
+              printf '%s\n' 'name = "envctl-secrets-engine"'
+              printf '%s\n' 'version = "0.0.0"'
+              printf '%s\n' 'edition = "2021"'
+              printf '\n%s\n' '[lib]'
+              printf '%s\n' 'name = "envctl_secrets"'
+              printf '%s\n' 'path = "src/lib.rs"'
+              printf '\n%s\n' '[features]'
+              printf '%s\n' 'default = []'
+              printf '%s\n' 'inmem-store = []'
+            } > envctl/crates/secrets-engine/Cargo.toml
+            printf '// Windows CI manifest-only stub; the optional secrets feature is not built here.\n' > envctl/crates/secrets-engine/src/lib.rs
+          else
+            git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+          fi
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+
+      - name: Run witnessed AI gatekeeper
+        working-directory: handoff
+        run: cargo run -p hf --bin hf -- gatekeeper check "${{ github.event.pull_request.number }}" --task HFTASK-0073

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0066",
   "title": "Converge fleet-rollout.sh ledger-guard onto scripts/handoff-lib.sh (single source of the residency guards)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P3",
   "objective": "`scripts/handoff-lib.sh` is the canonical sourceable home for the `.gitignore` residency + redb-migration-artifact guards (HFTASK-0035/0037/0053 — `ensure_ledger_guard`/`ensure_active_md_guard`), but `scripts/fleet-rollout.sh` still keeps its OWN copy of `ensure_ledger_guard`, so the two definitions can drift (the lib already extends the guard with `*.sqlite.bak`/`*.redb.tmp`; fleet-rollout's copy may not). Converge: make `fleet-rollout.sh` source `handoff-lib.sh` and delegate to its guard functions (delete the duplicate body), so there is exactly ONE definition. Preserve fleet-rollout's existing behavior exactly (idempotent; new + existing members; README rev-model; never clobber a foreign `.gitignore`). No-downgrade. Low-risk/maintainability — a fresh redb dir never produces a `.sqlite.bak`, so this is correctness-of-single-source, not a live bug.",
   "path_scope": [

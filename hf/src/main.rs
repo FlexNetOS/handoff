@@ -1078,6 +1078,10 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
         println!("hf claim: kb {} → active (write-back)", wo.correlation_id);
     }
     println!("hf claim: {id} -> claimed");
+    println!(
+        "hf claim: next grit cycle (ADR-0018 D8): `scripts/grit-shared.sh claim --agent \"$HF_LEASE_HOLDER\" --intent \"{}: {}\" <file::symbol>` → work in the grit worktree → `scripts/grit-shared.sh done --agent \"$HF_LEASE_HOLDER\"`",
+        wo.id, wo.title
+    );
     true
 }
 

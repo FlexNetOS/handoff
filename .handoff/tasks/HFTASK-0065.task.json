@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0065",
   "title": "Package the handoff loop skills as `harness:` plugin skills (/harness:handoff-loop, /harness:handoff-loop-init)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "Owner's standing 'proper harness setup': make the handoff loop + init invokable under the published `harness:` plugin namespace, not only as handoff-local project skills. DISCOVERY (verify, don't assume): `harness_hub/harness/` is the vendored `harness` plugin (separate repo — upstream revfactory/harness + FlexNetOS skills) and ALREADY ships `skills/handoff-loop-init/` + `skills/handoff-loop-run/`, so the work is RECONCILE not create: sync the current script-driven `handoff/.claude/skills/handoff-loop-init` (PR #113) + the `handoff-loop` orchestrator skill + the bundled `scripts/handoff-loop-init.sh`/`scripts/handoff-lib.sh` drivers + the PR #114 out-of-tree-backup behavior INTO the plugin copies so `/harness:handoff-loop-init` and `/harness:handoff-loop` run the LATEST, non-downgraded implementation. Distinct from the generic `harness-loop-init` (loop-state-dir init) — do NOT conflate the two. CROSS-REPO: harness_hub changes are a separate-repo commit/PR over its SSH remote and go through the gatekeeper; the bundled `scripts/*.sh` must be reachable when the skill is ejected (vendor them under the skill dir or document the `$HANDOFF_KERNEL_HOME` dependency). No-downgrade: neither the handoff-local skills nor the plugin copies may lose capability; if the plugin copies are stale they get upgraded, never the reverse.",
   "path_scope": [

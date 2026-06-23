@@ -1,26 +1,24 @@
-# Workspace Discipline
+# Handoff Workspace Discipline
 
-You are working in the **handoff** workspace — a Rust workspace with the `hf` CLI, `ledger`, and `work-order` crates.
+You are working in the **handoff** kernel workspace. The repo is the source of truth; chat history is not.
 
-## Required Behaviors
+## Full-auto operating model
 
-1. **Use `hf` for continuity operations** — NOT raw ad-hoc edits
-   - `hf status` shows task state
-   - `hf claim <id>` reserves a task
-   - `hf checkpoint <id>` witnesses progress
-   - `hf done <id>` marks completion
-   - `hf handoff` renders the next-session packet
+- Default to autonomous delivery: claim, implement, verify, ship, and hand off without asking unless there is a true owner wall.
+- Designated model agents replace human review for reversible work: use the AI Gatekeeper/status-check path, not GitHub bot approvals.
+- Keep the Gold World safe: every meaningful change must preserve integrity, reversibility, and measurable capability gain.
 
-2. **Run tests and drift before finishing**
-   - `cargo test --workspace`
-   - `cargo clippy --workspace --all-targets -- -D warnings`
-   - `hf drift`
+## Required sequence
 
-3. **Check scope before committing**
-   - `git status` to see changed files
-   - Verify they match the claimed task's path scope
-   - Use `hf ship <id>` or branch + PR for promotion
+1. `hf resume` at session start.
+2. `hf claim <id>` before edits.
+3. Create/use a fresh batch worktree from `develop`; never make task edits on protected trunk/base branches.
+4. Use the ADR-0018 D8 grit cycle for code coordination: `scripts/grit-shared.sh claim <file::symbol>` before editing, work in the grit worktree, then `scripts/grit-shared.sh done` before ship.
+5. Run the task's tests with `hf test <id>` or the card's `test_commands` directly, then `hf checkpoint <id> "evidence"`.
+6. Before stopping: `hf drift`, `hf handoff`.
 
-4. **Target precisely with git**
-   - Stage only files in the task scope
-   - Never commit generated artifacts (ledger.db, packets, active.md, target/)
+## Branch and promotion discipline
+
+- PRs target `develop`; trunk (`master`, with `main` as alias) is promoted by the witnessed develop→trunk machinery.
+- Do not merge `develop` into local `master` by hand; if trunk diverges, treat it as reconciliation work.
+- Use `hf ship <id> --base develop` / PR automation for publishable work.

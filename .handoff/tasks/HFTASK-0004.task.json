@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0004",
   "title": "ruvector-verified AgentContract proof at hf handoff",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "On hf handoff, prove the intent_lock/acceptance via ruvector-verified (Lean) AgentContract; block handoff on unproven completion.",
   "path_scope": [

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0049",
   "title": "PRD verbs: hf reconcile, hf doctor, hf claim --next",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "PRD §5/§9/§24: three contract verbs are missing. hf reconcile — the docs' own precedence rule says agents must run it (state-precedence reconciliation; today only loosely folded into sync/sync-cards). hf doctor — health-diagnostic verb (ledger integrity, witness chain, drift, residency). hf claim --next — auto-claim the highest safe task (only `claim ID`/`claim --batch` exist). Build all three as first-class verbs.",
   "path_scope": [

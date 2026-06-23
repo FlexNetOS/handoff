@@ -300,7 +300,7 @@ fn session_start(base_override: Option<&str>, leaser: &dyn Leaser) {
     println!("hf session start: {branch} off {base_ref}");
     println!("  worktree: {}", worktree.display());
     println!(
-        "  next: cd into the worktree, then `hf claim --batch {}`",
+        "  next: cd into the worktree, then `hf claim --batch {}`; for each claimed task run `scripts/grit-shared.sh claim <file::symbol>` before editing and `scripts/grit-shared.sh done` before ship",
         policy.loop_cfg.cycle_flush
     );
 }

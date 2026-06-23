@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0055",
   "title": "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "PRD §20.2/§20.3/§20.4/§20.6 — the kernel has NO property/crash/golden suite (only one concurrency test at ledger/src/lib.rs:871; no proptest dependency anywhere). The original backlog TASK-0015 'hardening suite' lost its tracking when the HFTASK-0015 slot was repurposed to the policy engine. Build: (a) §20.2 proptest property tests — random path_scopes never falsely overlap; random event streams replay to identical final state; random checkpoint interruptions preserve last valid state; packet roundtrip; (b) §20.4 crash tests — crash during claim/checkpoint/handoff/index; ledger lock held by a dead process; corrupted task YAML/JSON fails CLOSED and is NEVER silently marked done; (c) §20.3/§20.6 golden/replay + fresh-agent acceptance integration tests. Distinct from HFTASK-0045 (hf test runs a TASK's own test_commands) — this is the KERNEL's own hardening matrix.",
   "path_scope": [

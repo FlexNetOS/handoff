@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0069",
   "title": "ADR-0018 D2: central pre/post hook contract + deployable canonical bundle",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0018 D2: extend the typed hook contract (hf/src/hooks.rs, HFTASK-0052: hook_event.v1/hook_result.v1/severity_for) to robustly + fail-closed cover ALL 8 events (SessionStart/Resume/End, Pre/PostCommand, Pre/PostTest, PostHandoff), and make `.handoff/hooks/{loop-entry,session-end,...}.sh` + `hooks.toml` a SINGLE handoff-central canonical bundle deployed identically fleet-wide (via the HFTASK-0065 /handoff-loop-init mechanism). Idempotent; no dangling settings.json refs (fail-closed skip when a hook source is absent).",
   "path_scope": [

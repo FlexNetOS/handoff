@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0047",
   "title": "PRD IntentLock 3->5 fields (constraint_hash, northstar_revision) + task_intent_changed",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "PRD §12.2: IntentLock specifies 5 fields but the struct (work-order/src/lib.rs:68-72) has only 3 — constraint_hash and northstar_revision are absent, so policy/constraint drift (§12.1) cannot be hash-detected. Add both fields to compute_intent_lock, emit a task_intent_changed event on mutation, and extend the ruvector-verified proof (contract.rs) + drift checks to cover the two new obligations. No-downgrade: existing 3-hash proof stays.",
   "path_scope": [

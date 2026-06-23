@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0040",
   "title": "ADR-0002 weave A2A surface 4: messaging (send/inbox/thread)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0002 surface 4 — agent-to-agent messaging (send/inbox/thread) over weave — has zero code. Build it on WeaveCli so loop agents and cross-repo sessions exchange relay:handoff-style messages through the frozen contract, matching the inbox messages the harness already receives.",
   "path_scope": [

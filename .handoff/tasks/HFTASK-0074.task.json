@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0074",
   "title": "ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P3",
   "objective": "ADR-0018 D9: commit `.idea/` (per D1) and actually USE it — shared run/debug configurations for the hf binary + tests, the Qodana inspection profile (`qodana.yaml`) wired as ADVISORY CI, the Rust plugin config. `workspace.xml` (the one genuinely per-user file) is committed per D1 unless it churns destructively — then carve it out with a recorded rationale (the ONLY allowed D1 exception).",
   "path_scope": [

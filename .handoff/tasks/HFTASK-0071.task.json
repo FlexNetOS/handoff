@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0071",
   "title": "ADR-0018 D4: more direction from handoff (next-action in hf resume + packet)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0018 D4: `hf resume` + the rendered packet emit EXPLICIT next-action direction — the single next safe task, the exact next command, the cycle/context-budget state, and the blocking walls — so a fresh agent needs zero archaeology. The handoff-loop skill gives richer steering (decision rationale + 'do this next', not just 'here is state').",
   "path_scope": [

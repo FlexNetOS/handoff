@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0051",
   "title": "PRD handoffd daemon (heartbeat + watch process)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "PRD §6/§7.2 architecture has a Daemon node that is unrealized — there is no handoffd process. Build the daemon: lease-heartbeat ticker, ledger tail/watch feed (the read-model behind hf watch / Mission Control), and a supervised resume hook, so the loop has a live process, not only one-shot CLI invocations.",
   "path_scope": [

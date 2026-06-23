@@ -28,6 +28,10 @@ require_review = true
 reviewer       = "cloud_ultra"    # Phase 1; Phase 2 = "swarm_local"
 auto_merge     = "on_approve"
 permission_gate = true            # transitional → AI gatekeeper (HFTASK-0014)
+# ADR-0018 D8: branch protection must require the AI gatekeeper as a STATUS CHECK,
+# never as a bot APPROVE (gh-aw #25439). sync-master.yml still waits only for the
+# four push checks on develop; the gatekeeper check is PR-scoped and protects merge.
+required_status_checks = ["Test (ubuntu-latest)", "Test (macos-latest)", "Clippy", "Format", "AI Gatekeeper"]
 
 [preflight]
 require_clean_tree  = true        # refuse session start on a dirty tree
