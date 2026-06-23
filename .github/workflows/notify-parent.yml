@@ -10,7 +10,21 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      - name: Check parent dispatch token
+        id: parent-token
+        shell: bash
+        env:
+          PARENT_REPO_PAT: ${{ secrets.PARENT_REPO_PAT }}
+        run: |
+          if [ -n "${PARENT_REPO_PAT:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::PARENT_REPO_PAT is not configured; skipping FlexNetOS/meta repository_dispatch."
+          fi
+
       - name: Notify parent repo
+        if: steps.parent-token.outputs.configured == 'true'
         # PARENT_REPO_PAT requires `repo` scope on FlexNetOS/meta (org-level secret).
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
         with:

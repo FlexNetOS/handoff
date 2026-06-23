@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-0004",
+  "title": "Guard notify-parent when parent token is absent",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix notify-parent workflow so a missing PARENT_REPO_PAT secret is surfaced as an explicit warning/skip instead of a red failed check on every master push.",
+  "path_scope": [
+    ".github/workflows/notify-parent.yml",
+    ".handoff/tasks/TASK-0004.task.json",
+    ".handoff/decisions/TASK-0004-notify-parent-token-guard.md"
+  ],
+  "acceptance_criteria": [
+    "notify-parent.yml checks whether PARENT_REPO_PAT is configured before invoking repository-dispatch.",
+    "Missing token produces an explicit GitHub Actions warning and skips dispatch without failing unrelated verification.",
+    "Workflow YAML parses and local focused tests remain green."
+  ],
+  "test_commands": [
+    "python3 - <<'PY'\nimport yaml\nyaml.safe_load(open(\".github/workflows/notify-parent.yml\"))\nPY",
+    "cargo test -p hf gatekeeper"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "manual-notify-parent-token-guard",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:8649e2398d13fc8821e0e6647c00da1153d5f9647e4e86cb1af647ba11525162",
+    "path_scope_hash": "blake3:fd626d20b1e16dc4054629b305881b203d5f1524d96e48a60267b43906da5ab6",
+    "acceptance_hash": "blake3:3c6d561b249ad1214ff029b36c29e6cb31c400def79e64498a991d31bc858889"
+  }
+}
