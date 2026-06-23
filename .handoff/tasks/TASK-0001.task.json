@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-0001",
+  "title": "[bundle] Fix full verification suite so cargo test --workspace is her",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix full verification suite so cargo test --workspace is hermetic: crates/runner test_implementation_loop_writes_task_header currently spawns real claude and can hang; replace with a deterministic failing stub command and add coverage that verifies headers are written without invoking live agent CLIs.",
+  "path_scope": [
+    "crates/runner/**",
+    ".handoff/tasks/TASK-0001.task.json"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-5b718b758305f028-1782212140388917151",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:dfe3cfae46ee12359dbee1e7b6bfec618ee9096eb60ea33675bc9d828d6b404d",
+    "path_scope_hash": "blake3:ee12bf9bb6750125cacca13954ccb66de7b768577d5cf84ea3ffac5634a57a2e",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

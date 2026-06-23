@@ -1380,7 +1380,12 @@ mod tests {
     #[test]
     fn test_implementation_loop_writes_task_header() {
         // Create a tasks file with one unchecked task so the loop tries to spawn
-        // claude (which will fail in test env), but should still write the task header
+        // a deterministic failing command, but should still write the task header.
+        //
+        // Regression: this test previously used `TuiConfig::default()`, which can
+        // spawn a real `claude` CLI when present on a developer machine. That makes
+        // `cargo test --workspace` non-hermetic and can hang indefinitely inside a
+        // live agent process. Keep this test isolated from PATH-provided agent CLIs.
         let tmp_dir = tempfile::tempdir().unwrap();
         let dir = tmp_dir.path();
         let change_dir = dir.join("openspec/changes/test-task-hdr");
@@ -1389,7 +1394,13 @@ mod tests {
         std::fs::write(&tasks_path, "- [x] Done task\n- [ ] Pending task\n").unwrap();
         let log_path = dir.join("test.log");
 
-        let (tx, _rx) = mpsc::channel();
+        let config = TuiConfig {
+            command: "nonexistent-binary-for-hermetic-header-test {prompt}".to_string(),
+            prompt: "test prompt for {name}".to_string(),
+            ..Default::default()
+        };
+
+        let (tx, rx) = mpsc::channel();
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let child_handle: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
 
@@ -1400,8 +1411,13 @@ mod tests {
             &tx,
             &cancel_flag,
             &child_handle,
-            &TuiConfig::default(),
+            &config,
         );
+
+        for _ in 0..3 {
+            assert!(matches!(rx.recv().unwrap(), ImplUpdate::Error(_)));
+        }
+        assert!(matches!(rx.recv().unwrap(), ImplUpdate::Stalled));
 
         let content = std::fs::read_to_string(&log_path).unwrap();
         assert!(
