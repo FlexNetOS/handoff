@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0060",
   "title": "RVF sidecar open retries on lock contention (fix intermittent hf panic)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().",
   "path_scope": [

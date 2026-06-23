@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0036",
   "title": "hf ship fail-closed exit codes (L2 hf-verb-safety)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
   "path_scope": [

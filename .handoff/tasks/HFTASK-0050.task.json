@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0050",
   "title": "PRD hf index + .handoff/maps/ + hf plan (task DAG)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "PRD §8/§9: hf index generates .handoff/maps/{repo,test,owner,dependency}-map.json and the generated nav docs so a cold-start agent can understand the repo from generated files; hf plan builds/refreshes the task DAG from dependencies/blocked_by. Neither exists (the maps dir is absent). Build hf index + the maps + hf plan.",
   "path_scope": [

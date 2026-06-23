@@ -7,21 +7,24 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 73/76.  Tamper-evident events verified: 265.
+Done: 76/76.  Tamper-evident events verified: 327.
+
+## 0. Next Action / Direction
+- **Next safe task:** none — backlog is exhausted (all cards Done).
+- **Next command:** `hf handoff` (render the closing packet).
+- **Why it is next:** no Backlog/in-progress card remains.
+- **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
+- **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
+- **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P2] **HFTASK-0073** — ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check)
-- [P3] **HFTASK-0074** — ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI)
-- [P2] **HFTASK-0077** — ADR-0018 D6: update .claude/rules/* + meta rules to the full-auto model + fleet deploy
 
 ## 5. Next Best Task
-**HFTASK-0073** — ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check)
-  objective: ADR-0018 D8: make the `hf claim -> grit claim <file::symbol> -> grit worktree -> grit done` cycle (ADR-0009) the DEFAULT path for every batch; advance the shared grit backend (ADR-0010) past degrade. GitHub: ground the autonomous AI gatekeeper (HFTASK-0014) as a REQUIRED status check feeding branch protection (HFTASK-0010/0012) + gh-aw guardrails so develop->trunk promotion needs NO manual gh api.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0073
+done
 ```
 
 ## 7. Machine Summary
@@ -97,21 +100,20 @@ hf claim HFTASK-0073
     "HFTASK-0070",
     "HFTASK-0071",
     "HFTASK-0072",
+    "HFTASK-0073",
+    "HFTASK-0074",
     "HFTASK-0075",
     "HFTASK-0076",
+    "HFTASK-0077",
     "HFTASK-0078",
     "KBTASK-FLEET-HANDOFF-ROLLOUT"
   ],
-  "next_command": "hf claim HFTASK-0073",
-  "next_task_id": "HFTASK-0073",
+  "next_command": "done",
+  "next_task_id": null,
   "project": "handoff (Continuity Ledger Kernel)",
-  "remaining": [
-    "HFTASK-0073",
-    "HFTASK-0074",
-    "HFTASK-0077"
-  ],
+  "remaining": [],
   "schema": "handoff.packet.v2",
   "tasks_total": 76,
-  "witnessed_events_verified": 265
+  "witnessed_events_verified": 327
 }
 ```

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0019",
   "title": "Expose hf as an MCP server (the T11 universal control seam)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 R13/§11: the runbook's T11 = MCP is the universal control seam; every RuVector subsystem is MCP-accessible but hf is not, and NO MCP server exists on the prompt_hub side either (R14 verified). Expose hf verbs (status/resume/claim/ship/review/intake...) as an MCP server so chat->MCP->work-order dispatch has a handoff-side endpoint, and the front door (HFTASK-0003) can dispatch over a real seam (pattern: rvAgent rvagent-mcp / mcp-gate / mcp-brain).",
   "path_scope": [

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0039",
   "title": "ADR-0002 weave A2A surface 3: jobs (job_create/job_claim/job_update)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0002 froze a five-surface weave A2A contract; only surfaces 1 (identity) + 2 (leases) are built (hf/src/lease.rs). Build surface 3 — the poll-only job channel (job_create/job_claim/job_update) — reusing WeaveCli, so cross-agent work items have a real mesh transport instead of only the local ledger. No-downgrade: this is an accepted-ADR commitment, not optional.",
   "path_scope": [

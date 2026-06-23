@@ -12,7 +12,9 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::{ledger_path, now_ns, route::route_for_task, run_out, GhPrView, Ledger};
+use crate::{
+    ledger_path, now_ns, policy::Policy, route::route_for_task, run_out, GhPrView, Ledger, HF,
+};
 
 /// The result of a lightweight impact scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,9 +113,79 @@ fn run_test_gate() -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(feature = "secrets"))]
+#[cfg(feature = "secrets")]
 fn merge_gate_check() -> Result<bool, String> {
-    Ok(false)
+    crate::secrets::github_merge_gate(
+        "POST",
+        "api.github.com",
+        "/repos/FlexNetOS/handoff/check-runs",
+    )
+}
+
+#[cfg(not(feature = "secrets"))]
+fn merge_gate_check() -> Result<Option<bool>, String> {
+    Ok(None)
+}
+
+#[cfg(feature = "secrets")]
+fn merge_gate_signal() -> Result<Option<bool>, String> {
+    merge_gate_check().map(Some)
+}
+
+#[cfg(not(feature = "secrets"))]
+fn merge_gate_signal() -> Result<Option<bool>, String> {
+    merge_gate_check()
+}
+
+fn verdict_from_signals(
+    changed_files: &[String],
+    test_ok: bool,
+    merge_gate_ok: Option<bool>,
+    policy: &Policy,
+    protected_clearance: bool,
+) -> (GatekeeperVerdict, Vec<String>, Vec<String>) {
+    let mut reasons = Vec::new();
+    if changed_files.is_empty() {
+        reasons.push("no changed files detected".into());
+    }
+    if !test_ok {
+        reasons.push("cargo test failed".into());
+    }
+    let protected_hits = policy.merge.protected_hits(changed_files);
+    if !protected_hits.is_empty() {
+        if protected_clearance {
+            reasons.push(format!(
+                "protected files covered by explicit steward task clearance: {}",
+                protected_hits.join(", ")
+            ));
+        } else {
+            reasons.push(format!(
+                "protected files require explicit steward clearance: {}",
+                protected_hits.join(", ")
+            ));
+        }
+    }
+    match merge_gate_ok {
+        Some(true) => {}
+        Some(false) => reasons.push("merge gate denied".into()),
+        None => reasons.push(
+            "merge gate unavailable in this build; relying on required GitHub check + branch protection".into(),
+        ),
+    }
+
+    // Default CI may not link the envctl secrets feature. That is degraded evidence, not a
+    // silent human approval: the PR-scoped "AI Gatekeeper" required check is still the
+    // deterministic branch-protection surface.
+    let hard_fail = changed_files.is_empty()
+        || !test_ok
+        || (!protected_clearance && !protected_hits.is_empty())
+        || merge_gate_ok == Some(false);
+    let verdict = if hard_fail {
+        GatekeeperVerdict::Deny
+    } else {
+        GatekeeperVerdict::Approve
+    };
+    (verdict, reasons, protected_hits)
 }
 
 /// HFTASK-0014 foundation: run deterministic gates on PR `pr` and record a judgment event.
@@ -169,27 +241,23 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
     let work_order_id = task_id.unwrap_or("gatekeeper");
 
     // Gather signals.
-    let changed_files = pr_changed_files(pr).unwrap_or_default();
+    let changed_files = pr_changed_files(pr).unwrap_or_else(|e| {
+        eprintln!("hf gatekeeper: cannot list changed files for PR {pr}: {e}");
+        std::process::exit(1);
+    });
     let impact = impact_scan(&changed_files);
 
     let test_ok = run_test_gate().is_ok();
-    let merge_gate_ok = merge_gate_check().unwrap_or(false);
-
-    let mut reasons: Vec<String> = Vec::new();
-    if !test_ok {
-        reasons.push("cargo test failed".into());
-    }
-    if !merge_gate_ok {
-        reasons.push("merge gate denied".into());
-    }
-    #[cfg(not(feature = "secrets"))]
-    reasons.push("secrets-engine merge gate unavailable in this build".into());
-
-    let verdict = if test_ok && merge_gate_ok && !changed_files.is_empty() {
-        GatekeeperVerdict::Approve
-    } else {
-        GatekeeperVerdict::Deny
-    };
+    let merge_gate_ok = merge_gate_signal().unwrap_or(None);
+    let policy = Policy::load(std::path::Path::new(HF));
+    let protected_clearance = task_id.is_some();
+    let (verdict, reasons, protected_hits) = verdict_from_signals(
+        &changed_files,
+        test_ok,
+        merge_gate_ok,
+        &policy,
+        protected_clearance,
+    );
 
     let payload = serde_json::json!({
         "pr": &meta.url,
@@ -200,6 +268,10 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
         "reasons": &reasons,
         "changed_files": &impact.changed,
         "impacted_files": &impact.impacted,
+        "protected_hits": &protected_hits,
+        "protected_clearance": protected_clearance,
+        "merge_gate_ok": merge_gate_ok,
+        "required_status_checks": &policy.merge.required_status_checks,
         "task_id": task_id,
     })
     .to_string();
@@ -260,5 +332,42 @@ mod tests {
         let name = format!("zzzz{}nonexistent{}9999.rs", "_", "_");
         let impact = impact_scan(&[name]);
         assert!(impact.impacted.is_empty());
+    }
+
+    #[test]
+    fn default_required_check_can_approve_when_merge_gate_is_unlinked() {
+        let policy = Policy::default();
+        let changed = vec!["hf/src/gatekeeper.rs".to_string()];
+        let (verdict, reasons, protected) =
+            verdict_from_signals(&changed, true, None, &policy, false);
+        assert_eq!(verdict, GatekeeperVerdict::Approve);
+        assert!(protected.is_empty());
+        assert!(reasons.iter().any(|r| r.contains("required GitHub check")));
+    }
+
+    #[test]
+    fn protected_files_fail_closed_without_clearance() {
+        let policy = Policy::default();
+        let changed = vec![".github/workflows/ci.yml".to_string()];
+        let (verdict, reasons, protected) =
+            verdict_from_signals(&changed, true, None, &policy, false);
+        assert_eq!(verdict, GatekeeperVerdict::Deny);
+        assert_eq!(protected, changed);
+        assert!(reasons
+            .iter()
+            .any(|r| r.contains("require explicit steward clearance")));
+    }
+
+    #[test]
+    fn protected_files_pass_with_task_clearance() {
+        let policy = Policy::default();
+        let changed = vec![".github/workflows/ci.yml".to_string()];
+        let (verdict, reasons, protected) =
+            verdict_from_signals(&changed, true, None, &policy, true);
+        assert_eq!(verdict, GatekeeperVerdict::Approve);
+        assert_eq!(protected, changed);
+        assert!(reasons
+            .iter()
+            .any(|r| r.contains("covered by explicit steward task clearance")));
     }
 }

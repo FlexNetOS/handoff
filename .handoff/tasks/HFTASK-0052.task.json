@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0052",
   "title": "Session-end auto-sync + auto pr_merged ledger marker",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Wire `hf sync --auto` into the SessionStop lifecycle hook so every session end rolls per-repo ledgers into the central FLEET ledger. Make `hf done` automatically derive the merged PR from the most recent `pr_opened` event recorded by `hf ship`, falling back to `--pr N`, and record a `pr_merged` marker. Update the promote-verify CI workflow to clone RuVector/envctl next to the checkout so the master-target PR gate can build.",
   "path_scope": [

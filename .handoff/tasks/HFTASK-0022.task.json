@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0022",
   "title": "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui) is the REAL chosen front door (an unmodified HuggingFace Chat-UI fork, SvelteKit, with an mcp-bridge/ subpackage; nothing consumes loop events yet). NOTE: the envctl/loop-forge zellij multi-pane dashboard was attempted and FAILED - do NOT revive it; RuVocal is the surface. Adopt-and-extend RuVocal: integrate prompt_hub (vibe request in -> dispatch via the seam HFTASK-0019/HFTASK-0003) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat via mcp-bridge.",
   "path_scope": [

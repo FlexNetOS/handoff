@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0008",
   "title": "Branch/remote policy engine (develop<->master, clone/fork)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §3: policy module resolving clone-vs-fork, base=develop, trunk=master. Enforce: branch off origin/<base> after fetch only, never push trunk directly, ff develop->trunk after merge. Fork model deferred behind remote.model=fork.",
   "path_scope": [

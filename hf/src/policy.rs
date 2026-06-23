@@ -76,6 +76,11 @@ pub struct Merge {
     pub reviewer: String,
     pub auto_merge: String,
     pub permission_gate: bool,
+    /// GitHub check-run / workflow job names that branch protection must require.
+    ///
+    /// ADR-0018 D8 grounds the autonomous gatekeeper as a required status check,
+    /// never as a bot approval (gh-aw guardrail).
+    pub required_status_checks: Vec<String>,
     /// Paths/prefixes that block automatic review/merge unless explicitly cleared.
     /// A file matches if it equals a pattern or starts with a pattern.
     /// Directory patterns should end in '/' to avoid false positives.
@@ -88,6 +93,13 @@ impl Default for Merge {
             reviewer: "cloud_ultra".into(),
             auto_merge: "on_approve".into(),
             permission_gate: true,
+            required_status_checks: vec![
+                "Test (ubuntu-latest)".into(),
+                "Test (macos-latest)".into(),
+                "Clippy".into(),
+                "Format".into(),
+                "AI Gatekeeper".into(),
+            ],
             protected_files: vec![
                 ".github/".into(),
                 ".handoff/policy.toml".into(),
@@ -193,6 +205,10 @@ mod tests {
         assert!(p.preflight.require_clean_tree);
         assert!(p.sync.kb_enabled);
         assert_eq!(p.sync.kb_slugs.len(), 2);
+        assert!(p
+            .merge
+            .required_status_checks
+            .contains(&"AI Gatekeeper".to_string()));
     }
 
     #[test]

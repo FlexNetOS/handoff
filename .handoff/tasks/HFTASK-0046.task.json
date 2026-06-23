@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0046",
   "title": "PRD drift sentinel: 2/10 -> 10/10 checks + handoff.drift_report.v1",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "PRD §12.3-12.4: detect_drift (gates.rs:96-133) implements only 2 of 10 checks (intent-lock mismatch + out-of-scope writes) and emits a thin {clean,drift[]} shape, not handoff.drift_report.v1. Build the remaining checks — acceptance<->test mapping, decision-record contradiction, undocumented-architecture-change, handoff-state-staleness, and distinct objective/path_scope/acceptance/constraint hash-change outputs — and emit the full PRD schema. The most demanding part of the contract.",
   "path_scope": [

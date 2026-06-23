@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0048",
   "title": "PRD atomic in-ledger lease state machine + .handoff/locks/*.lock (no-downgrade superset of weave)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "PRD §11.2-11.3: the self-contained kernel lease design — BEGIN IMMEDIATE; read leases; detect overlap; insert lease_requested/lease_active/heartbeat events; .handoff/locks/{ledger,merge,index}.lock; stale-lease reclaim event — was replaced by external weave with silent ledger-only fallback (lease.rs). Build the atomic in-ledger lease state machine as the local source of truth so the kernel self-coordinates WITHOUT requiring weave present; weave remains the mesh overlay. No-downgrade: a strict superset, not a swap.",
   "path_scope": [

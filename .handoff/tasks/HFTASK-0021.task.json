@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0021",
   "title": "Delivery / output endpoint (correlation_id round-trip to front door)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0001 §13/R14: the pipeline is prompt_hub(input)->process->delivery(output) but the output endpoint was absent. correlation_id (=prompt_hub workflow_id) is already carried on every WorkOrder, so round-trip a merged cycle's result back to the originating vibe request - surfaced in RuVocal chat or via prompt_hub summarize <run-id>/feedback. Emit on pr_merged.",
   "path_scope": [

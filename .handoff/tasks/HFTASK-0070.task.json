@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0070",
   "title": "ADR-0018 D5: handoff-central format + cross-fleet deploy for session-relay-resume/-wrap-up",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0018 D5: the `session-relay-resume`/`-wrap-up` skills (today harness_hub-owned per-repo) get their canonical format/templates defined IN handoff (rendered from the witnessed ledger/packet, NEVER hand-authored prose), and handoff deploys them + enforces byte-consistency to every fleet member via the /handoff-loop-init family (HFTASK-0065). Cross-repo (harness_hub) — gatekeeper-gated.",
   "path_scope": [

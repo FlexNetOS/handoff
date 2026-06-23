@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "KBTASK-FLEET-HANDOFF-ROLLOUT",
   "title": "Fleet .handoff rollout (P7)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "Minted from kb task tasks/fleet-handoff-rollout",
   "path_scope": [

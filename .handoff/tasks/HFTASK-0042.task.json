@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0042",
   "title": "ADR-0003 rule 3: kb task write-back + status flips",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0003 rule 3 (the .kb planning<->execution seam, one-way): hf claim flips the referenced kb TASK document to active; hf checkpoint/hf handoff append a progress line to it; terminal hf done flips it to completed WITH evidence (commit hashes, test results). Today only sync.rs::part_b_kb_mirror writes the two context/overridable/* slugs, only via the explicit hf sync verb, never the task document and never status flips. Build the task-document write-back into claim/checkpoint/handoff/done. Stay one-way: kb is never read back as truth.",
   "path_scope": [

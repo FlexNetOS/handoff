@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0045",
   "title": "PRD hf test: execute stored test_commands as completion evidence",
-  "status": "backlog",
+  "status": "done",
   "priority": "P0",
   "objective": "PRD §4.7/§9/§12.3: evidence-backed completion REQUIRES executing the task's test_commands and mapping results to acceptance_criteria. The field is stored (work-order/src/lib.rs:46) but NEVER run — completion evidence is unenforced at the kernel level. Build `hf test [ID]`: run the work order's test_commands, capture pass/fail + output, append a witnessed test_result event, and gate handoff/done on green. This is the kernel's central completion guarantee.",
   "path_scope": [

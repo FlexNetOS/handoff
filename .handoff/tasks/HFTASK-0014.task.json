@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0014",
   "title": "Surgical AI gatekeeper with full code knowledge (replaces human approvals)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0001 §5b: the end-state merge approver is a code-OMNISCIENT AI gatekeeper (not human, not blind swarm). REQUIRES full-codebase code intelligence (git kb code index / kb_callers/kb_impact, and/or RuVector) so it judges a change against its full blast radius (callers/callees/invariants), not just the diff. It is the swarm_local reviewer (HFTASK-0010) upgraded with mandatory full-code grounding. Verdict=judgment; envctl broker::decide (HFTASK-0013) is the deterministic enforcement that actually releases the token/merge. permission_gate is transitional toward THIS gatekeeper, not toward a human; remove the human approver once gatekeeper+broker are trusted.",
   "path_scope": [

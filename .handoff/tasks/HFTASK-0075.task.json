@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0075",
   "title": "ADR-0018 D10: worktree per task batch, reaped on verified PR merge",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0018 D10: every task batch starts a NEW grit worktree (ADR-0009); it is removed ONLY on verified PR merge (not before); abandoned/discarded batches keep their worktree until reconciled. Wire into `hf session`/`hf claim --batch` + the handoff-loop preflight. This isolation is the precondition that makes D1's committed binary ledger.db safe (parallel batches never share a working ledger).",
   "path_scope": [

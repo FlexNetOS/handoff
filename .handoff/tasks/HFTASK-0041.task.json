@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0041",
   "title": "ADR-0002 surface 5: verdict rides a weave permission-ask answer body",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0002 §5 / ADR-0005 §4: a review verdict must ride a weave PERMISSION-ASK answer body (approve/deny) IN ADDITION TO the review_verdict ledger event. Today cmd_review_verdict (main.rs) emits only the ledger half — the cross-peer weave permission-ask channel is missing, so the autonomous gatekeeper has no mesh-visible approval path. Build the permission-ask answer body and bind it to the verdict event (no-downgrade: the ledger event stays).",
   "path_scope": [

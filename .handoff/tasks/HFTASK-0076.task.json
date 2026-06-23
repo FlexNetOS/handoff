@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0076",
   "title": "ADR-0018 D11: all PRs->develop; hands-off develop->trunk auto-promotion + master/main reconcile",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0018 D11: fix/replace the `sync-master.yml` stall so develop promotes to trunk AUTOMATICALLY on green with NO manual `gh api` ff. Reconcile the trunk NAME: directive says `main`, repo uses `master` — standardize on `main` (or keep `master` with `main` as the documented alias) across `policy.toml`, `.github/workflows/*`, and the docs, ONE decision applied everywhere. The pipeline is fixed: branch off develop -> PR --base develop -> auto-promote on green.",
   "path_scope": [

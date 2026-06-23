@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0053",
   "title": "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "GitHub #71 item 1 / envctl Epic A cycle-1 CARRIED FINDING: the `ledger` crate links bundled C-SQLite (rusqlite -> libsqlite3-sys). It is not an envctl no-c violation today (separate workspace) but it breaks the continuity kernel's pure-Rust / 'no C in the trust boundary' agenticOS north star. Port `ledger` off rusqlite to a pure-Rust store (libSQL Hrana `remote` like envctl's secrets store, or an embedded pure-Rust engine such as redb/sled) so `hf` builds C-free, KEEPING the witnessed append-only chain, replay, BEGIN IMMEDIATE serialization (HFTASK-0028), and rollup-provenance semantics intact. No-downgrade: a store swap, never a capability loss; re-verify witness-chain + provenance tests on the new backend. Distinct from HFTASK-0006 (RVF vector ledger axis) — this removes the C dependency.",
   "path_scope": [

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0061",
   "title": "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "The fail-closed kernel had no way to CORRECT a false-Done: a task marked Done via a pre-PR#103 blanket-`cargo test` rubber stamp (e.g. HFTASK-0057, whose schemars/jsonschema feature was never built) was stuck Done with no inverse op (`hf release` only un-claims in-progress states; `should_unclaim` excludes Done/Review). Add `hf reopen <ID> \"<reason>\"`: a reason is MANDATORY (no silent un-completion), only a terminal state (Done/Review) is reopenable, the WHY is witnessed as a `task_reopened` event before the `task_transition -> Backlog` replay acts on, kb planning-plane reverts via write-back, and the on-disk card snapshot is re-synced. Pure `should_reopen` gate, unit-tested disjoint from `should_unclaim`. Shipped: reconciled HFTASK-0057's false-Done.",
   "path_scope": [

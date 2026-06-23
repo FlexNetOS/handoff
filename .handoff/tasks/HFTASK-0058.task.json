@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0058",
   "title": "Canonical .handoff durability policy + hf gitignore swallow-guard (ADR-0016)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "The kernel OWNS and SHIPS the .handoff commit-vs-ignore policy instead of every consumer hand-rolling its own .gitignore: a dir-form `.handoff/`/`.claude/` ignore silently SWALLOWS durable tasks/decisions/loop ledgers (git cannot re-include past an excluded parent dir; !-negations can't rescue it). Ship hf/src/durability.rs (durable-vs-regenerable taxonomy + canonical CONTENTS-FORM .gitignore fragment + git check-ignore swallow_report + repair_gitignore), the `hf gitignore [--check|--repair|--write]` verb, and the fail-closed swallow-guard wired into `hf doctor` (DEGRADED + exit 1 on a swallow). docs/adr-0016-handoff-durability-policy.md. Shipped PR #98.",
   "path_scope": [

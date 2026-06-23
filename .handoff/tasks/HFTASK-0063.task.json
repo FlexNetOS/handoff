@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0063",
   "title": "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "PR #103 made `hf test` fail closed on zero executed tests, but only for libtest: `parse_tests_ran` parses only cargo's `test result:` lines, so a pytest/jest/go-test card degrades to exit-code-only (the None branch) and can still be rubber-stamped by a zero-match run. Also `cmd_test` runs `sh -c` with NO `current_dir`, so test_commands are fragile to the invocation cwd. Fix: (a) pin the command's working dir to the task home (repo/meta root via the existing route/anchor helpers) so commands are cwd-stable; (b) extend executed-count parsing to recognized non-libtest runners (pytest summary line, jest 'Tests:' line, go-test '--- PASS/FAIL' / 'ok' counts), keeping the None->exit-code-only degrade ONLY for genuinely-unrecognized runners. Positive evidence for non-cargo cards, not just cargo.",
   "path_scope": [

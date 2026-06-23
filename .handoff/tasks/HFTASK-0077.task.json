@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0077",
   "title": "ADR-0018 D6: update .claude/rules/* + meta rules to the full-auto model + fleet deploy",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0018 D6: update `handoff/.claude/rules/*` + the meta-level rules to the full-auto operating model (committed dotfiles, worktree-per-batch, context-budget wrap, full `.kb` adoption, grit+gh grounding, designated-agent-replaces-human). Deploy the updated rules fleet-wide via the HFTASK-0065 /handoff-loop-init mechanism.",
   "path_scope": [

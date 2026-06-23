@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0068",
   "title": "ADR-0018 D3: context-budget loop wrap (~50% window), not fixed cycle_flush",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0018 D3: replace 'wrap after cycle_flush tasks' with 'run until ~50% of the context window is consumed, then checkpoint -> handoff'. Add `policy.toml [loop] context_budget_pct = 50` + `wrap_strategy = \"context\"` to hf/src/policy.rs LoopCfg with compiled defaults + round-trip tests; keep `cycle_flush` as an UPPER safety bound. The kernel exposes the policy + the wrap verbs; ENFORCEMENT is at the loop-skill layer (handoff-loop Phase 5 + session-relay-wrap-up read the running token/context budget and trigger the wrap at the threshold). Wire the threshold into the handoff-loop skill + session-relay-wrap-up.",
   "path_scope": [
