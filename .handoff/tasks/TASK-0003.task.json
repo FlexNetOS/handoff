@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-0003",
+  "title": "Fix promote-verify audit check permission",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix promote-verify Audit permission: rustsec/audit-check finds no vulnerabilities but fails with Resource not accessible by integration when creating a check run because promote-verify.yml lacks checks: write permission.",
+  "path_scope": [
+    ".github/workflows/promote-verify.yml",
+    ".handoff/tasks/TASK-0003.task.json",
+    ".handoff/decisions/TASK-0003-promote-verify-audit-permission.md"
+  ],
+  "acceptance_criteria": [
+    "promote-verify.yml grants the minimum GitHub permissions needed by rustsec/audit-check: contents read and checks write.",
+    "Workflow YAML parses and local smoke verification remains green.",
+    "Post-promotion Audit check no longer fails with Resource not accessible by integration."
+  ],
+  "test_commands": [
+    "python3 - <<'PY'\nimport yaml\nyaml.safe_load(open(\".github/workflows/promote-verify.yml\"))\nPY",
+    "cargo test -p hf gatekeeper"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "manual-promote-verify-audit-permission",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:5310fd2910c8fdbfd4198b03a1031c7b3aeb02753abbfe09b7ff88fc0a5bb8dc",
+    "path_scope_hash": "blake3:161e98d0fc81fce004fd105364472292e7d3f8724a3b063d6166a40b3138b06c",
+    "acceptance_hash": "blake3:6d96d5593c50c32cb3ce2b3bf88a65395089a2c3cd8d35e9bd125ac8cff65080"
+  }
+}
