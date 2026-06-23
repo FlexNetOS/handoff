@@ -1,26 +1,32 @@
 {
   "$comment": "handoff repo project-layer settings (layered on top of the envctl user-global source of truth). SessionStart auto-invokes the handoff-loop; SessionEnd is the continuity safety net. See .handoff/hooks/*.sh and .handoff/hooks/hooks.toml (the kernel contract).",
-  "statusLine": {
-    "type": "command",
-    "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/statusline-command.sh\""
-  },
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.handoff/hooks/loop-entry.sh\""
-          }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.handoff/hooks/session-end.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.handoff/hooks/session-end.sh\"",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.handoff/hooks/loop-entry.sh\"",
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh -lc 'root=\"$(git rev-parse --show-toplevel)\"; exec rusty-idd next --base \"$root\"'",
+            "statusMessage": "Rusty IDD front door: computing the next step",
+            "timeout": 180,
+            "type": "command"
           }
         ]
       }
@@ -31,5 +37,9 @@
       "Bash(git push:*)",
       "Bash(git -C * push:*)"
     ]
+  },
+  "statusLine": {
+    "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/statusline-command.sh\"",
+    "type": "command"
   }
 }
