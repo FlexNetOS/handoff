@@ -73,7 +73,9 @@ pub fn synthesize_orders(
                 );
                 Ok(vec![WorkOrder {
                     schema: "handoff.task.v1".to_string(),
-                    id: "TASK-0001".to_string(),
+                    // HFTASK-0084: derive a bundle-scoped id (was a hardcoded "TASK-0001" that
+                    // silently clobbered any existing TASK-0001 card on a second intake run).
+                    id: work_order::synthesized_task_id(&bundle.workflow_id, 1),
                     title: format!("[bundle] {}", first_line(&it.raw_text)),
                     status: work_order::Status::Backlog,
                     priority: work_order::Priority::P1,

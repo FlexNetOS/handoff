@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn card_with_bad_id_is_rejected() {
         let mut card = valid_card();
-        // Not matching ^TASK-[0-9]{4,}$ — a free-form id violates the pattern constraint.
+        // Not matching ^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$ — a lowercase free-form id violates it.
         card["id"] = json!("not-a-task-id");
         let err = validate_card(&card).expect_err("a malformed id must be rejected");
         assert!(!err.is_empty(), "rejection message must be non-empty");
