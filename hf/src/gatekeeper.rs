@@ -1,12 +1,13 @@
 //! HFTASK-0014: surgical AI gatekeeper foundation.
 //!
 //! This module adds a deterministic, witnessed `hf gatekeeper check <pr>` command. It is the
-//! first slice of the §5b code-omniscient merge approver. Full code-intelligence (git-kb code
-//! index / kb_callers / kb_impact / RuVector grounding) is not yet wired, so the gatekeeper
-//! currently uses the signals available today:
+//! §5b code-omniscient merge approver. It uses:
 //!   - PR changed files (via `gh`)
 //!   - Local build/test gate (`cargo test --workspace`)
-//!   - Lightweight impact scan (`git grep` for changed module names)
+//!   - AST-grounded impact scan via the code-intelligence call graph (`git kb code impact`),
+//!     unioned with a `git grep` text safety-net and degrading to grep-only when the code index
+//!     is unavailable (the `impact_grounding` field records which path was taken). RuVector
+//!     grounding remains future work.
 //!   - envctl secrets-engine merge-gate enforcement (when the `secrets` feature is enabled)
 
 use std::collections::HashSet;
@@ -16,11 +17,47 @@ use crate::{
     ledger_path, now_ns, policy::Policy, route::route_for_task, run_out, GhPrView, Ledger, HF,
 };
 
-/// The result of a lightweight impact scan.
+/// The result of an impact scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrImpact {
     pub changed: Vec<String>,
     pub impacted: Vec<String>,
+    /// How the impacted set was derived, so the verdict can judge it honestly:
+    /// `"ast+grep"` = code-intelligence call graph unioned with the text safety-net (index healthy),
+    /// `"ast"` = call graph only, `"grep"` = text scan only (the code index was unavailable —
+    /// a degraded blast-radius estimate the gatekeeper should treat with less confidence).
+    pub grounding: String,
+}
+
+/// Pure: parse `git kb code impact <file> --json` into the impacted file set (the call-graph
+/// callers' `file_path`s). Separated from the process call so it is unit-testable.
+fn parse_kb_impact(json: &str, file: &str) -> Option<Vec<String>> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let callers = v.get("callers")?.as_array()?;
+    let mut files: Vec<String> = callers
+        .iter()
+        .filter_map(|c| {
+            c.get("symbol")?
+                .get("file_path")?
+                .as_str()
+                .map(String::from)
+        })
+        .filter(|p| p != file && !p.starts_with("target/") && !p.ends_with(".lock"))
+        .collect();
+    files.sort();
+    files.dedup();
+    Some(files)
+}
+
+/// AST-grounded blast radius for one changed `.rs` file via the code-intelligence call graph
+/// (`git kb code impact <file> --json`). Returns the impacted file set, or `None` when the code
+/// index is unavailable (non-`.rs`, `git kb` missing, or a non-zero exit) so the caller falls back.
+fn kb_impact_files(file: &str) -> Option<Vec<String>> {
+    if !file.ends_with(".rs") {
+        return None; // the code index only covers source symbols
+    }
+    let out = run_out("git", &["kb", "code", "impact", file, "--json"]).ok()?;
+    parse_kb_impact(&out, file)
 }
 
 /// Build a token that can be used to search for references to a changed Rust file.
@@ -54,14 +91,30 @@ fn search_tokens(path: &str) -> Vec<String> {
     tokens
 }
 
-/// Lightweight impact scan: for each changed `.rs` file, grep the repo for references to its
-/// module name / path. Returns changed files and a deduplicated list of files that reference
-/// them (the "blast radius" estimate).
+/// Impact scan (blast radius): for each changed `.rs` file, take the AST-grounded call-graph
+/// dependents (`git kb code impact`) and union them with a `git grep` text safety-net. Returns
+/// the changed files, the deduplicated impacted set, and the `grounding` that produced it
+/// (`ast+grep` / `ast` / `grep` — the last meaning the code index was unavailable and the
+/// estimate is degraded).
 pub fn impact_scan(files: &[String]) -> PrImpact {
     let changed: Vec<String> = files.to_vec();
     let mut impacted = HashSet::new();
+    let mut ast_ran = false;
+    let mut grep_ran = false;
     for f in &changed {
+        // Primary signal: AST-grounded call-graph dependents (precise + transitive) when the
+        // code index is available. This is the upgrade over the old token grep.
+        if let Some(ast_files) = kb_impact_files(f) {
+            ast_ran = true;
+            for p in ast_files {
+                impacted.insert(p);
+            }
+        }
+        // Safety net + fallback: the text scan catches non-Rust / macro / string references the
+        // resolver can miss, and IS the whole signal when the code index is unavailable. A safety
+        // gate prefers recall, so we union both rather than trust either alone.
         for token in search_tokens(f) {
+            grep_ran = true;
             let args = vec!["grep", "-l", "-I", "--", &token];
             if let Ok(out) = run_out("git", &args) {
                 for line in out.lines() {
@@ -79,7 +132,17 @@ pub fn impact_scan(files: &[String]) -> PrImpact {
     }
     let mut impacted: Vec<String> = impacted.into_iter().collect();
     impacted.sort();
-    PrImpact { changed, impacted }
+    let grounding = match (ast_ran, grep_ran) {
+        (true, true) => "ast+grep",
+        (true, false) => "ast",
+        _ => "grep",
+    }
+    .to_string();
+    PrImpact {
+        changed,
+        impacted,
+        grounding,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,6 +331,7 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
         "reasons": &reasons,
         "changed_files": &impact.changed,
         "impacted_files": &impact.impacted,
+        "impact_grounding": &impact.grounding,
         "protected_hits": &protected_hits,
         "protected_clearance": protected_clearance,
         "merge_gate_ok": merge_gate_ok,
@@ -282,10 +346,11 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
     match verdict {
         GatekeeperVerdict::Approve => {
             println!(
-                "hf gatekeeper: approve PR #{} ({} changed, {} impacted)",
+                "hf gatekeeper: approve PR #{} ({} changed, {} impacted via {})",
                 meta.number,
                 impact.changed.len(),
-                impact.impacted.len()
+                impact.impacted.len(),
+                impact.grounding
             );
         }
         GatekeeperVerdict::Deny => {
@@ -301,6 +366,41 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_kb_impact_extracts_caller_files() {
+        // The real `git kb code impact --json` shape: callers[].symbol.file_path is the
+        // AST-grounded blast radius. Dedupe, drop self/target/lock.
+        let json = r#"{
+          "file": "hf/src/gates.rs",
+          "count": 3,
+          "callers": [
+            {"symbol": {"name": "detect_drift", "file_path": "hf/src/gates.rs"}},
+            {"symbol": {"name": "cmd_drift", "file_path": "hf/src/main.rs"}},
+            {"symbol": {"name": "other", "file_path": "hf/src/main.rs"}},
+            {"symbol": {"name": "t", "file_path": "target/debug/x.rs"}}
+          ]
+        }"#;
+        let got = super::parse_kb_impact(json, "hf/src/gates.rs").expect("parses");
+        // self (gates.rs) and target/ excluded; main.rs deduped to one entry.
+        assert_eq!(got, vec!["hf/src/main.rs".to_string()]);
+        // Malformed / non-JSON → None (caller falls back to grep).
+        assert!(super::parse_kb_impact("not json", "x.rs").is_none());
+        assert!(super::parse_kb_impact("{}", "x.rs").is_none());
+    }
+
+    #[test]
+    fn impact_scan_reports_grounding() {
+        // grounding is always one of the three known values and never empty — the verdict relies
+        // on it to know whether the AST index was actually consulted.
+        let _g = crate::test_support::cwd_lock();
+        let impact = impact_scan(&["src/route.rs".into()]);
+        assert!(
+            matches!(impact.grounding.as_str(), "ast" | "grep" | "ast+grep"),
+            "unexpected grounding: {}",
+            impact.grounding
+        );
+    }
 
     #[test]
     fn search_tokens_for_rust_file() {
