@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0086",
+  "title": "Automation rung 2: auto-release hf artifacts on merge-to-trunk (dispatch release-tagged)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "`.github/workflows/release.yml` already builds hf for 5 platforms but only triggers on `push: tags/v*` / `repository_dispatch[release-tagged]` / manual — so a merged kernel change produces ZERO artifacts automatically. The build pipeline exists; the TRIGGER does not. Wire the develop→trunk promotion machinery (sync-master.yml / promote-verify.yml) to fire a `repository_dispatch{event_type: release-tagged}` (or auto-tag `v<pkgver>+<shortsha>`) when trunk advances with a kernel-source change, so every promoted change yields versioned platform binaries with no human action. Gate on an actual hf/ledger/work-order/handoff-* source change (skip docs-only). Depends on HFTASK-0085 (the version the release is stamped with).",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 2: auto-release hf artifacts on merge-to-trunk (dispatch release-tagged): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0085"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:f0de8348adcc5dbaf9b026fca0a8407d68bd364567303729737a74754c04cc5d",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:abf19f71e6b1bd4e320a729f54f0a378ccd59a72a44391228d323d133919ccbc",
+    "constraint_hash": "blake3:7748d6811789de4220a6b0c0c0d6b9bfa835cf40a9a6198e423607dc6f8d1033",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

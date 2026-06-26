@@ -26,6 +26,19 @@ fi
 # Rehydrate (compact packet → session context).
 "$HF" resume --compact 2>/dev/null || true
 
+# HFTASK-0085 (automation rung 1): if the installed hf is BEHIND the kernel source, say so
+# loudly so the binary gets refreshed (handoff-loop-init.sh auto-rebuilds; manual fallback
+# `cargo install --path hf`). Only meaningful in the kernel checkout (.git + hf/ present);
+# never hard-fails the hook.
+if [ -d .git ] && [ -f hf/Cargo.toml ] && command -v git >/dev/null 2>&1; then
+  _inst="$("$HF" version --json 2>/dev/null | grep '"commit"' | sed -E 's/.*"commit"[^"]*"([^"]+)".*/\1/')"
+  _head="$(git rev-parse --short HEAD 2>/dev/null)"
+  if [ -n "$_inst" ] && [ -n "$_head" ] && [ "$_inst" != "unknown" ] && [ "$_inst" != "$_head" ]; then
+    echo "[handoff] hf binary stamp '${_inst}' is BEHIND kernel HEAD '${_head}' — refresh it:"
+    echo "          bash scripts/handoff-loop-init.sh   (auto-rebuilds)   |   cargo install --path hf --locked --force"
+  fi
+fi
+
 # Detect a safe next task from ledger truth (resume --json).
 NEXT="$("$HF" resume --json 2>/dev/null | python3 -c '
 import sys, json

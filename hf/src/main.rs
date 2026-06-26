@@ -3078,6 +3078,45 @@ fn cmd_seed() {
             "FAIL-OPEN data-loss bug surfaced by the post-decomposition /verify drive: both intake synthesis sites mint task ids counting from a FIXED base — `handoff-intake::synthesize_orders` hardcodes `id: \"TASK-0001\"` for the whole-bundle order, and `work_order::work_orders_from_bundle_with` numbers roles `format!(\"TASK-{:04}\", i+1)` (TASK-0001, TASK-0002, …). The ids are NOT scoped to the bundle/correlation, so a second `hf intake`/`hf prompt-hub` run re-mints TASK-0001 and `handoff_core::save_task` OVERWRITES any existing `TASK-NNNN.task.json` on disk silently — and these are DURABLE cards (handoff's own committed TASK-0001..0004 bundle cards prove it), so the clobber is real continuity-state loss. Fix deterministically (the intake load-bearing property: same bundle → byte-identical orders) and schema-validly (live pattern `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$` accepts uppercase-hex + hyphen): add `work_order::synthesized_task_id(workflow_id, seq) -> \"TASK-{:06X}-{:04}\"` deriving a stable 24-bit FNV-1a prefix from the unique workflow_id (which already carries a hash+nanos), and use it at BOTH sites. Distinct bundles → distinct prefixes (no cross-bundle clobber); re-running the SAME bundle re-mints the SAME ids (idempotent, not data loss). Also correct the stale `^TASK-[0-9]{4,}$` comment in handoff-schema (the live pattern was already broadened). Tests: a collision test (two workflow_ids → disjoint id sets) + a determinism test (same workflow_id → identical ids).",
             &["HFTASK-0083"],
         ),
+        // --- Seamless-fleet automation ladder (owner directive 2026-06-26: 'think more
+        // automation, seamless, always automate, what are we missing'). Today every propagation
+        // step is human-invoked or report-only; the rungs are dependency-ordered (0085 unblocks
+        // 0086/0087). Each is a witnessed card; 0085 is the keystone primitive. ---
+        mk(
+            "HFTASK-0085",
+            "Automation rung 0/1: hf build-version stamp + staleness self-detection (loop-init + SessionStart)",
+            Priority::P1,
+            "ROOT automation primitive. Today `hf --version` is 'unknown command', so nothing can tell whether an installed binary is BEHIND the kernel source — every staleness automation is impossible without this. Add `hf/build.rs` emitting build metadata (HF_BUILD_COMMIT from `git rev-parse --short HEAD`, preferring an injected GITHUB_SHA in CI, falling back to 'unknown' for a .git-less release tarball; HF_BUILD_DATE) with no unwrap/expect/panic (workspace deny lints). Add `hf --version`/`-V`/`version` (text + `--json {version,commit,date}`) so the value is machine-readable. Wire the stamp into propagation: (a) `scripts/handoff-loop-init.sh` Phase 0 — when the kernel home is reachable, compare installed `hf version --json`.commit vs `git -C $KERNEL_HOME rev-parse --short HEAD`; mismatch ⇒ need_build=1, so `handoff-loop-init.sh --fleet` AUTO-rebuilds when behind (closes the gap where a stale-but-working redb hf is skipped and a human must pass --build-hf); (b) `.handoff/hooks/loop-entry.sh` (SessionStart) — if the kernel is reachable and the stamp is behind, print a loud staleness directive. Test: `hf version --json` parses; build.rs fallback path is graceful.",
+            &["HFTASK-0084"],
+        ),
+        mk(
+            "HFTASK-0086",
+            "Automation rung 2: auto-release hf artifacts on merge-to-trunk (dispatch release-tagged)",
+            Priority::P2,
+            "`.github/workflows/release.yml` already builds hf for 5 platforms but only triggers on `push: tags/v*` / `repository_dispatch[release-tagged]` / manual — so a merged kernel change produces ZERO artifacts automatically. The build pipeline exists; the TRIGGER does not. Wire the develop→trunk promotion machinery (sync-master.yml / promote-verify.yml) to fire a `repository_dispatch{event_type: release-tagged}` (or auto-tag `v<pkgver>+<shortsha>`) when trunk advances with a kernel-source change, so every promoted change yields versioned platform binaries with no human action. Gate on an actual hf/ledger/work-order/handoff-* source change (skip docs-only). Depends on HFTASK-0085 (the version the release is stamped with).",
+            &["HFTASK-0085"],
+        ),
+        mk(
+            "HFTASK-0087",
+            "Automation rung 3: hf fleet sync — REMEDIATE detected drift, not just report it",
+            Priority::P2,
+            "`hf fleet status` detects non-conformant members (missing ledger guard, no committed ledger.events.jsonl, stale binary) but only REPORTS — a human must then run handoff-loop-init. Add `hf fleet sync` (and/or `hf fleet status --fix`) that, for each member the status sweep flags, runs the idempotent loop-init deploy bits (gitignore guard, hooks, diff-drive workflow, rules) + the binary staleness rebuild (HFTASK-0085), turning detection into remediation. Fail-closed per member (one member's failure never aborts the sweep; report it). Schedulable from a meta-level cron workflow so the fleet self-heals hands-off. Depends on HFTASK-0085.",
+            &["HFTASK-0085"],
+        ),
+        mk(
+            "HFTASK-0088",
+            "Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)",
+            Priority::P3,
+            "Adding a member to `.meta.yaml` scaffolds no `.handoff` — onboarding is a remembered manual `handoff-loop-init.sh /path`. Make `hf fleet sync` (HFTASK-0087) treat 'member present in .meta.yaml but no conformant .handoff' as a remediation target and auto-init it (portable `hf init` + full deploy), and/or add a `meta git update` post-step hook that detects a freshly-cloned member without `.handoff` and onboards it. New repos become continuity-enabled with zero manual steps. Depends on HFTASK-0087.",
+            &["HFTASK-0087"],
+        ),
+        mk(
+            "HFTASK-0089",
+            "Automation rung 5: worktree/branch reap as a hook, not agent memory",
+            Priority::P2,
+            "Owner has hammered that worktree/branch reap is mandatory at session start yet 'skipping it is the recurring failure' — because it currently depends on an AGENT remembering to run scripts/reap-worktrees.sh. Automation that needs a human/agent to remember is not automation. Bind reap to a real lifecycle hook (the handoff hooks.toml SessionEnd / a PostMerge hook, mirroring how SessionEnd already runs checkpoint+handoff+export+sync) so merged-branch/worktree husks are reaped deterministically by the kernel, never by recall. Keep the existing safety rails (dry-run default in the script, protect master/develop/current, skip dirty, local-only, never --force). Surface what was reaped in the session-end output.",
+            &["HFTASK-0085"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -3439,10 +3478,42 @@ fn apply_ledger_flag(args: &mut Vec<String>) {
     }
 }
 
+/// HFTASK-0085: the build-version stamp (set by `hf/build.rs`). `commit`/`date` fall back to
+/// "unknown" when the binary was built without git/CI metadata (e.g. a .git-less tarball) so the
+/// command never lies — an "unknown" commit simply means the staleness check can't compare.
+fn version_info() -> (&'static str, &'static str, &'static str) {
+    (
+        env!("CARGO_PKG_VERSION"),
+        option_env!("HF_BUILD_COMMIT").unwrap_or("unknown"),
+        option_env!("HF_BUILD_DATE").unwrap_or("unknown"),
+    )
+}
+
+fn cmd_version(json: bool) {
+    let (version, commit, date) = version_info();
+    if json {
+        let out = serde_json::json!({
+            "schema": "handoff.version.v1",
+            "version": version,
+            "commit": commit,
+            "date": date,
+        });
+        println!("{}", pretty_json(&out));
+    } else {
+        println!("hf {version} ({commit}, {date})");
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
     match args.first().map(|s| s.as_str()) {
+        // HFTASK-0085 (automation rung 0): build-version stamp so any consumer can detect a
+        // binary that is BEHIND the kernel source. `--json` form is machine-readable for the
+        // loop-init Phase 0 / SessionStart staleness check.
+        Some("--version") | Some("-V") | Some("version") => {
+            cmd_version(args.iter().any(|a| a == "--json"))
+        }
         Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
@@ -3810,7 +3881,7 @@ fn main() {
                 eprintln!("hf: unknown command '{verb}'");
             }
             eprintln!(
-                "hf [--ledger PATH] <init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
+                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
             );
             if other.is_some() {
                 std::process::exit(2);
@@ -3826,6 +3897,26 @@ mod tests {
     // so the data-race precondition does not arise. Justified test-only `unsafe_code` allow.
     #![allow(unsafe_code)]
     use super::*;
+
+    #[test]
+    fn version_info_is_stamped_and_well_formed() {
+        // HFTASK-0085: version_info() never lies — a missing stamp falls back to "unknown",
+        // never an empty string, so the staleness check can always make a decision.
+        let (version, commit, date) = version_info();
+        assert!(!version.is_empty(), "CARGO_PKG_VERSION must be present");
+        assert!(
+            !commit.is_empty() && !date.is_empty(),
+            "stamps fall back to 'unknown', never empty"
+        );
+        // The machine-readable form parses and carries the keys the staleness check greps.
+        let out = serde_json::json!({
+            "schema": "handoff.version.v1",
+            "version": version, "commit": commit, "date": date,
+        });
+        assert_eq!(out["schema"], "handoff.version.v1");
+        assert_eq!(out["commit"], commit);
+        assert!(out["version"].as_str().is_some_and(|v| !v.is_empty()));
+    }
 
     /// HFTASK-0058: the two tests that mutate the process-global `HANDOFF_LEDGER` env var
     /// (`ledger_path_defaults_local_and_honors_handoff_ledger` and

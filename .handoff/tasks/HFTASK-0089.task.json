@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0089",
+  "title": "Automation rung 5: worktree/branch reap as a hook, not agent memory",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "Owner has hammered that worktree/branch reap is mandatory at session start yet 'skipping it is the recurring failure' — because it currently depends on an AGENT remembering to run scripts/reap-worktrees.sh. Automation that needs a human/agent to remember is not automation. Bind reap to a real lifecycle hook (the handoff hooks.toml SessionEnd / a PostMerge hook, mirroring how SessionEnd already runs checkpoint+handoff+export+sync) so merged-branch/worktree husks are reaped deterministically by the kernel, never by recall. Keep the existing safety rails (dry-run default in the script, protect master/develop/current, skip dirty, local-only, never --force). Surface what was reaped in the session-end output.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 5: worktree/branch reap as a hook, not agent memory: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0085"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:2cee44b5cd2abbfe2905c8a7580d3596c754cc5ba6dbd4cad169ed04b66a5b81",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:7fbefc5ff7e46852c44243e35c78251f5ef91165cc883141af8ab066e45456a6",
+    "constraint_hash": "blake3:7748d6811789de4220a6b0c0c0d6b9bfa835cf40a9a6198e423607dc6f8d1033",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
