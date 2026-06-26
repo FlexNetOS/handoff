@@ -103,6 +103,35 @@ jobs:
         working-directory: handoff
         run: cargo test --workspace --no-default-features
 
+  build-all-features:
+    name: Build (all features)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: handoff
+
+      - name: Clone rvf-crypto provider (meta-ruvector)
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+
+      # The optional `secrets` feature links the REAL envctl broker module, so this job
+      # clones the real envctl (the Windows manifest-only stub used elsewhere lacks broker).
+      - name: Clone envctl provider (envctl)
+        run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: handoff
+      # Guards against optional-feature bit-rot: a stale path-dep crate name or an
+      # ungated call site (e.g. the cognitum gate) compiles under default features but
+      # breaks under `--all-features`/`--no-default-features`. CI ran neither all-features
+      # build before, so the `secrets` seam silently rotted. Fail closed here instead.
+      - name: Build with all features
+        working-directory: handoff
+        run: cargo build --workspace --all-features
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
