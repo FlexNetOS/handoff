@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0087",
+  "title": "Automation rung 3: hf fleet sync — REMEDIATE detected drift, not just report it",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "`hf fleet status` detects non-conformant members (missing ledger guard, no committed ledger.events.jsonl, stale binary) but only REPORTS — a human must then run handoff-loop-init. Add `hf fleet sync` (and/or `hf fleet status --fix`) that, for each member the status sweep flags, runs the idempotent loop-init deploy bits (gitignore guard, hooks, diff-drive workflow, rules) + the binary staleness rebuild (HFTASK-0085), turning detection into remediation. Fail-closed per member (one member's failure never aborts the sweep; report it). Schedulable from a meta-level cron workflow so the fleet self-heals hands-off. Depends on HFTASK-0085.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 3: hf fleet sync — REMEDIATE detected drift, not just report it: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0085"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:e7f1ffc0c18d27d680ae19f0c2ff815bdf23f37a39622b6533ad8e29b22fbc94",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:2feb3a9dc86274db6f32439ad823293adc849d1735ad13d5b1ddc1b5dcb752f0",
+    "constraint_hash": "blake3:7748d6811789de4220a6b0c0c0d6b9bfa835cf40a9a6198e423607dc6f8d1033",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

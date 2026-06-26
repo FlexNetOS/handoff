@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0088",
+  "title": "Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)",
+  "status": "backlog",
+  "priority": "P3",
+  "objective": "Adding a member to `.meta.yaml` scaffolds no `.handoff` — onboarding is a remembered manual `handoff-loop-init.sh /path`. Make `hf fleet sync` (HFTASK-0087) treat 'member present in .meta.yaml but no conformant .handoff' as a remediation target and auto-init it (portable `hf init` + full deploy), and/or add a `meta git update` post-step hook that detects a freshly-cloned member without `.handoff` and onboards it. New repos become continuity-enabled with zero manual steps. Depends on HFTASK-0087.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0087"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b2990fc2416d0f113b4c20f684561483db13c1114148a9af646d7626787d9826",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:1263760205064661a3759d60ada375b651c001568407a8e4ab4be7b71cc97e4b",
+    "constraint_hash": "blake3:16c0148ebea705303d4d3d2a4f60768ddbc7dfcec9ffe0ffcac24636cafbf49c",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

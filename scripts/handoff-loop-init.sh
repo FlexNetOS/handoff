@@ -87,6 +87,15 @@ elif [ "$BUILD_HF" = 1 ]; then
   need_build=1
 elif command -v ldd >/dev/null 2>&1 && ldd "$(command -v hf 2>/dev/null || echo /nonexistent)" 2>/dev/null | grep -qi sqlite; then
   say "PATH hf links libsqlite (pre-redb build) — will rebuild the no-C redb binary"; need_build=1
+elif [ -n "$KERNEL_HOME" ] && _is_kernel_home "$KERNEL_HOME"; then
+  # HFTASK-0085 (automation rung 0/1): the build-version stamp lets us detect a binary that is
+  # BEHIND the kernel source and auto-rebuild — previously a stale-but-working redb hf was
+  # silently kept and a human had to pass --build-hf. Compare installed stamp vs kernel HEAD.
+  installed_commit="$("$HF" version --json 2>/dev/null | grep '"commit"' | sed -E 's/.*"commit"[^"]*"([^"]+)".*/\1/')"
+  kernel_commit="$(git -C "$KERNEL_HOME" rev-parse --short HEAD 2>/dev/null)"
+  if [ -n "$kernel_commit" ] && [ -n "$installed_commit" ] && [ "$installed_commit" != "unknown" ] && [ "$installed_commit" != "$kernel_commit" ]; then
+    say "hf stamp '$installed_commit' is behind kernel HEAD '$kernel_commit' — will rebuild (HFTASK-0085)"; need_build=1
+  fi
 fi
 if [ "$need_build" = 1 ]; then
   if [ -z "$KERNEL_HOME" ] || ! _is_kernel_home "$KERNEL_HOME"; then

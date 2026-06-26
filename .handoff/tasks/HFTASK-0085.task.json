@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0085",
+  "title": "Automation rung 0/1: hf build-version stamp + staleness self-detection (loop-init + SessionStart)",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "ROOT automation primitive. Today `hf --version` is 'unknown command', so nothing can tell whether an installed binary is BEHIND the kernel source — every staleness automation is impossible without this. Add `hf/build.rs` emitting build metadata (HF_BUILD_COMMIT from `git rev-parse --short HEAD`, preferring an injected GITHUB_SHA in CI, falling back to 'unknown' for a .git-less release tarball; HF_BUILD_DATE) with no unwrap/expect/panic (workspace deny lints). Add `hf --version`/`-V`/`version` (text + `--json {version,commit,date}`) so the value is machine-readable. Wire the stamp into propagation: (a) `scripts/handoff-loop-init.sh` Phase 0 — when the kernel home is reachable, compare installed `hf version --json`.commit vs `git -C $KERNEL_HOME rev-parse --short HEAD`; mismatch ⇒ need_build=1, so `handoff-loop-init.sh --fleet` AUTO-rebuilds when behind (closes the gap where a stale-but-working redb hf is skipped and a human must pass --build-hf); (b) `.handoff/hooks/loop-entry.sh` (SessionStart) — if the kernel is reachable and the stamp is behind, print a loud staleness directive. Test: `hf version --json` parses; build.rs fallback path is graceful.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 0/1: hf build-version stamp + staleness self-detection (loop-init + SessionStart): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0084"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:5b36353cb804f6e43f0e7798b824f37ea5f1ee95638e81e286fd3e2bef6e60cd",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:3e48de6ce6b20934b57f6b92e0f7824b0ec27990f7ff6870cc5f3b812c10866b",
+    "constraint_hash": "blake3:fb770e975ae4fd3ce262bf02966f4c954a74dda1a61e748bc68743f4453b4b08",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

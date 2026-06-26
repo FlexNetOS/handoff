@@ -38,3 +38,6 @@ drive "usage exposes 'ship'"    "$_HF 2>&1 || true" "ship"
 drive "usage exposes 'promote'" "$_HF 2>&1 || true" "promote"
 drive "usage exposes 'drift'"   "$_HF 2>&1 || true" "drift"
 drive "usage exposes 'handoff'" "$_HF 2>&1 || true" "handoff"
+# HFTASK-0085: the build-version stamp must be live (it drives the staleness self-detection).
+drive "version stamp is live"         "$_HF --version 2>&1 || true"      "hf 0."
+drive "version --json carries commit" "$_HF version --json 2>&1 || true" "\"commit\""
