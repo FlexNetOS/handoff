@@ -16,7 +16,6 @@ mod cognitum;
 mod contract;
 mod delivery;
 mod durability;
-mod intake;
 mod kb;
 mod prompt_hub;
 mod routing;
@@ -51,6 +50,8 @@ use handoff_route as route;
 // owns the shared `GhPrView` GitHub-PR type used by hf's review-request flow.
 use handoff_gatekeeper as gatekeeper;
 use handoff_gatekeeper::GhPrView;
+// HFTASK-0083: the front-door intake/dispatch verbs peeled into `handoff-intake`; alias as `intake`.
+use handoff_intake as intake;
 
 use lease::Leaser;
 use ledger::Ledger;
@@ -3571,7 +3572,10 @@ fn main() {
                 .get(1)
                 .map(|s| s.as_str())
                 .filter(|s| !s.starts_with("--"));
-            intake::cmd_dispatch(cid, next_only);
+            // HFTASK-0083: inject the witnessed claim path (the leaser is built once and captured)
+            // so intake doesn't depend back on the binary's dispatch (`cmd_claim_with`).
+            let leaser = lease::WeaveCli::from_env();
+            intake::cmd_dispatch(cid, next_only, &|id| cmd_claim_with(id, &leaser));
         }
         Some("ship") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");

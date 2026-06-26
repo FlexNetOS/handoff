@@ -1,9 +1,16 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! Front-door intake/dispatch verbs (HFTASK-0003).
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): the FOURTH and last named coupled module, peeled into
+//! `handoff-intake`. The one dispatch coupling (`crate::cmd_claim_with`) was inverted — `cmd_dispatch`
+//! now takes a `claim` closure the hf binary injects (capturing the weave leaser), so intake no
+//! longer reaches back into the binary. `hf` aliases it as `intake`. Deps: handoff-core + work-order.
 //!
 //! `hf intake --bundle <file>` parses a real-shape prompt_hub `SwarmBundle` (mirrored as the
 //! integration contract in `work_order`), deterministically synthesizes a verifiable
 //! `WorkOrder` per role via `work_order::synthesize_spec`, and persists each as a
-//! `.handoff/tasks/<id>.task.json` card (via `crate::save_task`). `hf dispatch <workflow_id>`
+//! `.handoff/tasks/<id>.task.json` card (via `handoff_core::save_task`). `hf dispatch <workflow_id>`
 //! claims/activates the synthesized orders for a workflow by the `correlation_id` join.
 //!
 //! IO-only: all synthesis logic is pure in the `work_order` crate (unit-tested there). This
@@ -145,7 +152,7 @@ pub fn cmd_intake(
     }
     let mut ids = Vec::new();
     for wo in &orders {
-        crate::save_task(wo);
+        handoff_core::save_task(wo);
         ids.push(wo.id.clone());
     }
     println!(
@@ -161,12 +168,16 @@ pub fn cmd_intake(
 /// `hf dispatch <correlation_id|workflow_id> [--next]` — claim/activate the synthesized
 /// orders for a workflow by the `correlation_id` join. `--next` claims only the first
 /// unclaimed order (one at a time); default claims all orders for the workflow.
-pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool) {
+/// `claim` is the witnessed claim path injected by the caller (HFTASK-0083: this inverts the old
+/// `crate::cmd_claim_with` dependency so intake no longer reaches back into the hf binary). It
+/// claims one order by id and returns whether the claim succeeded (a blocked order returns false
+/// and is skipped, NOT exited — HFTASK-0029 Defect C).
+pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool, claim: &dyn Fn(&str) -> bool) {
     let Some(cid) = correlation_id.filter(|c| !c.is_empty() && !c.starts_with("--")) else {
         eprintln!("usage: hf dispatch <correlation_id|workflow_id> [--next]");
         return;
     };
-    let tasks = crate::load_tasks();
+    let tasks = handoff_core::load_tasks();
     let mut matching: Vec<&WorkOrder> = tasks.iter().filter(|t| t.correlation_id == cid).collect();
     matching.sort_by(|a, b| a.id.cmp(&b.id));
     if matching.is_empty() {
@@ -180,14 +191,11 @@ pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool) {
     } else {
         matching
     };
-    // Reuse the witnessed claim path (lease + ledger transition), but call the bool-
-    // returning `cmd_claim_with` directly (NOT `cmd_claim`, which exits the process on a
-    // blocked claim — HFTASK-0029 Defect C). A blocked order is skipped so dispatch keeps
-    // claiming the rest of the workflow's orders.
-    let leaser = crate::lease::WeaveCli::from_env();
+    // Reuse the caller's witnessed claim path (lease + ledger transition). A blocked order is
+    // skipped (claim returns false) so dispatch keeps claiming the rest of the workflow's orders.
     let mut dispatched = 0usize;
     for wo in &to_claim {
-        if crate::cmd_claim_with(&wo.id, &leaser) {
+        if claim(&wo.id) {
             dispatched += 1;
         }
     }
@@ -197,7 +205,7 @@ pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool) {
 /// Resolve a default bundle path under `.handoff/` (used only by the help text / future seam).
 #[allow(dead_code)]
 fn default_bundle_path() -> PathBuf {
-    crate::tasks_dir().join("incoming.bundle.json")
+    handoff_core::tasks_dir().join("incoming.bundle.json")
 }
 
 #[cfg(test)]
