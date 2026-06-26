@@ -9,6 +9,12 @@ Last reviewed: **2026-06-26**.
 
 ## Policy
 
+<!-- drift-guard id="no-unmaintained-bincode-yamlrust" forbid="bincode =,yaml-rust =" path="**/*.toml" reason="bincode (RUSTSEC-2025-0141) and yaml-rust 0.4 (RUSTSEC-2024-0320) were eliminated workspace-wide (vendored syntect+postcard); reintroducing either as a direct dependency is a regression" -->
+
+This decision is **machine-enforced** by the `hf drift` §12.3 #8 sentinel: the `drift-guard`
+marker above forbids `bincode`/`yaml-rust` from reappearing as a direct dependency in any
+non-vendored manifest. If one does, `hf drift` reports a decision contradiction naming this record.
+
 - **Vulnerabilities** (`RUSTSEC` with a non-empty `patched`): upgrade or replace. Never ignored.
 - **Unmaintained** (informational): if a maintained successor exists, switch to it; if the dead
   crate is buried in an upstream dependency, **host that upstream locally and upgrade the dead
