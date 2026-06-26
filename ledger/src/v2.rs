@@ -109,6 +109,10 @@ fn current_hostname() -> String {
 /// succeeds for live/queryable processes; `ERROR_INVALID_PARAMETER` means the process does not
 /// exist. A pid of 0 or one that would cast to a negative `i32` on Unix is never our format →
 /// treated as alive so we REFUSE to reclaim (fail-closed). Unknown probe errors also fail closed.
+// The only unsafe in the workspace: audited FFI process-liveness probes (no memory-safety
+// surface — signal 0 / a query-only handle, with the pid range guarded above). The workspace
+// lint policy is `unsafe_code = "deny"`; this is the single justified exception.
+#[allow(unsafe_code)]
 fn pid_is_alive(pid: u32) -> bool {
     if pid == 0 || pid > i32::MAX as u32 {
         return true; // unverifiable / unsafe to probe → fail-closed (do not reclaim)

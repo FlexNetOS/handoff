@@ -13,3 +13,6 @@ blake3 = "1"
 # `derive` gives `#[derive(JsonSchema)]`; serde attrs are honored so the generated schema
 # matches the serde wire shape (no serialization change).
 schemars = { version = "0.8", features = ["derive"] }
+
+[lints]
+workspace = true

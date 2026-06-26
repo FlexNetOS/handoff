@@ -25,3 +25,6 @@ tempfile = "3"                                    # used in tests
 rusty-idd-runner = { path = "../runner" }
 
 [dev-dependencies]
+
+[lints]
+workspace = true

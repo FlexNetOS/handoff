@@ -11,6 +11,22 @@ homepage = "https://github.com/FlexNetOS/handoff"
 repository = "https://github.com/FlexNetOS/handoff"
 documentation = "https://docs.rs/handoff"
 
+# Workspace lint policy (PRD §7.2 target). Members inherit via `[lints] workspace = true`.
+# `unsafe_code = "deny"` (not `forbid`): the only unsafe in the tree is the audited FFI
+# process-liveness probe in `ledger::v2::pid_is_alive` (unix `kill(pid,0)` / windows
+# `OpenProcess`), which carries a single justified `#[allow(unsafe_code)]`. `deny` keeps that
+# unsafe VISIBLE and audited at the call site (the right kernel policy) rather than hiding it
+# inside a syscall-wrapper dependency — any NEW unsafe elsewhere is a hard error. The clippy
+# `all` group is denied here so a plain local `cargo clippy` matches the CI gate
+# (`--all-targets -D warnings`) without the CLI flag. The `unwrap_used`/`expect_used`/`panic`
+# deny lints are landed by the kernel error-handling hardening pass (the next increment) as
+# those sites are eliminated/justified — NOT left as a standing TODO.
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
 # We host syntect locally and upgrade its dead dependencies ourselves (owner directive,
 # 2026-06-26). `vendor/syntect` is a FlexNetOS fork of syntect master (rev 4aa78031, which had
 # already moved off the unmaintained `yaml-rust 0.4` -> maintained `yaml-rust2`) with the

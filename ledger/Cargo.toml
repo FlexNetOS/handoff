@@ -35,3 +35,6 @@ redb-store = ["dep:redb", "dep:rvf-crypto"]
 v2 = ["redb-store", "dep:rvf-runtime", "dep:rvf-index", "dep:rvf-types"]
 # One-time migration importer ONLY — pulls in bundled C-SQLite. NEVER default.
 legacy-sqlite = ["redb-store", "dep:rusqlite"]
+
+[lints]
+workspace = true
