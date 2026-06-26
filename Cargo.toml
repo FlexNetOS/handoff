@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["work-order", "ledger", "handoff-core", "hf", "crates/cli", "crates/core", "crates/runner", "crates/spec", "crates/tui"]
+members = ["work-order", "ledger", "handoff-core", "handoff-policy", "hf", "crates/cli", "crates/core", "crates/runner", "crates/spec", "crates/tui"]
 
 [workspace.package]
 edition = "2024"
