@@ -21,6 +21,9 @@ handoff-policy = { path = "../handoff-policy" }
 # HFTASK-0081 (ADR-0019 D5 #4): the handoff.task.v1 runtime validator (PRD §7.3/§23) was peeled
 # into the `handoff-schema` crate (which owns the jsonschema dep); hf aliases it as `schema`.
 handoff-schema = { path = "../handoff-schema" }
+# HFTASK-0081 (ADR-0019 D5 #4): the weave-coordinated claim-lease bridge (HFTASK-0048) was peeled
+# into the `handoff-lease` crate; hf aliases it as `lease`.
+handoff-lease = { path = "../handoff-lease" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
