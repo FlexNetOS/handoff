@@ -14,10 +14,10 @@
 //! two concurrent writers can never fork the chain or duplicate a `seq`.
 
 use redb::{
-    backends::InMemoryBackend, Builder, Database, MultimapTableDefinition, ReadableDatabase,
-    ReadableMultimapTable, ReadableTable, TableDefinition,
+    Builder, Database, MultimapTableDefinition, ReadableDatabase, ReadableMultimapTable,
+    ReadableTable, TableDefinition, backends::InMemoryBackend,
 };
-use rvf_crypto::witness::{create_witness_chain, verify_witness_chain, WitnessEntry};
+use rvf_crypto::witness::{WitnessEntry, create_witness_chain, verify_witness_chain};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use work_order::{Status, WorkOrder};
@@ -826,12 +826,11 @@ impl Ledger {
             if body.event_type != "task_transition" {
                 continue;
             }
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body.payload_json) {
-                if let Some(s) = val.get("status") {
-                    if let Ok(st) = serde_json::from_value::<Status>(s.clone()) {
-                        map.insert(body.work_order_id, st);
-                    }
-                }
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body.payload_json)
+                && let Some(s) = val.get("status")
+                && let Ok(st) = serde_json::from_value::<Status>(s.clone())
+            {
+                map.insert(body.work_order_id, st);
             }
         }
         Ok(map.into_iter().collect())
@@ -949,7 +948,7 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use work_order::{work_orders_from_bundle, SwarmBundle};
+    use work_order::{SwarmBundle, work_orders_from_bundle};
 
     fn bundle() -> SwarmBundle {
         SwarmBundle {

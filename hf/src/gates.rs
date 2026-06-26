@@ -238,24 +238,24 @@ fn scan_decision_contradictions(guards: &[DecisionGuard]) -> Vec<String> {
 fn tasks_with_green_tests() -> HashSet<String> {
     let mut green = HashSet::new();
     let path = Path::new(HF).join("ledger.db");
-    if let Ok(led) = Ledger::open(&path.to_string_lossy()) {
-        if let Ok(events) = led.all_events() {
-            for e in events {
-                if e.event_type != "test_result" {
-                    continue;
+    if let Ok(led) = Ledger::open(&path.to_string_lossy())
+        && let Ok(events) = led.all_events()
+    {
+        for e in events {
+            if e.event_type != "test_result" {
+                continue;
+            }
+            match serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                .ok()
+                .and_then(|v| v["passed"].as_bool())
+            {
+                Some(true) => {
+                    green.insert(e.work_order_id);
                 }
-                match serde_json::from_str::<serde_json::Value>(&e.payload_json)
-                    .ok()
-                    .and_then(|v| v["passed"].as_bool())
-                {
-                    Some(true) => {
-                        green.insert(e.work_order_id);
-                    }
-                    Some(false) => {
-                        green.remove(&e.work_order_id); // latest-wins: a later failure un-greens
-                    }
-                    None => {}
+                Some(false) => {
+                    green.remove(&e.work_order_id); // latest-wins: a later failure un-greens
                 }
+                None => {}
             }
         }
     }
@@ -268,12 +268,12 @@ fn tasks_with_green_tests() -> HashSet<String> {
 fn tasks_with_checkpoints() -> HashSet<String> {
     let mut seen = HashSet::new();
     let path = Path::new(HF).join("ledger.db");
-    if let Ok(led) = Ledger::open(&path.to_string_lossy()) {
-        if let Ok(events) = led.all_events() {
-            for e in events {
-                if e.event_type == "checkpoint" {
-                    seen.insert(e.work_order_id);
-                }
+    if let Ok(led) = Ledger::open(&path.to_string_lossy())
+        && let Ok(events) = led.all_events()
+    {
+        for e in events {
+            if e.event_type == "checkpoint" {
+                seen.insert(e.work_order_id);
             }
         }
     }
@@ -570,10 +570,10 @@ fn emit_intent_changed(report: &DriftReport) {
             if e.event_type != "task_intent_changed" {
                 continue;
             }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&e.payload_json) {
-                if let Some(sig) = v["observed"].as_str() {
-                    last_sig.insert(e.work_order_id, sig.to_string());
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&e.payload_json)
+                && let Some(sig) = v["observed"].as_str()
+            {
+                last_sig.insert(e.work_order_id, sig.to_string());
             }
         }
     }
@@ -665,20 +665,19 @@ fn protected_patterns() -> Vec<String> {
     // compiled denylist if the file is absent.
     let text = std::fs::read_to_string(Path::new(HF).join("policies").join("rules.toml"))
         .unwrap_or_default();
-    if let Ok(v) = text.parse::<toml::Value>() {
-        if let Some(arr) = v
+    if let Ok(v) = text.parse::<toml::Value>()
+        && let Some(arr) = v
             .get("merge")
             .and_then(|m| m.get("protected_files"))
             .and_then(|p| p.get("patterns"))
             .and_then(|a| a.as_array())
-        {
-            let pats: Vec<String> = arr
-                .iter()
-                .filter_map(|x| x.as_str().map(String::from))
-                .collect();
-            if !pats.is_empty() {
-                return pats;
-            }
+    {
+        let pats: Vec<String> = arr
+            .iter()
+            .filter_map(|x| x.as_str().map(String::from))
+            .collect();
+        if !pats.is_empty() {
+            return pats;
         }
     }
     vec![
@@ -778,7 +777,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_guards, glob_match, is_decision_surface, parse_decision_guards, DriftReport,
+        DriftReport, check_guards, glob_match, is_decision_surface, parse_decision_guards,
     };
     use work_order::WorkOrder;
 

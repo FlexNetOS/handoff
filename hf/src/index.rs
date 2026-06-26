@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use work_order::{Status, WorkOrder};
 
 use crate::{current_statuses, load_tasks, status_of};

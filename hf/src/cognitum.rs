@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use crate::{ledger_path, now_ns, route::route_for_task, Ledger};
+use crate::{Ledger, ledger_path, now_ns, route::route_for_task};
 
 /// A witnessed cognitum-gate verdict for an action.
 #[derive(Debug, Clone)]

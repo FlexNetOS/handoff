@@ -112,8 +112,8 @@ pub fn route_with_history<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     fn task(id: &str, priority: Priority, role: Option<&str>) -> WorkOrder {
         let objective = format!("obj-{id}");

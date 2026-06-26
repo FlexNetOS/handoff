@@ -44,3 +44,4 @@ node_modules/
 # Vendored syntect fork (postcard) — ignore build artifacts + regen-only testdata symlink
 vendor/syntect/target/
 vendor/syntect/testdata
+vendor/syntect/Cargo.lock

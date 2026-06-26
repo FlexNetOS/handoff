@@ -228,12 +228,12 @@ fn find_hf_exe() -> PathBuf {
         return PathBuf::from(exe);
     }
     // Same directory as this MCP server binary (typical install layout).
-    if let Ok(current) = std::env::current_exe() {
-        if let Some(dir) = current.parent() {
-            let sibling = dir.join(if cfg!(windows) { "hf.exe" } else { "hf" });
-            if sibling.is_file() {
-                return sibling;
-            }
+    if let Ok(current) = std::env::current_exe()
+        && let Some(dir) = current.parent()
+    {
+        let sibling = dir.join(if cfg!(windows) { "hf.exe" } else { "hf" });
+        if sibling.is_file() {
+            return sibling;
         }
     }
     PathBuf::from(if cfg!(windows) { "hf.exe" } else { "hf" })
@@ -877,11 +877,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    // A test sets `HF_EXE` (env mutation, unsafe in edition 2024) in a controlled single test
+    // context. Justified test-only `unsafe_code` allow under the workspace deny policy.
+    #![allow(unsafe_code)]
     use super::*;
 
     #[test]
     fn find_hf_exe_prefers_env_var() {
-        std::env::set_var("HF_EXE", "/tmp/custom-hf");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("HF_EXE", "/tmp/custom-hf") };
         let exe = find_hf_exe();
         assert_eq!(exe, PathBuf::from("/tmp/custom-hf"));
     }

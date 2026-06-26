@@ -493,7 +493,9 @@ pub fn conflict_register_markdown(a: &RepoInventory, b: &RepoInventory) -> Strin
 }
 
 pub fn gap_audit_markdown() -> String {
-    let mut out = String::from("# Gap Audit and Applied Updates\n\n| ID | Gap | Risk | Applied Update |\n|---|---|---|---|\n");
+    let mut out = String::from(
+        "# Gap Audit and Applied Updates\n\n| ID | Gap | Risk | Applied Update |\n|---|---|---|---|\n",
+    );
     for gap in known_gaps_and_updates() {
         out.push_str(&format!(
             "| {} | {} | {} | {} |\n",
@@ -543,11 +545,7 @@ fn has_multiple_package_managers(inv: &RepoInventory) -> bool {
 }
 
 fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
+    if value { "yes" } else { "no" }
 }
 
 fn shared_paths(a: &RepoInventory, b: &RepoInventory) -> Vec<String> {

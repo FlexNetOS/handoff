@@ -14,7 +14,7 @@
 
 use rusqlite::Connection;
 
-use crate::v1::{hash_action, EventRow, Ledger, LedgerError, Result};
+use crate::v1::{EventRow, Ledger, LedgerError, Result, hash_action};
 
 /// Migrate the legacy SQLite ledger at `sqlite_path` into a fresh redb ledger at `redb_path`.
 ///

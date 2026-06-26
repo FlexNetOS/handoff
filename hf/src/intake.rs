@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use work_order::{work_orders_from_bundle_with, Intent, SwarmBundle, WorkOrder};
+use work_order::{Intent, SwarmBundle, WorkOrder, work_orders_from_bundle_with};
 
 /// Parse a SwarmBundle from JSON file content. Pure (testable without IO).
 pub fn parse_bundle(json: &str) -> Result<SwarmBundle, String> {
@@ -106,7 +106,9 @@ pub fn cmd_intake(
     scope: Option<&[String]>,
 ) {
     let Some(bundle_path) = bundle_path else {
-        eprintln!("usage: hf intake --bundle <bundle.json> [--vibe \"<text>\"] [--intent <intent.json>] [--scope glob,glob]");
+        eprintln!(
+            "usage: hf intake --bundle <bundle.json> [--vibe \"<text>\"] [--intent <intent.json>] [--scope glob,glob]"
+        );
         return;
     };
     let raw = match std::fs::read_to_string(bundle_path) {

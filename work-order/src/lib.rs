@@ -7,7 +7,7 @@
 //! downstream verifier (`ruvector-verified`) can treat the order as a provable contract.
 
 pub mod intake;
-pub use intake::{synthesize_spec, Intent, SynthSpec};
+pub use intake::{Intent, SynthSpec, synthesize_spec};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -18,8 +18,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::fleet;
 use crate::HF;
+use crate::fleet;
 
 /// `(ledger_db, tasks_dir)` for a given `.handoff` base directory.
 fn homes_for(base: &Path) -> (PathBuf, PathBuf) {
@@ -58,10 +58,10 @@ pub fn route_for_task(id: &str) -> Result<(PathBuf, PathBuf), String> {
     if task_card_exists(&local_tasks, id) {
         return Ok((local_db, local_tasks));
     }
-    if let Some((fleet_db, fleet_tasks)) = fleet_home() {
-        if task_card_exists(&fleet_tasks, id) {
-            return Ok((fleet_db, fleet_tasks));
-        }
+    if let Some((fleet_db, fleet_tasks)) = fleet_home()
+        && task_card_exists(&fleet_tasks, id)
+    {
+        return Ok((fleet_db, fleet_tasks));
     }
     Err(format!(
         "hf: task {id} not found in this repo's .handoff/tasks or the FLEET ledger (meta/.handoff) — mint it first"

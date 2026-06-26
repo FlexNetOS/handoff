@@ -65,10 +65,11 @@ fn pr_url(pr: &str) -> Option<String> {
         return Some(format!("https://github.com/FlexNetOS/handoff/pull/{pr}"));
     }
     // owner/repo#N
-    if let Some((owner_repo, num)) = pr.split_once('#') {
-        if num.chars().all(|c| c.is_ascii_digit()) && !owner_repo.is_empty() {
-            return Some(format!("https://github.com/{owner_repo}/pull/{num}"));
-        }
+    if let Some((owner_repo, num)) = pr.split_once('#')
+        && num.chars().all(|c| c.is_ascii_digit())
+        && !owner_repo.is_empty()
+    {
+        return Some(format!("https://github.com/{owner_repo}/pull/{num}"));
     }
     None
 }
