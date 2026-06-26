@@ -31,6 +31,8 @@ handoff-hooks = { path = "../handoff-hooks" }
 handoff-index = { path = "../handoff-index" }
 # HFTASK-0083 (ADR-0019 D5 #4): fleet rollup aggregation was peeled into `handoff-fleet`; hf aliases as `fleet`.
 handoff-fleet = { path = "../handoff-fleet" }
+# HFTASK-0083 (ADR-0019 D5 #4): the drift-audit + policy-check engine was peeled into `handoff-drift`; hf aliases as `gates`.
+handoff-drift = { path = "../handoff-drift" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

@@ -1,0 +1,16 @@
+[package]
+name = "handoff-drift"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-drift — the drift-audit gate (hf drift, PRD §12.3) + policy checks, peeled from hf"
+
+[dependencies]
+handoff-core = { path = "../handoff-core" }
+ledger = { path = "../ledger" }
+work-order = { path = "../work-order" }
+serde_json = "1"
+toml = "0.8"
+
+[lints]
+workspace = true

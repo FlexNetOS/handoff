@@ -1119,6 +1119,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-drift"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "ledger",
+ "serde_json",
+ "toml",
+ "work-order",
+]
+
+[[package]]
 name = "handoff-fleet"
 version = "0.1.0"
 dependencies = [
@@ -1248,6 +1259,7 @@ dependencies = [
  "cognitum-gate-tilezero",
  "envctl-secrets-engine",
  "handoff-core",
+ "handoff-drift",
  "handoff-fleet",
  "handoff-hooks",
  "handoff-index",

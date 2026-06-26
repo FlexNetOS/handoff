@@ -17,7 +17,6 @@ mod contract;
 mod delivery;
 mod durability;
 mod gatekeeper;
-mod gates;
 mod intake;
 mod kb;
 mod prompt_hub;
@@ -50,6 +49,8 @@ use handoff_hooks as hooks;
 use handoff_index as index;
 // HFTASK-0083: fleet rollup aggregation peeled into `handoff-fleet`; alias as `fleet`.
 use handoff_fleet as fleet;
+// HFTASK-0083: drift-audit + policy-check engine peeled into `handoff-drift`; alias as `gates`.
+use handoff_drift as gates;
 
 use lease::Leaser;
 use ledger::Ledger;
@@ -60,8 +61,9 @@ use work_order::{PrioStr, Priority, Status, WorkOrder};
 // `crate::ledger_path` / `crate::tasks_dir` / `crate::run_out` / `crate::current_statuses` /
 // `crate::status_of` references across the feature modules are unchanged (behavior-preserving).
 pub(crate) use handoff_core::{
-    HF, current_statuses, ledger_path, load_task_in, load_tasks, must_witness, next_safe, now_ns,
-    pretty_json, run_out, save_task, save_task_in, scan_card_conformance, status_of, tasks_dir,
+    HF, capsule_field, capsule_path, current_northstar_revision, current_statuses, ledger_path,
+    load_task_in, load_tasks, must_witness, next_safe, now_ns, pretty_json, run_out, save_task,
+    save_task_in, scan_card_conformance, status_of, tasks_dir,
 };
 
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
@@ -70,9 +72,6 @@ const CLAIM_TTL_SECS: u64 = 3600;
 
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
-}
-fn capsule_path() -> PathBuf {
-    Path::new(HF).join("context").join("capsule.json")
 }
 
 /// ADR-0018 D1: the committed continuity truth — the deterministic JSONL export of the witnessed
@@ -2117,19 +2116,8 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
     );
 }
 
-/// Read a top-level string field from the context capsule (best-effort).
-fn capsule_field(key: &str) -> Option<String> {
-    let s = fs::read_to_string(capsule_path()).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
-    v.get(key).and_then(|x| x.as_str()).map(String::from)
-}
-
-/// HFTASK-0047: the current North-Star doctrine revision = blake3 of the capsule `northstar`.
-/// An empty/absent capsule yields an empty revision (no northstar obligation is raised).
-fn current_northstar_revision() -> String {
-    work_order::northstar_revision(&capsule_field("northstar").unwrap_or_default())
-}
-
+// HFTASK-0083: capsule_path / capsule_field / current_northstar_revision lifted to handoff-core
+// (re-exported below) so the drift/gate crate resolves the North-Star revision without hf.
 fn cmd_status(json: bool) {
     let tasks = load_tasks();
     let replay = current_statuses();
