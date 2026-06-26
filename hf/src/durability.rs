@@ -77,6 +77,10 @@ pub const REGENERABLE_PROBES: &[&str] = &[
     ".handoff/ledger.redb.tmp",
     ".handoff/workspaces/main/scratch",
     ".handoff/locks/task.lock",
+    // HFTASK-0050: the generated navigation maps (`hf index`/`hf plan`) are a rebuild cache like
+    // the binary ledger — derived from the committed cards, churn on every plan, and would trip
+    // the drift sentinel if committed. They MUST stay ignored.
+    ".handoff/maps/task-dag.json",
 ];
 
 /// ADR-0018 D1 migration: the derived-view `.gitignore` lines the old (pre-0067) policy shipped
@@ -124,7 +128,16 @@ pub const CANONICAL_GITIGNORE_FRAGMENT: &str = "\
 .handoff/**/*.redb.tmp
 /.handoff/workspaces/
 /.handoff/locks/
+/.handoff/maps/
 ";
+
+/// Canonical regenerable-cache ignore rules that MUST be present even in a repo that already
+/// carries an OLDER fragment (marker present). [`repair_gitignore`] appends the fragment only when
+/// the marker is absent, so a rule added to [`CANONICAL_GITIGNORE_FRAGMENT`] after a repo was first
+/// initialized would never reach it. These rules are therefore ensured line-by-line on every
+/// `--repair`, independent of the marker (HFTASK-0050: `/.handoff/maps/` shipped after early
+/// inits). Normalized (via [`normalize_ignore_line`]) for presence comparison.
+pub const ENSURE_PRESENT_RULES: &[&str] = &["/.handoff/maps/"];
 
 /// A single `.gitignore` line normalized for dir-form comparison: trimmed, comments/negations
 /// dropped, and leading `**/` + surrounding `/` removed. Returns `None` for lines that cannot
@@ -230,6 +243,9 @@ pub struct RepairOutcome {
     pub removed_retired_views: Vec<String>,
     /// Whether the canonical fragment was appended (false if it was already present).
     pub added_fragment: bool,
+    /// Canonical regenerable-cache rules ([`ENSURE_PRESENT_RULES`]) that were missing and appended
+    /// even though the fragment marker was already present (reaches already-initialized repos).
+    pub ensured_rules: Vec<String>,
 }
 
 impl RepairOutcome {
@@ -237,6 +253,7 @@ impl RepairOutcome {
         self.added_fragment
             || !self.removed_dir_form.is_empty()
             || !self.removed_retired_views.is_empty()
+            || !self.ensured_rules.is_empty()
     }
 }
 
@@ -275,11 +292,28 @@ pub fn repair_gitignore(repo: &Path) -> std::io::Result<RepairOutcome> {
     if !out.ends_with('\n') {
         out.push('\n');
     }
+    // Marker-independent line-level ensure: a canonical regenerable-cache rule shipped AFTER this
+    // repo was first initialized (marker already present, fragment not re-appended) is appended
+    // here if absent, so already-initialized repos converge to the current policy on `--repair`.
+    let present: std::collections::HashSet<String> =
+        out.lines().filter_map(normalize_ignore_line).collect();
+    let mut ensured_rules = Vec::new();
+    for rule in ENSURE_PRESENT_RULES {
+        if normalize_ignore_line(rule).is_some_and(|n| !present.contains(&n)) {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(rule);
+            out.push('\n');
+            ensured_rules.push((*rule).to_string());
+        }
+    }
     std::fs::write(&path, out)?;
     Ok(RepairOutcome {
         removed_dir_form: removed,
         removed_retired_views: removed_views,
         added_fragment,
+        ensured_rules,
     })
 }
 
@@ -389,6 +423,58 @@ mod tests {
         let again = repair_gitignore(&repo).unwrap();
         assert!(!again.added_fragment);
         assert!(again.removed_dir_form.is_empty());
+
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// HFTASK-0050: an EARLY-init repo carries the fragment marker but predates the
+    /// `/.handoff/maps/` rule. Because the fragment is appended only when the marker is absent, the
+    /// new rule would never reach it — `repair_gitignore` must ensure it line-by-line. (This is the
+    /// exact envctl drift the generated `maps/task-dag.json` surfaced.)
+    #[test]
+    fn repair_ensures_maps_rule_in_a_pre_maps_initialized_repo() {
+        let repo = temp_repo();
+        // An older fragment: marker present, the full pre-0050 cache rule set, every line EXCEPT
+        // `/.handoff/maps/` (the real envctl state).
+        let old_fragment = "/target\n\
+            # === handoff continuity kernel — canonical .handoff durability policy (ADR-0016) ===\n\
+            .handoff/**/ledger.db\n\
+            .handoff/**/*.db-wal\n\
+            .handoff/**/*.db-shm\n\
+            .handoff/**/*.rvf\n\
+            .handoff/**/*.rvf.lock\n\
+            .handoff/**/*.sqlite.bak\n\
+            .handoff/**/*.redb.tmp\n\
+            /.handoff/workspaces/\n\
+            /.handoff/locks/\n";
+        std::fs::write(repo.join(".gitignore"), old_fragment).unwrap();
+
+        // BUG STATE: the generated maps cache is NOT ignored.
+        assert!(
+            !path_is_ignored(&repo, ".handoff/maps/task-dag.json"),
+            "pre-repair: maps cache is under-ignored"
+        );
+
+        // REPAIR: marker is present (no fragment re-append), but the missing rule is ensured.
+        let outcome = repair_gitignore(&repo).unwrap();
+        assert!(
+            !outcome.added_fragment,
+            "marker present → no fragment re-append"
+        );
+        assert!(outcome.changed(), "ensuring a missing rule is a change");
+        assert_eq!(outcome.ensured_rules, vec!["/.handoff/maps/".to_string()]);
+
+        // FIXED STATE: maps cache is ignored; the regenerable probe no longer flags.
+        assert!(path_is_ignored(&repo, ".handoff/maps/task-dag.json"));
+        assert!(
+            swallow_report(&repo).regenerable_unignored.is_empty(),
+            "maps probe is now ignored"
+        );
+
+        // Idempotent: a second repair ensures nothing further.
+        let again = repair_gitignore(&repo).unwrap();
+        assert!(again.ensured_rules.is_empty(), "rule already present");
+        assert!(!again.changed());
 
         std::fs::remove_dir_all(&repo).ok();
     }

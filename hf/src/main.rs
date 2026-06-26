@@ -419,6 +419,9 @@ fn cmd_gitignore(mode: Option<&str>) {
                 if o.added_fragment {
                     println!("hf gitignore: appended canonical durability fragment (ADR-0016)");
                 }
+                for rule in &o.ensured_rules {
+                    println!("hf gitignore: ensured canonical regenerable-cache rule `{rule}`");
+                }
             }
             Ok(_) => println!("hf gitignore: already canonical (no change)"),
             Err(e) => {
@@ -1085,6 +1088,87 @@ fn cmd_reopen(id: &str, reason: &str) {
     if n > 0 {
         println!("hf reopen: synced {n} card(s) from ledger truth");
     }
+}
+
+/// Pure re-mint decision for `hf relock` (no I/O, unit-testable): produce the intent-lock that
+/// matches the card's CURRENT fields, in the SAME form (partial vs full) as the recorded lock so
+/// re-locking never silently up/down-grades the contract surface. A legacy 3-field (partial) lock
+/// re-mints the three content hashes only; a full 5-field lock re-mints all five and re-binds to
+/// the supplied (current) North-Star revision.
+fn relock_intent(wo: &WorkOrder, northstar_revision: &str) -> work_order::IntentLock {
+    let cur = &wo.intent_lock;
+    let is_full = !cur.constraint_hash.is_empty() || !cur.northstar_revision.is_empty();
+    if is_full {
+        wo.full_intent_lock(northstar_revision)
+    } else {
+        WorkOrder::compute_intent_lock(&wo.objective, &wo.path_scope, &wo.acceptance_criteria)
+    }
+}
+
+/// `hf relock <ID> "<reason>"` — re-mint a task's intent-lock from its CURRENT card fields,
+/// clearing a benign intent-lock drift. This is the operator remedy the drift sentinel NAMES
+/// ("re-lock {id} objective" / "re-mint/reclaim") but historically shipped NO verb for: when a
+/// card's objective/path_scope/acceptance text is edited LEGITIMATELY after minting (a doctrine
+/// or typo correction), `hf drift` flags the stale hash forever and the only escape was to
+/// hand-edit the lock — exactly the tampering the lock exists to detect.
+///
+/// Deliberate, reasoned, and witnessed — never a silent re-baseline of the intent contract: it
+/// requires a `<reason>` (like `hf reopen`) and emits a `task_relocked` event recording the
+/// old→new hashes, so the objective change is an auditable entry in the tamper-evident ledger.
+/// The lock lives in the card (`sync_cards` only touches status), so writing the card clears the
+/// drift durably. No-downgrade via [`relock_intent`]: a partial lock stays partial; a full lock is
+/// re-minted across all five surfaces and re-bound to the current North-Star (the named "re-mint
+/// against the current North Star" remedy).
+fn cmd_relock(id: &str, reason: &str) {
+    if id.is_empty() {
+        eprintln!("hf relock: an id is required — `hf relock <ID> \"<reason>\"`");
+        std::process::exit(2);
+    }
+    if reason.trim().is_empty() {
+        eprintln!(
+            "hf relock: a reason is required — `hf relock <ID> \"<reason>\"` \
+             (no silent re-baseline of the intent contract)"
+        );
+        std::process::exit(2);
+    }
+    let Ok((ledger, tasks_dir)) = route::route_for_task(id) else {
+        eprintln!("hf relock: cannot route {id}");
+        std::process::exit(1);
+    };
+    let Some(mut wo) = load_task_in(&tasks_dir, id) else {
+        eprintln!("hf relock: no such task {id} on disk");
+        std::process::exit(1);
+    };
+    let old = wo.intent_lock.clone();
+    let fresh = relock_intent(&wo, &current_northstar_revision());
+    if fresh == old {
+        println!("hf relock: {id} intent-lock already matches its card — no drift to clear");
+        return;
+    }
+    let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
+    // Witness the WHY + the old→new surfaces first, then mutate the card the drift gate reads.
+    let payload = serde_json::json!({
+        "id": id,
+        "reason": reason,
+        "old": {
+            "objective": old.objective_hash, "path_scope": old.path_scope_hash,
+            "acceptance": old.acceptance_hash, "constraint": old.constraint_hash,
+            "northstar": old.northstar_revision,
+        },
+        "new": {
+            "objective": fresh.objective_hash, "path_scope": fresh.path_scope_hash,
+            "acceptance": fresh.acceptance_hash, "constraint": fresh.constraint_hash,
+            "northstar": fresh.northstar_revision,
+        },
+    })
+    .to_string();
+    must_witness(
+        led.append("task_relocked", id, &payload, now_ns()),
+        "task_relocked",
+    );
+    wo.intent_lock = fresh;
+    save_task(&wo);
+    println!("hf relock: {id} intent-lock re-minted to current card (witnessed; reason: {reason})");
 }
 
 /// `hf lease` (HFTASK-0048) — list the currently-held atomic in-ledger leases (resource →
@@ -3564,6 +3648,16 @@ fn main() {
             let reason = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
             cmd_reopen(id, &reason);
         }
+        Some("relock") => {
+            let positional: Vec<&str> = args[1..]
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|a| !a.starts_with("--"))
+                .collect();
+            let id = positional.first().copied().unwrap_or("");
+            let reason = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
+            cmd_relock(id, &reason);
+        }
         Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
         Some("checkpoint") => {
             let auto = args.iter().any(|a| a == "--auto");
@@ -3888,7 +3982,7 @@ fn main() {
                 eprintln!("hf: unknown command '{verb}'");
             }
             eprintln!(
-                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
+                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|relock ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
             );
             if other.is_some() {
                 std::process::exit(2);
@@ -3904,6 +3998,88 @@ mod tests {
     // so the data-race precondition does not arise. Justified test-only `unsafe_code` allow.
     #![allow(unsafe_code)]
     use super::*;
+
+    /// Build a minimal WorkOrder for the relock tests. `full` stamps the 5-field lock so the
+    /// no-downgrade branch can be exercised both ways.
+    fn relock_wo(objective: &str, full: bool) -> WorkOrder {
+        let path_scope = vec!["**".to_string()];
+        let acceptance = vec!["landed & merged".to_string()];
+        let mut wo = WorkOrder {
+            schema: "handoff.task.v1".into(),
+            id: "TASK-RELOCK".into(),
+            title: "relock fixture".into(),
+            status: Status::Done,
+            priority: work_order::Priority::P1,
+            objective: objective.into(),
+            path_scope: path_scope.clone(),
+            acceptance_criteria: acceptance.clone(),
+            test_commands: vec![],
+            dependencies: vec![],
+            blocked_by: vec![],
+            allows_network: false,
+            allows_dependency_addition: false,
+            correlation_id: "relock-test".into(),
+            role: Some("implementer".into()),
+            intent_lock: WorkOrder::compute_intent_lock(objective, &path_scope, &acceptance),
+        };
+        if full {
+            wo.intent_lock = wo.full_intent_lock("blake3:ns-rev-1");
+        }
+        wo
+    }
+
+    #[test]
+    fn relock_remints_edited_objective_and_preserves_partial_form() {
+        // A partial (3-field) lock minted, then the objective text edited post-lock (the real
+        // TASK-0002 case: a doctrine correction). relock_intent re-mints the objective hash to the
+        // CURRENT text and keeps the lock partial (no-downgrade: never grafts on constraint/
+        // northstar surfaces the card never carried).
+        let mut wo = relock_wo("old objective", false);
+        let stale = wo.intent_lock.objective_hash.clone();
+        wo.objective = "corrected objective".to_string();
+        assert!(!wo.intent_unchanged(), "edited objective must drift first");
+
+        let fresh = relock_intent(&wo, "blake3:ns-rev-1");
+        let expect =
+            WorkOrder::compute_intent_lock(&wo.objective, &wo.path_scope, &wo.acceptance_criteria);
+        assert_eq!(
+            fresh.objective_hash, expect.objective_hash,
+            "re-mints to current text"
+        );
+        assert_ne!(fresh.objective_hash, stale, "no longer the stale hash");
+        assert!(fresh.constraint_hash.is_empty(), "partial stays partial");
+        assert!(fresh.northstar_revision.is_empty(), "partial stays partial");
+
+        // Applying the re-minted lock clears the drift.
+        wo.intent_lock = fresh;
+        assert!(wo.intent_unchanged(), "drift cleared after relock");
+    }
+
+    #[test]
+    fn relock_full_lock_remints_all_surfaces_and_rebinds_northstar() {
+        // A full (5-field) lock, objective edited + bound to a SUPERSEDED doctrine revision.
+        // relock_intent re-mints every surface and re-binds to the supplied current revision.
+        let mut wo = relock_wo("old objective", true);
+        wo.objective = "corrected objective".to_string();
+        let fresh = relock_intent(&wo, "blake3:ns-rev-2");
+        assert!(
+            !fresh.constraint_hash.is_empty(),
+            "full lock keeps its constraint surface"
+        );
+        assert_eq!(
+            fresh.northstar_revision, "blake3:ns-rev-2",
+            "re-bound to current doctrine"
+        );
+        wo.intent_lock = fresh;
+        assert!(
+            wo.intent_components("blake3:ns-rev-2").objective,
+            "objective drift cleared"
+        );
+        assert!(
+            wo.intent_components("blake3:ns-rev-2").northstar,
+            "northstar drift cleared"
+        );
+    }
 
     #[test]
     fn version_info_is_stamped_and_well_formed() {
