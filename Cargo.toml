@@ -10,3 +10,19 @@ authors = ["FlexNetOS <team@flexnetos.com>"]
 homepage = "https://github.com/FlexNetOS/handoff"
 repository = "https://github.com/FlexNetOS/handoff"
 documentation = "https://docs.rs/handoff"
+
+# Eliminate the unmaintained `yaml-rust 0.4` (RUSTSEC-2024-0320), pulled transitively by
+# `syntect 5.3.0` (via comrak/tui-markdown in the rusty-idd crates). syntect's `master` has
+# already migrated to the maintained `yaml-rust2` but has NOT cut a release; it is still
+# package-version `5.3.0`, so this pin satisfies tui-markdown's `^5.3.0` requirement with
+# ZERO source edits (upgrade-only). Pinned to an immutable SHA for reproducibility.
+#
+# NOTE: this does NOT clear `bincode 1.x` (RUSTSEC-2025-0141). That advisory flags ALL bincode
+# versions (the crate was permanently frozen, `patched = []`), and syntect's bundled default
+# syntax/theme set is structurally bincode-encoded (`default-syntaxes` -> `dump-load` -> bincode).
+# There is no maintained successor to swap to today. bincode stays as documented accepted-risk
+# (see docs/rusty-idd/security-advisories.md) until syntect ships its replacement (upstream
+# trishume/syntect#623/#694, slated for syntect 6.0.0); when 6.0.0 lands and tui-markdown revs
+# to it, DELETE this patch.
+[patch.crates-io]
+syntect = { git = "https://github.com/trishume/syntect", rev = "4aa78031e93ebd3e0be7278120d0bd9d2508b1a3" }
