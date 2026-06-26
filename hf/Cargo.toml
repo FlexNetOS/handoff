@@ -29,6 +29,8 @@ handoff-lease = { path = "../handoff-lease" }
 handoff-hooks = { path = "../handoff-hooks" }
 # HFTASK-0083 (ADR-0019 D5 #4): the index/plan maps were peeled into `handoff-index`; hf aliases as `index`.
 handoff-index = { path = "../handoff-index" }
+# HFTASK-0083 (ADR-0019 D5 #4): fleet rollup aggregation was peeled into `handoff-fleet`; hf aliases as `fleet`.
+handoff-fleet = { path = "../handoff-fleet" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

@@ -1,4 +1,11 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `hf fleet status` — fleet aggregation (ADR-0004 §4).
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): peeled into the `handoff-fleet` crate after the card loader +
+//! PrioStr moved out of hf. `hf` aliases it as `fleet` so `fleet::cmd_fleet_status` /
+//! `fleet::find_meta_root` / `fleet::parse_members` / `fleet::render_member_packet` stay valid.
+//! Deps: handoff-core + ledger + work-order + serde_json.
 //!
 //! Enumerate members from the meta root's `.meta.yaml`, read each repo's git-text
 //! `.handoff` (capsule + cards), and join with the FLEET ledger events into one board.
@@ -20,10 +27,10 @@
 //!       cache could be committed (HFTASK-0034/0035).
 //! A binary `.db` merely present on disk (gitignored) is LEGITIMATE.
 
-use crate::PrioStr;
 use ledger::{Ledger, RollupProvenance};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use work_order::PrioStr;
 use work_order::{Status, WorkOrder};
 
 /// Walk up from the current directory to the meta root (the dir holding `.meta.yaml`).
@@ -43,7 +50,7 @@ pub fn find_meta_root() -> Option<PathBuf> {
 /// carries no YAML crate (and the pure-Rust/no-C trust-boundary gate discourages
 /// adding one for this), and we only need the member directory names. The format is
 /// controlled — members are 2-space-indented bare `name:` keys under `projects:`.
-pub(crate) fn parse_members(meta_yaml: &str) -> Vec<String> {
+pub fn parse_members(meta_yaml: &str) -> Vec<String> {
     let mut out = vec![];
     let mut in_projects = false;
     for line in meta_yaml.lines() {
@@ -387,7 +394,7 @@ pub fn cmd_fleet_status(json: bool) {
             })).collect::<Vec<_>>(),
             "warnings": warnings,
         });
-        println!("{}", crate::pretty_json(&out));
+        println!("{}", handoff_core::pretty_json(&out));
         return;
     }
 
@@ -502,7 +509,7 @@ fn load_member_tasks(repo: &Path) -> Vec<WorkOrder> {
             // rollup the same way card #95 vanished from `hf status`. Reuse the kernel's LOUD,
             // schema-validated loader so a non-conforming member card surfaces a WARNING instead
             // of disappearing.
-            if let Some(wo) = crate::parse_card_file(&p) {
+            if let Some(wo) = handoff_core::parse_card_file(&p) {
                 v.push(wo);
             }
         }

@@ -20,10 +20,10 @@
 //! `--dry-run` prints what Part B would write and what Part C WOULD roll up, without
 //! creating/committing/appending anything.
 
-use crate::PrioStr;
 use ledger::Ledger;
 use std::path::Path;
 use std::process::Command;
+use work_order::PrioStr;
 use work_order::{Status, WorkOrder};
 
 const MIRROR_SLUGS: [(&str, &str); 2] = [

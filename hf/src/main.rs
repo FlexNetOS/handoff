@@ -16,7 +16,6 @@ mod cognitum;
 mod contract;
 mod delivery;
 mod durability;
-mod fleet;
 mod gatekeeper;
 mod gates;
 mod intake;
@@ -49,10 +48,12 @@ use handoff_lease as lease;
 use handoff_hooks as hooks;
 // HFTASK-0083: index/plan maps peeled into `handoff-index`; alias as `index`.
 use handoff_index as index;
+// HFTASK-0083: fleet rollup aggregation peeled into `handoff-fleet`; alias as `fleet`.
+use handoff_fleet as fleet;
 
 use lease::Leaser;
 use ledger::Ledger;
-use work_order::{Priority, Status, WorkOrder};
+use work_order::{PrioStr, Priority, Status, WorkOrder};
 
 // ADR-0019 D5 #4 (12-crate decomposition): the leaf continuity primitives now live in the
 // `handoff-core` crate. Re-exported `pub(crate)` so existing `crate::HF` / `crate::now_ns` /
@@ -60,8 +61,7 @@ use work_order::{Priority, Status, WorkOrder};
 // `crate::status_of` references across the feature modules are unchanged (behavior-preserving).
 pub(crate) use handoff_core::{
     HF, current_statuses, ledger_path, load_task_in, load_tasks, must_witness, next_safe, now_ns,
-    parse_card_file, pretty_json, run_out, save_task, save_task_in, scan_card_conformance,
-    status_of, tasks_dir,
+    pretty_json, run_out, save_task, save_task_in, scan_card_conformance, status_of, tasks_dir,
 };
 
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
@@ -2555,20 +2555,9 @@ fn cmd_resume(mode: ResumeMode) {
     }
 }
 
-// helper for Priority display in markdown
-trait PrioStr {
-    fn priority_str(&self) -> &'static str;
-}
-impl PrioStr for WorkOrder {
-    fn priority_str(&self) -> &'static str {
-        match self.priority {
-            Priority::P0 => "P0",
-            Priority::P1 => "P1",
-            Priority::P2 => "P2",
-            Priority::P3 => "P3",
-        }
-    }
-}
+// HFTASK-0083: the PrioStr trait (Priority→&str display) moved to work-order so the peeled
+// feature crates (handoff-fleet, …) and the in-hf modules (sync) share one impl. Re-exported via
+// `use work_order::PrioStr` below.
 
 /// Seed the REAL continuation backlog (the tasks to finish the .handoff kernel) as task cards.
 fn cmd_seed() {
