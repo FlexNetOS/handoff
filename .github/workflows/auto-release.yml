@@ -1,0 +1,85 @@
+name: auto-release
+
+# HFTASK-0086 (automation rung 2): every merge-to-trunk that touches KERNEL SOURCE auto-builds
+# the 5-platform `hf` artifacts — no human tag/dispatch. The `release.yml` build pipeline already
+# exists; it only lacked a trigger. This is that trigger.
+#
+# Fires on any advance of master (the trunk), which catches BOTH promotion paths:
+#   - sync-master.yml's fast-forward `git push origin …:master`
+#   - `hf promote`'s owner-authorized `gh api PATCH …/refs/heads/master` (HFTASK-0076)
+# The `paths:` allowlist means a docs-only / ledger-only promotion does NOT cut a release —
+# only a change under hf/ledger/work-order/handoff-* or the workspace manifests does.
+#
+# WHY a PAT (the GITHUB_TOKEN recursion guard): a same-repo `repository_dispatch` (or tag push)
+# fired with the default GITHUB_TOKEN does NOT start another workflow run — GitHub suppresses it
+# to prevent recursion. So this dispatch must use a real PAT, exactly as notify-parent.yml does
+# for its cross-repo dispatch. We reuse the org-level `PARENT_REPO_PAT` (repo scope) and DEGRADE
+# GRACEFULLY (warn + skip) when it is absent — the build pipeline is never blocked, the release
+# is simply deferred until the secret is present. Provisioning that secret is the one account-
+# level step a human still owns.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'hf/**'
+      - 'ledger/**'
+      - 'work-order/**'
+      - 'handoff-*/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false   # let each release dispatch finish; never cancel an in-flight build
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check release dispatch token
+        id: token
+        shell: bash
+        env:
+          RELEASE_PAT: ${{ secrets.PARENT_REPO_PAT }}
+        run: |
+          if [ -n "${RELEASE_PAT:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::PARENT_REPO_PAT is not configured; skipping the auto-release dispatch. The merge is unaffected; provision the PAT (repo scope on FlexNetOS/handoff) to enable hands-off releases."
+          fi
+
+      - name: Checkout (read the workspace version)
+        if: steps.token.outputs.configured == 'true'
+        uses: actions/checkout@v6
+
+      - name: Compute release tag
+        id: tag
+        if: steps.token.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Workspace version lives at column 0 under [workspace.package] in the root manifest.
+          ver="$(grep -E '^version = ' Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          [ -n "$ver" ] || { echo "::error::could not read workspace version from Cargo.toml"; exit 1; }
+          sha="${GITHUB_SHA::7}"
+          tag="v${ver}-${sha}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Auto-release tag: ${tag} (master @ ${sha})"
+
+      - name: Dispatch release-tagged
+        if: steps.token.outputs.configured == 'true'
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          token: ${{ secrets.PARENT_REPO_PAT }}
+          repository: ${{ github.repository }}
+          event-type: release-tagged
+          client-payload: >-
+            {
+              "tag": ${{ toJSON(steps.tag.outputs.tag) }},
+              "sha": ${{ toJSON(github.sha) }}
+            }
