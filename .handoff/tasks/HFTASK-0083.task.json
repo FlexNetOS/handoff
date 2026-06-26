@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0083",
+  "title": "ADR-0019 D5 #4: peel the COUPLED hf modules (drift/gatekeeper/fleet/intake) after lifting shared helpers to handoff-core",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "Continuation of HFTASK-0081, which peeled the LEAF/clean feature crates (handoff-policy #160, handoff-schema #161, handoff-lease #162) — bringing the workspace to 7 crates toward the PRD §7.2 12-crate target. The remaining feature modules (drift, gatekeeper, fleet, intake, gates, hooks, index) are COUPLED to hf-main helpers (crate::must_witness, crate::pretty_json, crate::now_ns, crate::load_tasks, crate::save_task, crate::current_northstar_revision, crate::next_safe), so they cannot move cleanly yet. PREP: lift those shared helpers from hf/src/main.rs into handoff-core (behavior-preserving, hf re-exports), THEN peel the coupled modules into their own crates (handoff-drift, handoff-gatekeeper, handoff-fleet, handoff-intake) one PR each, each verified green. This is the higher-risk half of the decomposition and is deliberately a separate witnessed card, not free-handed onto 0081.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0019 D5 #4: peel the COUPLED hf modules (drift/gatekeeper/fleet/intake) after lifting shared helpers to handoff-core: implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0081"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:cfe9114e661154f612c76245158f45feac66ec0dd09301af1923ec899aea1aeb",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:4ba8ea59571e860216dca87f6f4d5a6ab0b265bc85d22fc1d77e61eea3e06715",
+    "constraint_hash": "blake3:4354de6f4a5ad2021f7bc2d8c637f3663012d166fd71883bc3a6ce2ff7a12201",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
