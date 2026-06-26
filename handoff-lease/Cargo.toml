@@ -1,0 +1,11 @@
+[package]
+name = "handoff-lease"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-lease — the weave-coordinated claim lease bridge + lockfile/ClaimGate helpers (HFTASK-0048), peeled from hf"
+
+[dependencies]
+
+[lints]
+workspace = true

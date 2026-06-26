@@ -23,7 +23,6 @@ mod hooks;
 mod index;
 mod intake;
 mod kb;
-mod lease;
 mod prompt_hub;
 mod route;
 mod routing;
@@ -44,6 +43,9 @@ pub(crate) use handoff_policy::{branch, policy};
 // HFTASK-0081: the card validator was peeled into `handoff-schema`; alias it as `schema` so
 // existing `schema::validate_card` / `schema::cmd_schema` call sites stay valid unchanged.
 use handoff_schema as schema;
+// HFTASK-0081: the claim-lease bridge was peeled into `handoff-lease`; alias it as `lease` so
+// existing `lease::Leaser` / `lease::ClaimGate` / `lease::WeaveCli` call sites stay valid.
+use handoff_lease as lease;
 
 use lease::Leaser;
 use ledger::Ledger;

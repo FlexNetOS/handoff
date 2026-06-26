@@ -1,4 +1,11 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! Weave lease bridge (WL-024): turns `hf claim` into a *mesh-coordinated* claim.
+//!
+//! HFTASK-0081 (ADR-0019 D5 #4): peeled out of the `hf` monolith into the `handoff-lease` crate.
+//! `hf` aliases it as `lease` so existing `lease::Leaser` / `lease::ClaimGate` / `lease::WeaveCli`
+//! paths stay valid (behavior-preserving). Zero external deps — pure logic + a weave-CLI subprocess
+//! bridge (the in-ledger CAS itself lives in the `ledger` crate).
 //!
 //! A claim is no longer just a local ledger event — before recording it, `hf`
 //! reserves an advisory lease on the task via the `weave` CLI

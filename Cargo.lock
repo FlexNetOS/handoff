@@ -1116,6 +1116,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-lease"
+version = "0.1.0"
+
+[[package]]
 name = "handoff-policy"
 version = "0.1.0"
 dependencies = [
@@ -1212,6 +1216,7 @@ dependencies = [
  "cognitum-gate-tilezero",
  "envctl-secrets-engine",
  "handoff-core",
+ "handoff-lease",
  "handoff-policy",
  "handoff-schema",
  "ledger",
