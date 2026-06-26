@@ -237,6 +237,22 @@ todo = "deny"
 unimplemented = "deny"
 ```
 
+> **Current implementation status (reconciliation, 2026-06-26 — ADR-0019).** §7.2 above is the
+> *aspirational* workspace contract; the shipped root `Cargo.toml` differs and this note records the
+> gap so the spec is not read as an overclaim (code-research finding D6):
+> - **Members:** the kernel ships **3** crates — `work-order`, `ledger`, `hf` — not the 12
+>   `crates/handoff-*` split (`handoffd` is folded into `hf`; index/policy/hooks/drift/test/mcp are
+>   `hf` modules, not separate crates). The 12-crate split remains a *future* decomposition target.
+> - **`crates/{cli,core,runner,spec,tui}`** are a SEPARATE, co-located independent toolkit
+>   ("Intent Driven Development / rusty-idd", see `crates/core/src/lib.rs`) — **not** the PRD's
+>   `handoff-*` crates and **not** referenced by `hf`/`ledger`/`work-order`. They compile alongside
+>   the kernel but the kernel never invokes them.
+> - **Resolver / edition:** ships `resolver = "2"` / `edition = "2021"` (not resolver 3 / edition
+>   2024); the 2024 move is gated on a toolchain bump and is future work.
+> - **`[workspace.lints]`** are **not** yet enforced. `unwrap_used = "deny"` in particular is
+>   aspirational — the tree has ~hundreds of `.unwrap()`/`.expect()` call sites; adopting the deny
+>   lints is a tracked refactor, not a shipped guarantee.
+
 ### 7.3 Recommended crates
 
 | Need | Recommended Rust crate family |
