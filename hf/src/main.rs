@@ -56,7 +56,8 @@ use work_order::{Priority, Status, WorkOrder};
 // `crate::ledger_path` / `crate::tasks_dir` / `crate::run_out` / `crate::current_statuses` /
 // `crate::status_of` references across the feature modules are unchanged (behavior-preserving).
 pub(crate) use handoff_core::{
-    HF, current_statuses, ledger_path, now_ns, run_out, status_of, tasks_dir,
+    HF, current_statuses, ledger_path, must_witness, now_ns, pretty_json, run_out, status_of,
+    tasks_dir,
 };
 
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
@@ -255,30 +256,6 @@ pub(crate) fn witness_lifecycle(event: &str, wo_id: &str, payload: &str) {
         }
     }
 }
-/// HFTASK-0080: witness a PRIMARY lifecycle transition FAIL-CLOSED. For these events the witnessed
-/// record IS the operation (claim/checkpoint/done/test_result/ship/verdict/reopen/gatekeeper), so a
-/// failed append/transition must abort loudly with a clean message — never panic on a bare
-/// `.unwrap()`, and never proceed as if it had succeeded (that is the FAIL-OPEN class, LESSONS
-/// L7–L10). `unwrap_or_else` with a diverging arm keeps the value on success and exits on failure.
-pub(crate) fn must_witness<T>(r: ledger::Result<T>, what: &str) -> T {
-    r.unwrap_or_else(|e| {
-        eprintln!(
-            "hf: FATAL — could not witness {what} ({e}); continuity event NOT recorded, aborting (fail-closed)"
-        );
-        std::process::exit(1);
-    })
-}
-
-/// HFTASK-0080: pretty-print a value as JSON for human/CLI output. INFALLIBLE for the kernel's own
-/// `#[derive(Serialize)]` view structs (owned fields, string map keys, no failing custom
-/// serializer), so the single justified `expect` here replaces ~10 bare `.unwrap()` call sites.
-pub(crate) fn pretty_json<T: serde::Serialize>(v: &T) -> String {
-    #[allow(clippy::expect_used)]
-    {
-        serde_json::to_string_pretty(v).expect("serialize JSON view for CLI output")
-    }
-}
-
 /// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
 /// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
 fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {

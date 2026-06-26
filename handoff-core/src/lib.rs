@@ -88,6 +88,36 @@ pub fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// HFTASK-0080: witness a PRIMARY lifecycle transition FAIL-CLOSED. For these events the witnessed
+/// record IS the operation (claim/checkpoint/done/test_result/ship/verdict/reopen/gatekeeper), so a
+/// failed append/transition must abort loudly with a clean message — never panic on a bare
+/// `.unwrap()`, and never proceed as if it had succeeded (that is the FAIL-OPEN class, LESSONS
+/// L7–L10). `unwrap_or_else` with a diverging arm keeps the value on success and exits on failure.
+///
+/// HFTASK-0083 (ADR-0019 D5 #4): lifted from `hf` so the peeled feature crates (gatekeeper, fleet,
+/// …) can witness lifecycle events without depending back on the `hf` binary crate.
+pub fn must_witness<T>(r: ledger::Result<T>, what: &str) -> T {
+    r.unwrap_or_else(|e| {
+        eprintln!(
+            "hf: FATAL — could not witness {what} ({e}); continuity event NOT recorded, aborting (fail-closed)"
+        );
+        std::process::exit(1);
+    })
+}
+
+/// HFTASK-0080: pretty-print a value as JSON for human/CLI output. INFALLIBLE for the kernel's own
+/// `#[derive(Serialize)]` view structs (owned fields, string map keys, no failing custom
+/// serializer), so the single justified `expect` here replaces the bare `.unwrap()` call sites.
+///
+/// HFTASK-0083 (ADR-0019 D5 #4): lifted from `hf` so the peeled feature crates render JSON output
+/// through one shared, justified helper.
+pub fn pretty_json<T: serde::Serialize>(v: &T) -> String {
+    #[allow(clippy::expect_used)]
+    {
+        serde_json::to_string_pretty(v).expect("serialize JSON view for CLI output")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
