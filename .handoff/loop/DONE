@@ -1,0 +1,21 @@
+# code-research DONE — hf kernel architecture+capability map
+
+All 6 dimensions verified (D0 mapped; D1-D6 analyzed + adversarially verified).
+Report: reports/hf-kernel-architecture-capability-map.md
+
+## Completeness sweep (cartographer dimensions vs codemap modules)
+- Covered: entrypoints/dispatch (D0/D2), ledger+witness+RVF substrate (D1), full verb
+  surface incl. done auto-chain (D2), contract-proof gate (D3), fleet rollup+P7 (D4),
+  agent/loop model: session/routing/cognitum/hooks/gatekeeper/kb (D5), doc-vs-code
+  overclaims (D6). No major hf/ledger/work-order module left unexamined.
+- Known residual depth (named in report gaps, NOT unexamined modules): D5 left some
+  session.rs/gates.rs/kb.rs internals INCONCLUSIVE (held fail-closed, excluded from facts).
+
+## Verdict (1 line)
+Genuine local-first append-only witnessed continuity ledger with a REAL fail-closed
+ruvector-verified proof gate; write-side guarantees strong + no-C boundary live-verified;
+load-bearing caveat: runtime verify_witness_chain is a count-only tautology (real audit
+control = git history over the committed JSONL export). Confidence: High.
+
+## Evidence tally (CONFIRMED/QUALIFIED only reached the report)
+D1 12C/0R · D2 22C/2Q · D3 9C/0R · D4 20C/1Q · D5 9C/1Q/1R · D6 11C/3Q/0R
