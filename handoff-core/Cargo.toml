@@ -1,0 +1,17 @@
+[package]
+name = "handoff-core"
+description = "Shared continuity primitives for the handoff kernel (ledger/task-dir resolution, witness time, status replay, subprocess)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+ledger = { path = "../ledger" }
+work-order = { path = "../work-order" }
+
+[lints]
+workspace = true

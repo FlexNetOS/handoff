@@ -37,42 +37,23 @@ mod test_support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use lease::Leaser;
 use ledger::Ledger;
 use work_order::{Priority, Status, WorkOrder};
 
-pub(crate) const HF: &str = ".handoff";
+// ADR-0019 D5 #4 (12-crate decomposition): the leaf continuity primitives now live in the
+// `handoff-core` crate. Re-exported `pub(crate)` so existing `crate::HF` / `crate::now_ns` /
+// `crate::ledger_path` / `crate::tasks_dir` / `crate::run_out` / `crate::current_statuses` /
+// `crate::status_of` references across the feature modules are unchanged (behavior-preserving).
+pub(crate) use handoff_core::{
+    HF, current_statuses, ledger_path, now_ns, run_out, status_of, tasks_dir,
+};
+
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
 /// (heartbeat) extends it; `hf release` or expiry frees it.
 const CLAIM_TTL_SECS: u64 = 3600;
 
-pub(crate) fn now_ns() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-}
-fn tasks_dir() -> PathBuf {
-    Path::new(HF).join("tasks")
-}
-/// HFTASK-0054: ledger location is overridable via `--ledger <path>` or the `HANDOFF_LEDGER`
-/// environment variable. This lets a member repo render its Tier-A packet (`hf resume`/`hf
-/// handoff`) against a shared ledger (e.g. `$META_ROOT/.handoff/ledger.db`) from its own CWD
-/// without requiring a per-repo ledger.db. When unset, the default remains the local
-/// `<cwd>/.handoff/ledger.db`.
-pub(crate) fn ledger_path() -> String {
-    if let Ok(p) = std::env::var("HANDOFF_LEDGER")
-        && !p.is_empty()
-    {
-        return p;
-    }
-    Path::new(HF)
-        .join("ledger.db")
-        .to_string_lossy()
-        .into_owned()
-}
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
 }
@@ -286,35 +267,6 @@ fn load_task_in(tasks_dir: &Path, id: &str) -> Option<WorkOrder> {
 
 /// Replay the ledger to get the current status per task id (overrides the card's stored status).
 ///
-/// Fail-open guard (fail-open-audit R2): a `.unwrap_or_default()` here silently reported an
-/// EMPTY replay on a read error, so every status command (`hf status`/`resume`/`next_safe`,
-/// 20 call sites) would fall back to each card's stored default — masking a present-but-
-/// unreadable ledger as a fresh/empty one and potentially mis-selecting a claim. We now
-/// distinguish the two: an ABSENT ledger is legitimately empty (fresh repo) and stays quiet;
-/// a PRESENT ledger whose replay fails is surfaced LOUDLY (the loud-load discipline) so no
-/// status command lies in silence. `hf doctor` escalates the same condition to a hard failure.
-fn current_statuses() -> Vec<(String, Status)> {
-    match Ledger::open(&ledger_path()).and_then(|l| l.replay_latest_status()) {
-        Ok(v) => v,
-        Err(e) => {
-            if Path::new(&ledger_path()).exists() {
-                eprintln!(
-                    "hf: WARNING — ledger present at {} but replay failed ({e}); statuses fall back to card defaults and may be stale (run `hf doctor`)",
-                    ledger_path()
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-fn status_of(id: &str, replay: &[(String, Status)], card: &WorkOrder) -> Status {
-    replay
-        .iter()
-        .find(|(k, _)| k == id)
-        .map(|(_, s)| *s)
-        .unwrap_or(card.status)
-}
-
 /// Next safe task: resume the in-progress task first (Claimed/Checkpointed/Active);
 /// else the first backlog card whose dependencies are all Done.
 fn next_safe<'a>(tasks: &'a [WorkOrder], replay: &[(String, Status)]) -> Option<&'a WorkOrder> {
@@ -1896,20 +1848,6 @@ fn sync_cards() -> usize {
         }
     }
     changed
-}
-
-/// Run a subprocess with explicit argv (no shell), capturing trimmed stdout.
-/// Mirrors the lease::WeaveCli discipline (ADR-0002): no shell, explicit args.
-pub(crate) fn run_out(bin: &str, args: &[&str]) -> Result<String, String> {
-    match std::process::Command::new(bin).args(args).output() {
-        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
-        Ok(o) => Err(format!(
-            "{bin} {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&o.stderr).trim()
-        )),
-        Err(e) => Err(format!("{bin} not runnable: {e}")),
-    }
 }
 
 /// The repo-relative path of a task card on disk (`.handoff/tasks/<ID>.task.json`).
