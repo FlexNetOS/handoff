@@ -1118,6 +1118,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-hooks"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "handoff-lease"
 version = "0.1.0"
 
@@ -1218,6 +1228,7 @@ dependencies = [
  "cognitum-gate-tilezero",
  "envctl-secrets-engine",
  "handoff-core",
+ "handoff-hooks",
  "handoff-lease",
  "handoff-policy",
  "handoff-schema",

@@ -19,7 +19,6 @@ mod durability;
 mod fleet;
 mod gatekeeper;
 mod gates;
-mod hooks;
 mod index;
 mod intake;
 mod kb;
@@ -46,6 +45,9 @@ use handoff_schema as schema;
 // HFTASK-0081: the claim-lease bridge was peeled into `handoff-lease`; alias it as `lease` so
 // existing `lease::Leaser` / `lease::ClaimGate` / `lease::WeaveCli` call sites stay valid.
 use handoff_lease as lease;
+// HFTASK-0083: the typed hook contract was peeled into `handoff-hooks`; alias it as `hooks` so
+// `hooks::cmd_hook_list` / `hooks::cmd_hook_run` call sites stay valid unchanged.
+use handoff_hooks as hooks;
 
 use lease::Leaser;
 use ledger::Ledger;

@@ -1,4 +1,11 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! Typed hook contract (HFTASK-0052, PRD §18).
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): the FIRST coupled feature module peeled into its own crate
+//! (`handoff-hooks`) after the shared helpers were lifted to handoff-core. `hf` aliases it as
+//! `hooks` so `hooks::cmd_hook_list` / `hooks::cmd_hook_run` stay valid. Depends only on
+//! handoff-core (for `pretty_json`) + serde/serde_json/toml — zero hf-binary coupling.
 //!
 //! `.handoff/hooks/hooks.toml` lists the lifecycle hooks the agent harness fires. Before this
 //! task those were *stringly-typed shell* — a command + a `fail_mode` string, with no typed
@@ -226,7 +233,7 @@ pub fn cmd_hook_list(json: bool) {
             "unknown_events": unknown,
             "conformant": unknown.is_empty(),
         });
-        println!("{}", crate::pretty_json(&out));
+        println!("{}", handoff_core::pretty_json(&out));
         return;
     }
     println!(
@@ -291,7 +298,7 @@ pub fn cmd_hook_run(
             "pass": !blocked,
             "results": results,
         });
-        println!("{}", crate::pretty_json(&out));
+        println!("{}", handoff_core::pretty_json(&out));
     } else if results.is_empty() {
         println!("hf hook run: {event} — no hook bound (no-op)");
     } else {

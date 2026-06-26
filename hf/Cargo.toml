@@ -24,6 +24,9 @@ handoff-schema = { path = "../handoff-schema" }
 # HFTASK-0081 (ADR-0019 D5 #4): the weave-coordinated claim-lease bridge (HFTASK-0048) was peeled
 # into the `handoff-lease` crate; hf aliases it as `lease`.
 handoff-lease = { path = "../handoff-lease" }
+# HFTASK-0083 (ADR-0019 D5 #4): the typed hook contract was peeled into `handoff-hooks`
+# (the first coupled module, after the shared helpers moved to handoff-core); hf aliases it as `hooks`.
+handoff-hooks = { path = "../handoff-hooks" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
