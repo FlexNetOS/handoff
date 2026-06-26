@@ -205,10 +205,11 @@ mod tests {
         assert!(p.preflight.require_clean_tree);
         assert!(p.sync.kb_enabled);
         assert_eq!(p.sync.kb_slugs.len(), 2);
-        assert!(p
-            .merge
-            .required_status_checks
-            .contains(&"AI Gatekeeper".to_string()));
+        assert!(
+            p.merge
+                .required_status_checks
+                .contains(&"AI Gatekeeper".to_string())
+        );
     }
 
     #[test]
@@ -249,10 +250,11 @@ mod tests {
         let p = Policy::default();
         assert!(!p.merge.protected_files.is_empty());
         assert!(p.merge.protected_files.contains(&".github/".into()));
-        assert!(p
-            .merge
-            .protected_files
-            .contains(&".handoff/policy.toml".into()));
+        assert!(
+            p.merge
+                .protected_files
+                .contains(&".handoff/policy.toml".into())
+        );
     }
 
     #[test]

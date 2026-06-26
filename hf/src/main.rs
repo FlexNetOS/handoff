@@ -63,10 +63,10 @@ fn tasks_dir() -> PathBuf {
 /// without requiring a per-repo ledger.db. When unset, the default remains the local
 /// `<cwd>/.handoff/ledger.db`.
 pub(crate) fn ledger_path() -> String {
-    if let Ok(p) = std::env::var("HANDOFF_LEDGER") {
-        if !p.is_empty() {
-            return p;
-        }
+    if let Ok(p) = std::env::var("HANDOFF_LEDGER")
+        && !p.is_empty()
+    {
+        return p;
     }
     Path::new(HF)
         .join("ledger.db")
@@ -784,7 +784,9 @@ fn cmd_migrate(path: &str) {
                 );
                 std::process::exit(1);
             }
-            println!("hf migrate: {path} → redb ({n} events, witness chain re-verified); legacy SQLite backed up to {bak}");
+            println!(
+                "hf migrate: {path} → redb ({n} events, witness chain re-verified); legacy SQLite backed up to {bak}"
+            );
         }
         Err(e) => {
             eprintln!("hf migrate: FAILED (fail-closed, original untouched): {e}");
@@ -815,20 +817,20 @@ fn cmd_migrate(path: &str) {
 #[cfg_attr(not(feature = "legacy-sqlite"), allow(dead_code))]
 fn ledger_backup_dir() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
-    if let Ok(d) = std::env::var("HANDOFF_LEDGER_BACKUP_DIR") {
-        if !d.is_empty() {
-            return Some(PathBuf::from(d));
-        }
+    if let Ok(d) = std::env::var("HANDOFF_LEDGER_BACKUP_DIR")
+        && !d.is_empty()
+    {
+        return Some(PathBuf::from(d));
     }
-    if let Ok(d) = std::env::var("XDG_DATA_HOME") {
-        if !d.is_empty() {
-            return Some(PathBuf::from(d).join("handoff-ledger-backups"));
-        }
+    if let Ok(d) = std::env::var("XDG_DATA_HOME")
+        && !d.is_empty()
+    {
+        return Some(PathBuf::from(d).join("handoff-ledger-backups"));
     }
-    if let Ok(h) = std::env::var("HOME") {
-        if !h.is_empty() {
-            return Some(PathBuf::from(h).join(".local/share/handoff-ledger-backups"));
-        }
+    if let Ok(h) = std::env::var("HOME")
+        && !h.is_empty()
+    {
+        return Some(PathBuf::from(h).join(".local/share/handoff-ledger-backups"));
     }
     None
 }
@@ -1024,7 +1026,9 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
     let mut degraded = false;
     match lease::gate(leaser.reserve(&resource, CLAIM_TTL_SECS, &format!("hf claim {id}"))) {
         lease::ClaimGate::Refuse(reason) => {
-            eprintln!("hf claim: {id} BLOCKED — {resource} is held by another peer ({reason}); not claiming");
+            eprintln!(
+                "hf claim: {id} BLOCKED — {resource} is held by another peer ({reason}); not claiming"
+            );
             return false;
         }
         lease::ClaimGate::ProceedDegraded => {
@@ -1058,7 +1062,9 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
         }
         Ok(ledger::LeaseOutcome::Acquired { .. }) => {
             lease::write_lockfile(&resource, &holder, CLAIM_TTL_SECS, now);
-            println!("hf claim: acquired in-ledger lease {resource} (holder '{holder}', ttl {CLAIM_TTL_SECS}s)");
+            println!(
+                "hf claim: acquired in-ledger lease {resource} (holder '{holder}', ttl {CLAIM_TTL_SECS}s)"
+            );
         }
         Ok(ledger::LeaseOutcome::Heartbeat { .. }) => {
             lease::write_lockfile(&resource, &holder, CLAIM_TTL_SECS, now);
@@ -1120,12 +1126,11 @@ fn cmd_release(id: &str) {
     // resource is genuinely free for the next claimer (the weave release alone left the
     // in-ledger lease live until TTL).
     let holder = lease::local_holder();
-    if let Ok((ledger_path, _)) = route::route_for_task(id) {
-        if let Ok(mut led) = Ledger::open(&ledger_path.to_string_lossy()) {
-            if led.release_lease(&resource, &holder, now_ns()).is_ok() {
-                println!("hf release: freed in-ledger lease {resource}");
-            }
-        }
+    if let Ok((ledger_path, _)) = route::route_for_task(id)
+        && let Ok(mut led) = Ledger::open(&ledger_path.to_string_lossy())
+        && led.release_lease(&resource, &holder, now_ns()).is_ok()
+    {
+        println!("hf release: freed in-ledger lease {resource}");
     }
     lease::remove_lockfile(&resource);
     // Un-claim: only revert an in-progress claim (never Review/Done/Backlog).
@@ -1159,7 +1164,9 @@ fn cmd_release(id: &str) {
             }
         }
         Err(e) => {
-            eprintln!("hf release: WARNING — failed to witness un-claim of {id} ({e}); task may still be Claimed");
+            eprintln!(
+                "hf release: WARNING — failed to witness un-claim of {id} ({e}); task may still be Claimed"
+            );
         }
     }
 }
@@ -1178,7 +1185,9 @@ fn cmd_reopen(id: &str, reason: &str) {
         std::process::exit(2);
     }
     if reason.trim().is_empty() {
-        eprintln!("hf reopen: a reason is required — `hf reopen <ID> \"<reason>\"` (no silent un-completion)");
+        eprintln!(
+            "hf reopen: a reason is required — `hf reopen <ID> \"<reason>\"` (no silent un-completion)"
+        );
         std::process::exit(2);
     }
     let status = current_statuses()
@@ -1300,17 +1309,17 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     led.append("checkpoint", &id, &payload, now_ns()).unwrap();
     // ADR-0003 rule 3 (HFTASK-0042): append a progress line to the kb plan (no-op for non-kb).
-    if let Some(wo) = load_task_in(&tasks_dir, &id) {
-        if kb::write_back(
+    if let Some(wo) = load_task_in(&tasks_dir, &id)
+        && kb::write_back(
             &wo.correlation_id,
             &kb::KbTransition::Progress(note.to_string()),
-        ) && !quiet
-        {
-            println!(
-                "hf checkpoint: kb {} progress logged (write-back)",
-                wo.correlation_id
-            );
-        }
+        )
+        && !quiet
+    {
+        println!(
+            "hf checkpoint: kb {} progress logged (write-back)",
+            wo.correlation_id
+        );
     }
     if !quiet {
         println!("hf checkpoint: {id} :: {note}");
@@ -1636,13 +1645,13 @@ fn parse_libtest(output: &str) -> Option<u64> {
         // (`ok.`/`FAILED.`) in the first segment doesn't shadow the count behind it.
         let toks: Vec<&str> = rest.split_whitespace().collect();
         for w in toks.windows(2) {
-            if let Ok(n) = w[0].parse::<u64>() {
-                if matches!(
+            if let Ok(n) = w[0].parse::<u64>()
+                && matches!(
                     w[1].trim_end_matches([';', '.', ',']),
                     "passed" | "failed" | "measured"
-                ) {
-                    total += n;
-                }
+                )
+            {
+                total += n;
             }
         }
     }
@@ -1658,10 +1667,10 @@ fn sum_labeled(fragment: &str, labels: &[&str]) -> u64 {
         .collect();
     let mut total = 0u64;
     for w in toks.windows(2) {
-        if let Ok(n) = w[0].parse::<u64>() {
-            if labels.contains(&w[1]) {
-                total += n;
-            }
+        if let Ok(n) = w[0].parse::<u64>()
+            && labels.contains(&w[1])
+        {
+            total += n;
         }
     }
     total
@@ -2741,154 +2750,464 @@ fn cmd_seed() {
         wo
     };
     let backlog = vec![
-        mk("HFTASK-0001", "Finalize naming + register kernel (Continuity Ledger Kernel)", Priority::P0,
-           "Kernel relocated to ~/Desktop/meta/handoff (own repo). Remaining: rename package/docs to Continuity Ledger Kernel + drop Ark/V2 in PRD; create+push FlexNetOS/handoff GitHub repo.", &[]),
-        mk("HFTASK-0002", "Wire weave leases into hf claim", Priority::P0,
-           "Replace the ledger-only claim with a weave lease (reserve/heartbeat/release) so claims are mesh-coordinated; hf claim -> weave_lease_reserve.", &["HFTASK-0001"]),
-        mk("HFTASK-0003", "Front door: prompt_hub SwarmBundle -> verifiable handoff.task.v1 intake", Priority::P0,
-           "ADR-0001 §11/R14 (verified): promote the spike - work_orders_from_bundle is test-only + uses a MIRRORED SwarmBundle; depend on prompt_hub's REAL SwarmBundle (models.rs:528) and wire it into a real `hf intake`/`hf dispatch` verb. TRANSPORT: there is NO MCP server on either side (prompt_hub or hf), so do NOT assume 'the MCP seam' - either call prompt_hub HTTP /vibe+/generate_bundle, depend on the prompt-hub crate, or build the seam (HFTASK-0019). CRUX: SwarmBundle role_prompts are prompt STRINGS (and empty-in-prod), not work specs - the intake must SYNTHESIZE a vibe Intent into REAL path_scope/acceptance_criteria/test_commands or every dispatched WorkOrder is unverifiable by the §5 review gate + §5b gatekeeper.", &["HFTASK-0001"]),
-        mk("HFTASK-0004", "ruvector-verified AgentContract proof at hf handoff", Priority::P1,
-           "On hf handoff, prove the intent_lock/acceptance via ruvector-verified (Lean) AgentContract; block handoff on unproven completion.", &["HFTASK-0001"]),
-        mk("HFTASK-0005", "hf drift audit gate", Priority::P1,
-           "Implement hf drift: recompute intent_lock, detect out-of-scope edits (git), hard-fail handoff on drift.", &["HFTASK-0004"]),
-        mk("HFTASK-0006", "RVF vector-native ledger v2", Priority::P1,
-           "Schedule + implement the RVF (rvf-runtime) vector-native event ledger for semantic recall over session history; keep rusqlite+witness as v1 fallback.", &["HFTASK-0002","HFTASK-0003"]),
+        mk(
+            "HFTASK-0001",
+            "Finalize naming + register kernel (Continuity Ledger Kernel)",
+            Priority::P0,
+            "Kernel relocated to ~/Desktop/meta/handoff (own repo). Remaining: rename package/docs to Continuity Ledger Kernel + drop Ark/V2 in PRD; create+push FlexNetOS/handoff GitHub repo.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0002",
+            "Wire weave leases into hf claim",
+            Priority::P0,
+            "Replace the ledger-only claim with a weave lease (reserve/heartbeat/release) so claims are mesh-coordinated; hf claim -> weave_lease_reserve.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0003",
+            "Front door: prompt_hub SwarmBundle -> verifiable handoff.task.v1 intake",
+            Priority::P0,
+            "ADR-0001 §11/R14 (verified): promote the spike - work_orders_from_bundle is test-only + uses a MIRRORED SwarmBundle; depend on prompt_hub's REAL SwarmBundle (models.rs:528) and wire it into a real `hf intake`/`hf dispatch` verb. TRANSPORT: there is NO MCP server on either side (prompt_hub or hf), so do NOT assume 'the MCP seam' - either call prompt_hub HTTP /vibe+/generate_bundle, depend on the prompt-hub crate, or build the seam (HFTASK-0019). CRUX: SwarmBundle role_prompts are prompt STRINGS (and empty-in-prod), not work specs - the intake must SYNTHESIZE a vibe Intent into REAL path_scope/acceptance_criteria/test_commands or every dispatched WorkOrder is unverifiable by the §5 review gate + §5b gatekeeper.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0004",
+            "ruvector-verified AgentContract proof at hf handoff",
+            Priority::P1,
+            "On hf handoff, prove the intent_lock/acceptance via ruvector-verified (Lean) AgentContract; block handoff on unproven completion.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0005",
+            "hf drift audit gate",
+            Priority::P1,
+            "Implement hf drift: recompute intent_lock, detect out-of-scope edits (git), hard-fail handoff on drift.",
+            &["HFTASK-0004"],
+        ),
+        mk(
+            "HFTASK-0006",
+            "RVF vector-native ledger v2",
+            Priority::P1,
+            "Schedule + implement the RVF (rvf-runtime) vector-native event ledger for semantic recall over session history; keep rusqlite+witness as v1 fallback.",
+            &["HFTASK-0002", "HFTASK-0003"],
+        ),
         // --- Loop v2 (ADR-0001): worktree-isolated, cycle-batched, review-gated shipping ---
-        mk("HFTASK-0007", "hf session on meta_git_lib worktree engine + policy.toml + sync preflight", Priority::P0,
-           "ADR-0001 §2 (Research R3): add `hf session start|end [--recycle]` by DEPENDING ON meta_git_lib (worktree::git_ops add/remove, worktree::store TTL/ephemeral registry, worktree::hooks fire_post_create/destroy, helpers::{resolve_branch,ensure_worktrees_in_gitignore}, snapshot capture/restore) rather than reimplementing; fall back to `meta git worktree` CLI if lib not wired. Off origin/<base_branch>; reserve a weave path-scope lease; emit session_start/session_end; recycle a fresh set on end. Dotdir is .handoff (canonical; .hf does not exist). Add `.handoff/policy.toml` (remote/loop/merge). MUST include a start-time preflight verifying tree/branch/remote sync, refusing on drift (prior weave-loop failure lesson). Depend only on current lease-capable weave; refuse legacy repowire/mcp-broker.", &["HFTASK-0002"]),
-        mk("HFTASK-0008", "Branch/remote policy engine (develop<->master, clone/fork)", Priority::P1,
-           "ADR-0001 §3: policy module resolving clone-vs-fork, base=develop, trunk=master. Enforce: branch off origin/<base> after fetch only, never push trunk directly, ff develop->trunk after merge. Fork model deferred behind remote.model=fork.", &["HFTASK-0007"]),
-        mk("HFTASK-0009", "Batch checkout (3-5) + cycle counter -> hf ship (one squash commit/PR)", Priority::P1,
-           "ADR-0001 §4: `hf claim --batch N` (up to cycle_flush=4) reserves a lease per task so the loop never stalls; ledger-derived cycle counter (checkpoints since session_start) surfaced as cycles:n/flush; at threshold next_command=hf ship. `hf ship` = add + ONE squash commit listing all HFTASK ids -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.", &["HFTASK-0007","HFTASK-0008"]),
-        mk("HFTASK-0010", "PR review/merge automation - phased cloud_ultra->swarm_local + gh-aw guardrails", Priority::P1,
-           "ADR-0001 §5/§5a (Research R4=gh-aw): reviewer is always a separate role (merge.reviewer). Phase 1 cloud_ultra: `hf review request <pr#>` runs /code-review ultra, records approve/deny via weave review (WL-020)+permission (WL-021). Phase 2 swarm_local: ruvector/ruflo (rvAgent) swarm reviewer. GUARDRAILS: (a) separation of privilege - worker agent read-only, a separate trusted scoped job does gh pr create/merge, agents never hold the merge token; (b) reviewer verdict OUT-OF-BAND in weave state, NOT a native GitHub APPROVE (bot-approval bypasses branch protection, gh-aw #25439); (c) merge is a non-agent Environment-gated job; (d) detection pass + protected-files denylist (.github/, .handoff/policy.toml, ADRs, manifests) before any write; (e) draft PRs, least-privilege tokens. MERGE MODEL (Research R11, rusty-idd-proven fail-closed): hf ship enables GitHub-NATIVE auto-merge `gh pr merge --auto --squash` against branch-protected trunk; GitHub merges when ALL required checks green, async, even after process exit. hf does NOT poll-and-merge or override red (red = wall). The §5b AI gatekeeper is a REQUIRED STATUS CHECK feeding branch protection (CI job posting a check-run), NOT an agent calling gh pr merge out-of-band. ff develop after merge; deny reopens task; pending waits. permission_gate transitional. flexnetos_github_app (currently empty) is the candidate home for the trusted writer/merge-gate. VERDICT CHANNEL (Research R6): weave review (WL-020) has NO verdict field - carry approve/deny in the weave permission (WL-021) answer body + a review_verdict event in hf's own ledger; hf enforces the gate (weave only records). Phase-2 swarm reviewer (Research R5): reuse rvAgent A2A transport + ApprovalDecision/GateResult types but BUILD the N-reviewers->one-verdict reducer (~50-100 LOC); spawn via process-level rvagent a2a serve (spawn_sync is a stub).", &["HFTASK-0009"]),
-        mk("HFTASK-0011", "hf sync — idempotent .meta.yaml/.gitignore repair + one-way .kb mirror", Priority::P2,
-           "ADR-0001 §6 (Research R7): Part A is IDEMPOTENT ensure/repair (handoff is ALREADY in ../.meta.yaml + ../.gitignore - there is a dup gitignore line to clean; no `meta project add` exists so grep-guard file edits, never blind append). Part B: git kb has NO upsert - do show-or-create -> checkout -> full-overwrite -> commit, scoped to context/overridable/active + context/overridable/progress (preserve frontmatter id; never rm+recreate). ONE-WAY: write only those generated slugs from a ledger-derived body, never read .kb back as truth, tag generated, never touch immutable/extensible/tasks slugs. Emit meta_registered; run at session end / post pr_merged.", &["HFTASK-0007"]),
-        mk("HFTASK-0012", "CI/CD bring-up - workflows + branch protection + merge-gate Environment", Priority::P1,
-           "ADR-0001 §9 (Research R8): handoff has NO .github/ yet and isn't pushed. Add canonical workflows .github/workflows/{ci,auto-format,notify-parent}.yml (ci jobs test/clippy/format/build with RUSTFLAGS=-D warnings, CARGO_TERM_COLOR; least-privilege permissions: top-level contents:read, escalate per-job; auto-format loop-guarded). Turn on REAL branch protection on trunk (required checks test/clippy/format/build, strict=true up-to-date, enforce_admins deliberate, native required-reviews OFF to avoid the bot-APPROVE bypass #25439). Create a GitHub Environment 'merge-gate' (org has ZERO today) with required reviewers + env-scoped secrets = the infra that makes §5 permission-gated merge real and the human->swarm flip a config change. Join the repository_dispatch mesh (child-repo-updated to FlexNetOS/meta after CI green, SHA-pinned actions). Split overloaded PARENT_REPO_PAT into scoped fine-grained PATs; prefer GitHub App/OIDC (flexnetos_github_app is the home).", &["HFTASK-0001"]),
-        mk("HFTASK-0013", "Integrate envctl secrets-engine as the secret relay/injection layer", Priority::P1,
-           "ADR-0001 §9.5/R10: replace long-lived PARENT_REPO_PAT with envctl secrets-engine (~/Desktop/meta/envctl/crates/secrets-engine). Worker gets only a short-lived peer-bound revocable relay bearer (relay_mint, <=24h); real GitHub credential stays in the encrypted vault, swapped at egress (relay_swap). Use broker::decide (pure default-deny: host/path/method allowlists, budgets, fail-closed presence gate) as the deterministic merge-gate enforcement layer beneath the §5b AI gatekeeper. Surface: Engine Rust API / secretd gRPC (Relay.Mint) / secretctl. GREENFIELD to build: GitHub ProviderMint (native scoped sub-token, currently NoMint) + inject.rs/run_child child-env path (todo!, Phase 6/8); relay-bearer+relay_swap HTTP path works now.", &["HFTASK-0010"]),
-        mk("HFTASK-0014", "Surgical AI gatekeeper with full code knowledge (replaces human approvals)", Priority::P1,
-           "ADR-0001 §5b: the end-state merge approver is a code-OMNISCIENT AI gatekeeper (not human, not blind swarm). REQUIRES full-codebase code intelligence (git kb code index / kb_callers/kb_impact, and/or RuVector) so it judges a change against its full blast radius (callers/callees/invariants), not just the diff. It is the swarm_local reviewer (HFTASK-0010) upgraded with mandatory full-code grounding. Verdict=judgment; envctl broker::decide (HFTASK-0013) is the deterministic enforcement that actually releases the token/merge. permission_gate is transitional toward THIS gatekeeper, not toward a human; remove the human approver once gatekeeper+broker are trusted.", &["HFTASK-0010","HFTASK-0013"]),
-        mk("HFTASK-0015", "hf policy engine + hook contract wiring (lifecycle automation)", Priority::P1,
-           "ADR-0001 §10/R9: implement `hf policy check-claim|check-edit|check-handoff` reading the brought-forward .handoff/policies/rules.toml (handoff.policy.rules.v1: deny-without-claim, lease timings, drift blocks, protected-files denylist, blocked commands). Wire .handoff/hooks/hooks.toml (handoff.hooks.v1) so the agent harness fires hf on SessionStart/PreSessionStart(preflight)/TaskClaim/PreEdit/PostEdit/PreHandoff/SessionStop/PostMerge with fail_mode block as hard gates. This is the no-human-in-the-loop automation substrate. Reconcile lease heartbeat/stale/force-release timings with HFTASK-0002 claim TTL.", &["HFTASK-0007"]),
-        mk("HFTASK-0016", "Adopt FlexNetOS meta conventions (avoid rusty-idd's drift)", Priority::P2,
-           "ADR-0001 §9.6/R12 (3 rusty-idd-vs-meta drift reports, spot-verified in ~/Desktop/meta): handoff is a meta member and lacks the org convention set. Add: commitlint.config.cjs (12 types) + semantic-pr-title.yml (merge-blocking); release-please manifest mode + VERSION file + 5-platform release.yml (NOT cargo-dist); renovate.json (NOT Dependabot - D3); .githooks/{commit-msg,pre-commit,pre-push} + make install-hooks (NOT python pre-commit - D4); Makefile (NOT Justfile - D7); .claude/agent-guard.toml + settings.json hooks + .claude/rules/; 3-OS CI matrix + Swatinem/rust-cache + pinned toolchain (1.96.0); CONTRIBUTING.md. ALSO adopt rusty-idd's two-tier promote-verify (develop->main gate: clean-merge probe + locked build/test + drift + fmt/clippy + cargo audit --deny warnings) into §9 CI. ALREADY DONE: handoff is in .meta.yaml (rusty-idd's D5). Avoid the promote-verify.yml duplicate-run: bug (R11).", &["HFTASK-0012"]),
+        mk(
+            "HFTASK-0007",
+            "hf session on meta_git_lib worktree engine + policy.toml + sync preflight",
+            Priority::P0,
+            "ADR-0001 §2 (Research R3): add `hf session start|end [--recycle]` by DEPENDING ON meta_git_lib (worktree::git_ops add/remove, worktree::store TTL/ephemeral registry, worktree::hooks fire_post_create/destroy, helpers::{resolve_branch,ensure_worktrees_in_gitignore}, snapshot capture/restore) rather than reimplementing; fall back to `meta git worktree` CLI if lib not wired. Off origin/<base_branch>; reserve a weave path-scope lease; emit session_start/session_end; recycle a fresh set on end. Dotdir is .handoff (canonical; .hf does not exist). Add `.handoff/policy.toml` (remote/loop/merge). MUST include a start-time preflight verifying tree/branch/remote sync, refusing on drift (prior weave-loop failure lesson). Depend only on current lease-capable weave; refuse legacy repowire/mcp-broker.",
+            &["HFTASK-0002"],
+        ),
+        mk(
+            "HFTASK-0008",
+            "Branch/remote policy engine (develop<->master, clone/fork)",
+            Priority::P1,
+            "ADR-0001 §3: policy module resolving clone-vs-fork, base=develop, trunk=master. Enforce: branch off origin/<base> after fetch only, never push trunk directly, ff develop->trunk after merge. Fork model deferred behind remote.model=fork.",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0009",
+            "Batch checkout (3-5) + cycle counter -> hf ship (one squash commit/PR)",
+            Priority::P1,
+            "ADR-0001 §4: `hf claim --batch N` (up to cycle_flush=4) reserves a lease per task so the loop never stalls; ledger-derived cycle counter (checkpoints since session_start) surfaced as cycles:n/flush; at threshold next_command=hf ship. `hf ship` = add + ONE squash commit listing all HFTASK ids -> push branch -> gh pr create --base trunk, emit pr_opened. Outward action is permission-gated and retryable, never a hard wall.",
+            &["HFTASK-0007", "HFTASK-0008"],
+        ),
+        mk(
+            "HFTASK-0010",
+            "PR review/merge automation - phased cloud_ultra->swarm_local + gh-aw guardrails",
+            Priority::P1,
+            "ADR-0001 §5/§5a (Research R4=gh-aw): reviewer is always a separate role (merge.reviewer). Phase 1 cloud_ultra: `hf review request <pr#>` runs /code-review ultra, records approve/deny via weave review (WL-020)+permission (WL-021). Phase 2 swarm_local: ruvector/ruflo (rvAgent) swarm reviewer. GUARDRAILS: (a) separation of privilege - worker agent read-only, a separate trusted scoped job does gh pr create/merge, agents never hold the merge token; (b) reviewer verdict OUT-OF-BAND in weave state, NOT a native GitHub APPROVE (bot-approval bypasses branch protection, gh-aw #25439); (c) merge is a non-agent Environment-gated job; (d) detection pass + protected-files denylist (.github/, .handoff/policy.toml, ADRs, manifests) before any write; (e) draft PRs, least-privilege tokens. MERGE MODEL (Research R11, rusty-idd-proven fail-closed): hf ship enables GitHub-NATIVE auto-merge `gh pr merge --auto --squash` against branch-protected trunk; GitHub merges when ALL required checks green, async, even after process exit. hf does NOT poll-and-merge or override red (red = wall). The §5b AI gatekeeper is a REQUIRED STATUS CHECK feeding branch protection (CI job posting a check-run), NOT an agent calling gh pr merge out-of-band. ff develop after merge; deny reopens task; pending waits. permission_gate transitional. flexnetos_github_app (currently empty) is the candidate home for the trusted writer/merge-gate. VERDICT CHANNEL (Research R6): weave review (WL-020) has NO verdict field - carry approve/deny in the weave permission (WL-021) answer body + a review_verdict event in hf's own ledger; hf enforces the gate (weave only records). Phase-2 swarm reviewer (Research R5): reuse rvAgent A2A transport + ApprovalDecision/GateResult types but BUILD the N-reviewers->one-verdict reducer (~50-100 LOC); spawn via process-level rvagent a2a serve (spawn_sync is a stub).",
+            &["HFTASK-0009"],
+        ),
+        mk(
+            "HFTASK-0011",
+            "hf sync — idempotent .meta.yaml/.gitignore repair + one-way .kb mirror",
+            Priority::P2,
+            "ADR-0001 §6 (Research R7): Part A is IDEMPOTENT ensure/repair (handoff is ALREADY in ../.meta.yaml + ../.gitignore - there is a dup gitignore line to clean; no `meta project add` exists so grep-guard file edits, never blind append). Part B: git kb has NO upsert - do show-or-create -> checkout -> full-overwrite -> commit, scoped to context/overridable/active + context/overridable/progress (preserve frontmatter id; never rm+recreate). ONE-WAY: write only those generated slugs from a ledger-derived body, never read .kb back as truth, tag generated, never touch immutable/extensible/tasks slugs. Emit meta_registered; run at session end / post pr_merged.",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0012",
+            "CI/CD bring-up - workflows + branch protection + merge-gate Environment",
+            Priority::P1,
+            "ADR-0001 §9 (Research R8): handoff has NO .github/ yet and isn't pushed. Add canonical workflows .github/workflows/{ci,auto-format,notify-parent}.yml (ci jobs test/clippy/format/build with RUSTFLAGS=-D warnings, CARGO_TERM_COLOR; least-privilege permissions: top-level contents:read, escalate per-job; auto-format loop-guarded). Turn on REAL branch protection on trunk (required checks test/clippy/format/build, strict=true up-to-date, enforce_admins deliberate, native required-reviews OFF to avoid the bot-APPROVE bypass #25439). Create a GitHub Environment 'merge-gate' (org has ZERO today) with required reviewers + env-scoped secrets = the infra that makes §5 permission-gated merge real and the human->swarm flip a config change. Join the repository_dispatch mesh (child-repo-updated to FlexNetOS/meta after CI green, SHA-pinned actions). Split overloaded PARENT_REPO_PAT into scoped fine-grained PATs; prefer GitHub App/OIDC (flexnetos_github_app is the home).",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0013",
+            "Integrate envctl secrets-engine as the secret relay/injection layer",
+            Priority::P1,
+            "ADR-0001 §9.5/R10: replace long-lived PARENT_REPO_PAT with envctl secrets-engine (~/Desktop/meta/envctl/crates/secrets-engine). Worker gets only a short-lived peer-bound revocable relay bearer (relay_mint, <=24h); real GitHub credential stays in the encrypted vault, swapped at egress (relay_swap). Use broker::decide (pure default-deny: host/path/method allowlists, budgets, fail-closed presence gate) as the deterministic merge-gate enforcement layer beneath the §5b AI gatekeeper. Surface: Engine Rust API / secretd gRPC (Relay.Mint) / secretctl. GREENFIELD to build: GitHub ProviderMint (native scoped sub-token, currently NoMint) + inject.rs/run_child child-env path (todo!, Phase 6/8); relay-bearer+relay_swap HTTP path works now.",
+            &["HFTASK-0010"],
+        ),
+        mk(
+            "HFTASK-0014",
+            "Surgical AI gatekeeper with full code knowledge (replaces human approvals)",
+            Priority::P1,
+            "ADR-0001 §5b: the end-state merge approver is a code-OMNISCIENT AI gatekeeper (not human, not blind swarm). REQUIRES full-codebase code intelligence (git kb code index / kb_callers/kb_impact, and/or RuVector) so it judges a change against its full blast radius (callers/callees/invariants), not just the diff. It is the swarm_local reviewer (HFTASK-0010) upgraded with mandatory full-code grounding. Verdict=judgment; envctl broker::decide (HFTASK-0013) is the deterministic enforcement that actually releases the token/merge. permission_gate is transitional toward THIS gatekeeper, not toward a human; remove the human approver once gatekeeper+broker are trusted.",
+            &["HFTASK-0010", "HFTASK-0013"],
+        ),
+        mk(
+            "HFTASK-0015",
+            "hf policy engine + hook contract wiring (lifecycle automation)",
+            Priority::P1,
+            "ADR-0001 §10/R9: implement `hf policy check-claim|check-edit|check-handoff` reading the brought-forward .handoff/policies/rules.toml (handoff.policy.rules.v1: deny-without-claim, lease timings, drift blocks, protected-files denylist, blocked commands). Wire .handoff/hooks/hooks.toml (handoff.hooks.v1) so the agent harness fires hf on SessionStart/PreSessionStart(preflight)/TaskClaim/PreEdit/PostEdit/PreHandoff/SessionStop/PostMerge with fail_mode block as hard gates. This is the no-human-in-the-loop automation substrate. Reconcile lease heartbeat/stale/force-release timings with HFTASK-0002 claim TTL.",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0016",
+            "Adopt FlexNetOS meta conventions (avoid rusty-idd's drift)",
+            Priority::P2,
+            "ADR-0001 §9.6/R12 (3 rusty-idd-vs-meta drift reports, spot-verified in ~/Desktop/meta): handoff is a meta member and lacks the org convention set. Add: commitlint.config.cjs (12 types) + semantic-pr-title.yml (merge-blocking); release-please manifest mode + VERSION file + 5-platform release.yml (NOT cargo-dist); renovate.json (NOT Dependabot - D3); .githooks/{commit-msg,pre-commit,pre-push} + make install-hooks (NOT python pre-commit - D4); Makefile (NOT Justfile - D7); .claude/agent-guard.toml + settings.json hooks + .claude/rules/; 3-OS CI matrix + Swatinem/rust-cache + pinned toolchain (1.96.0); CONTRIBUTING.md. ALSO adopt rusty-idd's two-tier promote-verify (develop->main gate: clean-merge probe + locked build/test + drift + fmt/clippy + cargo audit --deny warnings) into §9 CI. ALREADY DONE: handoff is in .meta.yaml (rusty-idd's D5). Avoid the promote-verify.yml duplicate-run: bug (R11).",
+            &["HFTASK-0012"],
+        ),
         // --- RuVector coverage gaps (ADR-0001 R13) + front door / mission control / delivery (R14) ---
-        mk("HFTASK-0017", "cognitum-gate as the witnessed hf policy decision engine", Priority::P2,
-           "ADR-0001 R13: HFTASK-0015 uses a flat rules.toml denylist; the runbook (S1 §2) mapped the policy gate to RuVector's cognitum-gate-tilezero (decision.rs GateDecision{Permit,Defer,Deny} + WitnessReceipt). Adopt cognitum-gate as the in-loop ACTION governor (what an agent may DO) behind `hf policy`, emitting witnessed permit/deny/defer. Distinct from the envctl broker (R10 = secret/credential+merge egress gate); they compose (action gate + credential gate). Verified crate exists at ~/Desktop/meta/RuVector/crates/cognitum-gate-tilezero.", &["HFTASK-0015"]),
-        mk("HFTASK-0018", "ruvector-domain-expansion next-task routing (highest-value safe task)", Priority::P2,
-           "ADR-0001 R13: the loop currently picks the next task by dependency order only (next_safe). Adopt RuVector's ruvector-domain-expansion (contextual routing / Thompson-style selection, S1:37) so hf claim --batch selects the highest-value safe tasks per context, not just topological order - core to an autonomous loop. Verified crate exists; capability claim (bandit/Thompson) from the runbook walk, re-verify symbols before building.", &["HFTASK-0009"]),
-        mk("HFTASK-0019", "Expose hf as an MCP server (the T11 universal control seam)", Priority::P1,
-           "ADR-0001 R13/§11: the runbook's T11 = MCP is the universal control seam; every RuVector subsystem is MCP-accessible but hf is not, and NO MCP server exists on the prompt_hub side either (R14 verified). Expose hf verbs (status/resume/claim/ship/review/intake...) as an MCP server so chat->MCP->work-order dispatch has a handoff-side endpoint, and the front door (HFTASK-0003) can dispatch over a real seam (pattern: rvAgent rvagent-mcp / mcp-gate / mcp-brain).", &["HFTASK-0007"]),
-        mk("HFTASK-0020", "Mission Control - loop observability (hf status --json / hf watch + render)", Priority::P1,
-           "ADR-0001 §12/R14: NO existing UI surfaces the handoff loop's live state ('mission control' currently = envctl's zellij layout generator - naming collision). The witnessed ledger event stream (§7) IS the read-model. Build `hf status --json` + `hf watch` (tail ledger + weave broadcasts; optional SSE) as the machine feed; surface the existing control verbs (resume, review request, weave permission answer, hf merge --confirm, abort). Render layer greenfield: reuse envctl-gui egui pattern or a TUI (prompt_hub has ratatui) first cut. Disambiguate workspace-mission-control vs loop-mission-control.", &["HFTASK-0007"]),
-        mk("HFTASK-0021", "Delivery / output endpoint (correlation_id round-trip to front door)", Priority::P2,
-           "ADR-0001 §13/R14: the pipeline is prompt_hub(input)->process->delivery(output) but the output endpoint was absent. correlation_id (=prompt_hub workflow_id) is already carried on every WorkOrder, so round-trip a merged cycle's result back to the originating vibe request - surfaced in RuVocal chat or via prompt_hub summarize <run-id>/feedback. Emit on pr_merged.", &["HFTASK-0003","HFTASK-0010"]),
-        mk("HFTASK-0022", "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated", Priority::P1,
-           "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui) is the REAL chosen front door (an unmodified HuggingFace Chat-UI fork, SvelteKit, with an mcp-bridge/ subpackage; nothing consumes loop events yet). NOTE: the envctl/loop-forge zellij multi-pane dashboard was attempted and FAILED - do NOT revive it; RuVocal is the surface. Adopt-and-extend RuVocal: integrate prompt_hub (vibe request in -> dispatch via the seam HFTASK-0019/HFTASK-0003) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat via mcp-bridge.", &["HFTASK-0019","HFTASK-0020","HFTASK-0003"]),
+        mk(
+            "HFTASK-0017",
+            "cognitum-gate as the witnessed hf policy decision engine",
+            Priority::P2,
+            "ADR-0001 R13: HFTASK-0015 uses a flat rules.toml denylist; the runbook (S1 §2) mapped the policy gate to RuVector's cognitum-gate-tilezero (decision.rs GateDecision{Permit,Defer,Deny} + WitnessReceipt). Adopt cognitum-gate as the in-loop ACTION governor (what an agent may DO) behind `hf policy`, emitting witnessed permit/deny/defer. Distinct from the envctl broker (R10 = secret/credential+merge egress gate); they compose (action gate + credential gate). Verified crate exists at ~/Desktop/meta/RuVector/crates/cognitum-gate-tilezero.",
+            &["HFTASK-0015"],
+        ),
+        mk(
+            "HFTASK-0018",
+            "ruvector-domain-expansion next-task routing (highest-value safe task)",
+            Priority::P2,
+            "ADR-0001 R13: the loop currently picks the next task by dependency order only (next_safe). Adopt RuVector's ruvector-domain-expansion (contextual routing / Thompson-style selection, S1:37) so hf claim --batch selects the highest-value safe tasks per context, not just topological order - core to an autonomous loop. Verified crate exists; capability claim (bandit/Thompson) from the runbook walk, re-verify symbols before building.",
+            &["HFTASK-0009"],
+        ),
+        mk(
+            "HFTASK-0019",
+            "Expose hf as an MCP server (the T11 universal control seam)",
+            Priority::P1,
+            "ADR-0001 R13/§11: the runbook's T11 = MCP is the universal control seam; every RuVector subsystem is MCP-accessible but hf is not, and NO MCP server exists on the prompt_hub side either (R14 verified). Expose hf verbs (status/resume/claim/ship/review/intake...) as an MCP server so chat->MCP->work-order dispatch has a handoff-side endpoint, and the front door (HFTASK-0003) can dispatch over a real seam (pattern: rvAgent rvagent-mcp / mcp-gate / mcp-brain).",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0020",
+            "Mission Control - loop observability (hf status --json / hf watch + render)",
+            Priority::P1,
+            "ADR-0001 §12/R14: NO existing UI surfaces the handoff loop's live state ('mission control' currently = envctl's zellij layout generator - naming collision). The witnessed ledger event stream (§7) IS the read-model. Build `hf status --json` + `hf watch` (tail ledger + weave broadcasts; optional SSE) as the machine feed; surface the existing control verbs (resume, review request, weave permission answer, hf merge --confirm, abort). Render layer greenfield: reuse envctl-gui egui pattern or a TUI (prompt_hub has ratatui) first cut. Disambiguate workspace-mission-control vs loop-mission-control.",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0021",
+            "Delivery / output endpoint (correlation_id round-trip to front door)",
+            Priority::P2,
+            "ADR-0001 §13/R14: the pipeline is prompt_hub(input)->process->delivery(output) but the output endpoint was absent. correlation_id (=prompt_hub workflow_id) is already carried on every WorkOrder, so round-trip a merged cycle's result back to the originating vibe request - surfaced in RuVocal chat or via prompt_hub summarize <run-id>/feedback. Emit on pr_merged.",
+            &["HFTASK-0003", "HFTASK-0010"],
+        ),
+        mk(
+            "HFTASK-0022",
+            "RuVocal (meta/RuVector/ui) - THE real front door, prompt_hub-integrated",
+            Priority::P1,
+            "ADR-0001 §11/§12/R14: RuVocal (~/Desktop/meta/RuVector/ui) is the REAL chosen front door (an unmodified HuggingFace Chat-UI fork, SvelteKit, with an mcp-bridge/ subpackage; nothing consumes loop events yet). NOTE: the envctl/loop-forge zellij multi-pane dashboard was attempted and FAILED - do NOT revive it; RuVocal is the surface. Adopt-and-extend RuVocal: integrate prompt_hub (vibe request in -> dispatch via the seam HFTASK-0019/HFTASK-0003) -> surface loop state (HFTASK-0020) + delivery result (HFTASK-0021) back in chat via mcp-bridge.",
+            &["HFTASK-0019", "HFTASK-0020", "HFTASK-0003"],
+        ),
         // --- Backlog reconciliation (audit 2026-06-17): the full ORIGINAL design (PRD + ADRs) ---
         // The project pivoted to the autopilot roadmap (0006-0022) WITHOUT minting tasks for the
         // PRD/ADR commitments it left behind. Owner directive: everything originally designed MUST
         // be built; the AI-in-the-human-seat upgrade is ADDITIVE, not a replacement (no-downgrade).
         // These re-enter the witnessed backlog so the loop builds the prior design, not just the pivot.
-        mk("HFTASK-0039", "ADR-0002 weave A2A surface 3: jobs (job_create/job_claim/job_update)", Priority::P1,
-           "ADR-0002 froze a five-surface weave A2A contract; only surfaces 1 (identity) + 2 (leases) are built (hf/src/lease.rs). Build surface 3 — the poll-only job channel (job_create/job_claim/job_update) — reusing WeaveCli, so cross-agent work items have a real mesh transport instead of only the local ledger. No-downgrade: this is an accepted-ADR commitment, not optional.", &["HFTASK-0002"]),
-        mk("HFTASK-0040", "ADR-0002 weave A2A surface 4: messaging (send/inbox/thread)", Priority::P1,
-           "ADR-0002 surface 4 — agent-to-agent messaging (send/inbox/thread) over weave — has zero code. Build it on WeaveCli so loop agents and cross-repo sessions exchange relay:handoff-style messages through the frozen contract, matching the inbox messages the harness already receives.", &["HFTASK-0002"]),
-        mk("HFTASK-0041", "ADR-0002 surface 5: verdict rides a weave permission-ask answer body", Priority::P1,
-           "ADR-0002 §5 / ADR-0005 §4: a review verdict must ride a weave PERMISSION-ASK answer body (approve/deny) IN ADDITION TO the review_verdict ledger event. Today cmd_review_verdict (main.rs) emits only the ledger half — the cross-peer weave permission-ask channel is missing, so the autonomous gatekeeper has no mesh-visible approval path. Build the permission-ask answer body and bind it to the verdict event (no-downgrade: the ledger event stays).", &["HFTASK-0040","HFTASK-0010"]),
-        mk("HFTASK-0042", "ADR-0003 rule 3: kb task write-back + status flips", Priority::P1,
-           "ADR-0003 rule 3 (the .kb planning<->execution seam, one-way): hf claim flips the referenced kb TASK document to active; hf checkpoint/hf handoff append a progress line to it; terminal hf done flips it to completed WITH evidence (commit hashes, test results). Today only sync.rs::part_b_kb_mirror writes the two context/overridable/* slugs, only via the explicit hf sync verb, never the task document and never status flips. Build the task-document write-back into claim/checkpoint/handoff/done. Stay one-way: kb is never read back as truth.", &["HFTASK-0011"]),
-        mk("HFTASK-0043", "ADR-0012 v2 + keystone T5: wire BetaParams::update to ledger outcomes", Priority::P2,
-           "ADR-0012 shipped Thompson-style routing but the contextual bandit never LEARNS: BetaParams::update (routing.rs:12) is unwired, so posteriors come only from the priority prior. Wire ledger outcomes into the update step — done = success reward, reopen/deny = failure — closing the keystone ADR-0001 §5.5 T5 co-learning loop so next-task value selection improves from real outcomes.", &["HFTASK-0018"]),
-        mk("HFTASK-0044", "ADR-0001-B: hf ship performs the real develop->trunk fast-forward", Priority::P1,
-           "ADR-0001-B (develop_mirrors_trunk=true) requires ff develop->trunk after each merge so develop==trunk. Today hf ship only println!s a note (main.rs ~475-480); should_sync_develop_trunk() is consulted but NO git ff is performed. Implement the actual fast-forward (fetch + ff-only push of develop to trunk, fail-closed, permission-gated, never force) so the branch model the policy claims is real.", &["HFTASK-0008"]),
-        mk("HFTASK-0045", "PRD hf test: execute stored test_commands as completion evidence", Priority::P0,
-           "PRD §4.7/§9/§12.3: evidence-backed completion REQUIRES executing the task's test_commands and mapping results to acceptance_criteria. The field is stored (work-order/src/lib.rs:46) but NEVER run — completion evidence is unenforced at the kernel level. Build `hf test [ID]`: run the work order's test_commands, capture pass/fail + output, append a witnessed test_result event, and gate handoff/done on green. This is the kernel's central completion guarantee.", &["HFTASK-0001"]),
-        mk("HFTASK-0046", "PRD drift sentinel: 2/10 -> 10/10 checks + handoff.drift_report.v1", Priority::P1,
-           "PRD §12.3-12.4: detect_drift (gates.rs:96-133) implements only 2 of 10 checks (intent-lock mismatch + out-of-scope writes) and emits a thin {clean,drift[]} shape, not handoff.drift_report.v1. Build the remaining checks — acceptance<->test mapping, decision-record contradiction, undocumented-architecture-change, handoff-state-staleness, and distinct objective/path_scope/acceptance/constraint hash-change outputs — and emit the full PRD schema. The most demanding part of the contract.", &["HFTASK-0005"]),
-        mk("HFTASK-0047", "PRD IntentLock 3->5 fields (constraint_hash, northstar_revision) + task_intent_changed", Priority::P1,
-           "PRD §12.2: IntentLock specifies 5 fields but the struct (work-order/src/lib.rs:68-72) has only 3 — constraint_hash and northstar_revision are absent, so policy/constraint drift (§12.1) cannot be hash-detected. Add both fields to compute_intent_lock, emit a task_intent_changed event on mutation, and extend the ruvector-verified proof (contract.rs) + drift checks to cover the two new obligations. No-downgrade: existing 3-hash proof stays.", &["HFTASK-0004"]),
-        mk("HFTASK-0048", "PRD atomic in-ledger lease state machine + .handoff/locks/*.lock (no-downgrade superset of weave)", Priority::P1,
-           "PRD §11.2-11.3: the self-contained kernel lease design — BEGIN IMMEDIATE; read leases; detect overlap; insert lease_requested/lease_active/heartbeat events; .handoff/locks/{ledger,merge,index}.lock; stale-lease reclaim event — was replaced by external weave with silent ledger-only fallback (lease.rs). Build the atomic in-ledger lease state machine as the local source of truth so the kernel self-coordinates WITHOUT requiring weave present; weave remains the mesh overlay. No-downgrade: a strict superset, not a swap.", &["HFTASK-0002"]),
-        mk("HFTASK-0049", "PRD verbs: hf reconcile, hf doctor, hf claim --next", Priority::P2,
-           "PRD §5/§9/§24: three contract verbs are missing. hf reconcile — the docs' own precedence rule says agents must run it (state-precedence reconciliation; today only loosely folded into sync/sync-cards). hf doctor — health-diagnostic verb (ledger integrity, witness chain, drift, residency). hf claim --next — auto-claim the highest safe task (only `claim ID`/`claim --batch` exist). Build all three as first-class verbs.", &["HFTASK-0001"]),
-        mk("HFTASK-0050", "PRD hf index + .handoff/maps/ + hf plan (task DAG)", Priority::P2,
-           "PRD §8/§9: hf index generates .handoff/maps/{repo,test,owner,dependency}-map.json and the generated nav docs so a cold-start agent can understand the repo from generated files; hf plan builds/refreshes the task DAG from dependencies/blocked_by. Neither exists (the maps dir is absent). Build hf index + the maps + hf plan.", &["HFTASK-0001"]),
-        mk("HFTASK-0051", "PRD handoffd daemon (heartbeat + watch process)", Priority::P2,
-           "PRD §6/§7.2 architecture has a Daemon node that is unrealized — there is no handoffd process. Build the daemon: lease-heartbeat ticker, ledger tail/watch feed (the read-model behind hf watch / Mission Control), and a supervised resume hook, so the loop has a live process, not only one-shot CLI invocations.", &["HFTASK-0007"]),
-        mk("HFTASK-0052", "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events", Priority::P1,
-           "PRD §18: hooks are shell scripts, not the typed handoff.hook_event.v1 / handoff.hook_result.v1 gate contract (payload + severity + required_actions). And 6 of 12 required hook events are absent from hooks.toml: SessionResume, PreCommand, PostCommand, PreTest, PostTest, PostHandoff. Build the typed hook runner + add the missing events so lifecycle gating is a typed contract, not stringly-typed shell.", &["HFTASK-0015"]),
+        mk(
+            "HFTASK-0039",
+            "ADR-0002 weave A2A surface 3: jobs (job_create/job_claim/job_update)",
+            Priority::P1,
+            "ADR-0002 froze a five-surface weave A2A contract; only surfaces 1 (identity) + 2 (leases) are built (hf/src/lease.rs). Build surface 3 — the poll-only job channel (job_create/job_claim/job_update) — reusing WeaveCli, so cross-agent work items have a real mesh transport instead of only the local ledger. No-downgrade: this is an accepted-ADR commitment, not optional.",
+            &["HFTASK-0002"],
+        ),
+        mk(
+            "HFTASK-0040",
+            "ADR-0002 weave A2A surface 4: messaging (send/inbox/thread)",
+            Priority::P1,
+            "ADR-0002 surface 4 — agent-to-agent messaging (send/inbox/thread) over weave — has zero code. Build it on WeaveCli so loop agents and cross-repo sessions exchange relay:handoff-style messages through the frozen contract, matching the inbox messages the harness already receives.",
+            &["HFTASK-0002"],
+        ),
+        mk(
+            "HFTASK-0041",
+            "ADR-0002 surface 5: verdict rides a weave permission-ask answer body",
+            Priority::P1,
+            "ADR-0002 §5 / ADR-0005 §4: a review verdict must ride a weave PERMISSION-ASK answer body (approve/deny) IN ADDITION TO the review_verdict ledger event. Today cmd_review_verdict (main.rs) emits only the ledger half — the cross-peer weave permission-ask channel is missing, so the autonomous gatekeeper has no mesh-visible approval path. Build the permission-ask answer body and bind it to the verdict event (no-downgrade: the ledger event stays).",
+            &["HFTASK-0040", "HFTASK-0010"],
+        ),
+        mk(
+            "HFTASK-0042",
+            "ADR-0003 rule 3: kb task write-back + status flips",
+            Priority::P1,
+            "ADR-0003 rule 3 (the .kb planning<->execution seam, one-way): hf claim flips the referenced kb TASK document to active; hf checkpoint/hf handoff append a progress line to it; terminal hf done flips it to completed WITH evidence (commit hashes, test results). Today only sync.rs::part_b_kb_mirror writes the two context/overridable/* slugs, only via the explicit hf sync verb, never the task document and never status flips. Build the task-document write-back into claim/checkpoint/handoff/done. Stay one-way: kb is never read back as truth.",
+            &["HFTASK-0011"],
+        ),
+        mk(
+            "HFTASK-0043",
+            "ADR-0012 v2 + keystone T5: wire BetaParams::update to ledger outcomes",
+            Priority::P2,
+            "ADR-0012 shipped Thompson-style routing but the contextual bandit never LEARNS: BetaParams::update (routing.rs:12) is unwired, so posteriors come only from the priority prior. Wire ledger outcomes into the update step — done = success reward, reopen/deny = failure — closing the keystone ADR-0001 §5.5 T5 co-learning loop so next-task value selection improves from real outcomes.",
+            &["HFTASK-0018"],
+        ),
+        mk(
+            "HFTASK-0044",
+            "ADR-0001-B: hf ship performs the real develop->trunk fast-forward",
+            Priority::P1,
+            "ADR-0001-B (develop_mirrors_trunk=true) requires ff develop->trunk after each merge so develop==trunk. Today hf ship only println!s a note (main.rs ~475-480); should_sync_develop_trunk() is consulted but NO git ff is performed. Implement the actual fast-forward (fetch + ff-only push of develop to trunk, fail-closed, permission-gated, never force) so the branch model the policy claims is real.",
+            &["HFTASK-0008"],
+        ),
+        mk(
+            "HFTASK-0045",
+            "PRD hf test: execute stored test_commands as completion evidence",
+            Priority::P0,
+            "PRD §4.7/§9/§12.3: evidence-backed completion REQUIRES executing the task's test_commands and mapping results to acceptance_criteria. The field is stored (work-order/src/lib.rs:46) but NEVER run — completion evidence is unenforced at the kernel level. Build `hf test [ID]`: run the work order's test_commands, capture pass/fail + output, append a witnessed test_result event, and gate handoff/done on green. This is the kernel's central completion guarantee.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0046",
+            "PRD drift sentinel: 2/10 -> 10/10 checks + handoff.drift_report.v1",
+            Priority::P1,
+            "PRD §12.3-12.4: detect_drift (gates.rs:96-133) implements only 2 of 10 checks (intent-lock mismatch + out-of-scope writes) and emits a thin {clean,drift[]} shape, not handoff.drift_report.v1. Build the remaining checks — acceptance<->test mapping, decision-record contradiction, undocumented-architecture-change, handoff-state-staleness, and distinct objective/path_scope/acceptance/constraint hash-change outputs — and emit the full PRD schema. The most demanding part of the contract.",
+            &["HFTASK-0005"],
+        ),
+        mk(
+            "HFTASK-0047",
+            "PRD IntentLock 3->5 fields (constraint_hash, northstar_revision) + task_intent_changed",
+            Priority::P1,
+            "PRD §12.2: IntentLock specifies 5 fields but the struct (work-order/src/lib.rs:68-72) has only 3 — constraint_hash and northstar_revision are absent, so policy/constraint drift (§12.1) cannot be hash-detected. Add both fields to compute_intent_lock, emit a task_intent_changed event on mutation, and extend the ruvector-verified proof (contract.rs) + drift checks to cover the two new obligations. No-downgrade: existing 3-hash proof stays.",
+            &["HFTASK-0004"],
+        ),
+        mk(
+            "HFTASK-0048",
+            "PRD atomic in-ledger lease state machine + .handoff/locks/*.lock (no-downgrade superset of weave)",
+            Priority::P1,
+            "PRD §11.2-11.3: the self-contained kernel lease design — BEGIN IMMEDIATE; read leases; detect overlap; insert lease_requested/lease_active/heartbeat events; .handoff/locks/{ledger,merge,index}.lock; stale-lease reclaim event — was replaced by external weave with silent ledger-only fallback (lease.rs). Build the atomic in-ledger lease state machine as the local source of truth so the kernel self-coordinates WITHOUT requiring weave present; weave remains the mesh overlay. No-downgrade: a strict superset, not a swap.",
+            &["HFTASK-0002"],
+        ),
+        mk(
+            "HFTASK-0049",
+            "PRD verbs: hf reconcile, hf doctor, hf claim --next",
+            Priority::P2,
+            "PRD §5/§9/§24: three contract verbs are missing. hf reconcile — the docs' own precedence rule says agents must run it (state-precedence reconciliation; today only loosely folded into sync/sync-cards). hf doctor — health-diagnostic verb (ledger integrity, witness chain, drift, residency). hf claim --next — auto-claim the highest safe task (only `claim ID`/`claim --batch` exist). Build all three as first-class verbs.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0050",
+            "PRD hf index + .handoff/maps/ + hf plan (task DAG)",
+            Priority::P2,
+            "PRD §8/§9: hf index generates .handoff/maps/{repo,test,owner,dependency}-map.json and the generated nav docs so a cold-start agent can understand the repo from generated files; hf plan builds/refreshes the task DAG from dependencies/blocked_by. Neither exists (the maps dir is absent). Build hf index + the maps + hf plan.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0051",
+            "PRD handoffd daemon (heartbeat + watch process)",
+            Priority::P2,
+            "PRD §6/§7.2 architecture has a Daemon node that is unrealized — there is no handoffd process. Build the daemon: lease-heartbeat ticker, ledger tail/watch feed (the read-model behind hf watch / Mission Control), and a supervised resume hook, so the loop has a live process, not only one-shot CLI invocations.",
+            &["HFTASK-0007"],
+        ),
+        mk(
+            "HFTASK-0052",
+            "PRD typed hook contract (hook_event.v1/hook_result.v1) + 6 missing hook events",
+            Priority::P1,
+            "PRD §18: hooks are shell scripts, not the typed handoff.hook_event.v1 / handoff.hook_result.v1 gate contract (payload + severity + required_actions). And 6 of 12 required hook events are absent from hooks.toml: SessionResume, PreCommand, PostCommand, PreTest, PostTest, PostHandoff. Build the typed hook runner + add the missing events so lifecycle gating is a typed contract, not stringly-typed shell.",
+            &["HFTASK-0015"],
+        ),
         // --- Cross-repo: envctl Epic A (handoff full-sync) blockers, filed as FlexNetOS/handoff#71 ---
         // Surfaced by the envctl maintainer agent during its agenticOS-consolidation Epic A and the
         // 2026-06-18 forge-loop audit (envctl .handoff/loop/loop_state.md cycle-1 CARRIED FINDING +
         // FINDING-0002). Both are KERNEL-side (out of envctl's scope) and had no HFTASK — minted here
         // so Epic A's blocker is tracked on the handoff backlog and clearable in-loop.
-        mk("HFTASK-0053", "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary)", Priority::P1,
-           "GitHub #71 item 1 / envctl Epic A cycle-1 CARRIED FINDING: the `ledger` crate links bundled C-SQLite (rusqlite -> libsqlite3-sys). It is not an envctl no-c violation today (separate workspace) but it breaks the continuity kernel's pure-Rust / 'no C in the trust boundary' agenticOS north star. Port `ledger` off rusqlite to a pure-Rust store (libSQL Hrana `remote` like envctl's secrets store, or an embedded pure-Rust engine such as redb/sled) so `hf` builds C-free, KEEPING the witnessed append-only chain, replay, BEGIN IMMEDIATE serialization (HFTASK-0028), and rollup-provenance semantics intact. No-downgrade: a store swap, never a capability loss; re-verify witness-chain + provenance tests on the new backend. Distinct from HFTASK-0006 (RVF vector ledger axis) — this removes the C dependency.", &["HFTASK-0006"]),
-        mk("HFTASK-0054", "Issue #71.2: confirm ledger-path/member override fully covers member Tier-A (no per-repo ledger.db)", Priority::P2,
-           "GitHub #71 item 2 / envctl FINDING-0002: `hf` was strictly CWD-relative (no --ledger/HANDOFF_LEDGER), so a member repo could not render Tier-A against the shared FLEET ledger ($META_ROOT/.handoff/ledger.db) without a per-repo ledger.db that ADR-0004 forbids. `hf fleet render <member>` (PR #17, 1adbb13) partially addressed this. CONFIRM it (and add an explicit `--ledger`/HANDOFF_LEDGER override if gaps remain) fully covers member packet rendering AND seed/mint against the shared FLEET ledger with ZERO per-repo ledger.db, so envctl renders its Tier-A kernel-rendered (not git-text-only fallback) and passes its p7 gate. Verification-first: prove coverage end-to-end from a member CWD, build the override only where uncovered.", &["HFTASK-0034"]),
+        mk(
+            "HFTASK-0053",
+            "Issue #71.1: port ledger off C-SQLite (rusqlite) to a pure-Rust store (no-C trust boundary)",
+            Priority::P1,
+            "GitHub #71 item 1 / envctl Epic A cycle-1 CARRIED FINDING: the `ledger` crate links bundled C-SQLite (rusqlite -> libsqlite3-sys). It is not an envctl no-c violation today (separate workspace) but it breaks the continuity kernel's pure-Rust / 'no C in the trust boundary' agenticOS north star. Port `ledger` off rusqlite to a pure-Rust store (libSQL Hrana `remote` like envctl's secrets store, or an embedded pure-Rust engine such as redb/sled) so `hf` builds C-free, KEEPING the witnessed append-only chain, replay, BEGIN IMMEDIATE serialization (HFTASK-0028), and rollup-provenance semantics intact. No-downgrade: a store swap, never a capability loss; re-verify witness-chain + provenance tests on the new backend. Distinct from HFTASK-0006 (RVF vector ledger axis) — this removes the C dependency.",
+            &["HFTASK-0006"],
+        ),
+        mk(
+            "HFTASK-0054",
+            "Issue #71.2: confirm ledger-path/member override fully covers member Tier-A (no per-repo ledger.db)",
+            Priority::P2,
+            "GitHub #71 item 2 / envctl FINDING-0002: `hf` was strictly CWD-relative (no --ledger/HANDOFF_LEDGER), so a member repo could not render Tier-A against the shared FLEET ledger ($META_ROOT/.handoff/ledger.db) without a per-repo ledger.db that ADR-0004 forbids. `hf fleet render <member>` (PR #17, 1adbb13) partially addressed this. CONFIRM it (and add an explicit `--ledger`/HANDOFF_LEDGER override if gaps remain) fully covers member packet rendering AND seed/mint against the shared FLEET ledger with ZERO per-repo ledger.db, so envctl renders its Tier-A kernel-rendered (not git-text-only fallback) and passes its p7 gate. Verification-first: prove coverage end-to-end from a member CWD, build the override only where uncovered.",
+            &["HFTASK-0034"],
+        ),
         // --- Backlog reconciliation (deep design audit 2026-06-18): residual PRD commitments with no HFTASK ---
         // A 4-agent fleet/design sweep (GitHub issues + sibling .handoff findings + PRD/ADR corpus +
         // local surfaces) confirmed issue #71 was the only cross-repo ask, but found 3 PRD commitments
         // still untracked after the 0039-0054 mint — same Category-2 class as the prior audit. Minted
         // here (no-downgrade: everything originally designed MUST be built).
-        mk("HFTASK-0055", "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite)", Priority::P1,
-           "PRD §20.2/§20.3/§20.4/§20.6 — the kernel has NO property/crash/golden suite (only one concurrency test at ledger/src/lib.rs:871; no proptest dependency anywhere). The original backlog TASK-0015 'hardening suite' lost its tracking when the HFTASK-0015 slot was repurposed to the policy engine. Build: (a) §20.2 proptest property tests — random path_scopes never falsely overlap; random event streams replay to identical final state; random checkpoint interruptions preserve last valid state; packet roundtrip; (b) §20.4 crash tests — crash during claim/checkpoint/handoff/index; ledger lock held by a dead process; corrupted task YAML/JSON fails CLOSED and is NEVER silently marked done; (c) §20.3/§20.6 golden/replay + fresh-agent acceptance integration tests. Distinct from HFTASK-0045 (hf test runs a TASK's own test_commands) — this is the KERNEL's own hardening matrix.", &["HFTASK-0028"]),
-        mk("HFTASK-0056", "PRD §11.5/§15/§16 merge serialization: merge.lock/index.lock + single-writer merge (merge-steward)", Priority::P2,
-           "PRD §11.3/§11.5/§15/§16 (lines 404/419/421/612/627/640/725): the kernel specifies repo-local .handoff/locks/{merge,index}.lock and a SINGLE-WRITER merge path — 'Merge is single-writer; only the merge steward can hold merge.lock; no merge without merge lock' — plus merge-steward/conflict-arbiter roles. None exist in code: HFTASK-0048 built only the CLAIM lease lockfile, HFTASK-0009 ship leaves the merge to GitHub-native auto-merge, and grit (ADR-0009) covers the fleet-level INTENT but not the PRD's concrete merge.lock artifact + steward contract. Build merge.lock/index.lock acquisition + single-writer merge serialization gated by it. No-downgrade: an accepted PRD commitment that composes with grit and auto-merge.", &["HFTASK-0048"]),
-        mk("HFTASK-0057", "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection", Priority::P2,
-           "PRD §7.3 (lines 256-257: schemars for generation, jsonschema for validation), §20.1, §23 TASK-0002 acceptance ('JSON Schema is generated or checked in' + 'Invalid task cards fail validation'): there is NO schemars/jsonschema dependency; only 3 hand-written schemas (schemas/{task,session,packet}.schema.json) exist and nothing validates against them, so a malformed task card is NOT rejected at load. Build schema generation for the handoff.*.v1 types via schemars (or keep curated schemas in lockstep) AND wire jsonschema runtime validation so an invalid card fails closed instead of loading. No-downgrade: completes the typed-contract guarantee (HFTASK-0052 added Rust hook types but not schema gen/validation).", &["HFTASK-0001"]),
-        mk("HFTASK-0059", "Bounded SQLITE_BUSY retry for concurrent ledger writes", Priority::P1,
-           "busy_timeout (set in Ledger::open) handles most contention, but under heavy concurrency — especially Windows file-locking — a BEGIN IMMEDIATE write can still surface SQLITE_BUSY (cumulative wait across serialized writers exceeds the timeout, or SQLite returns busy without invoking the handler on a lock upgrade). Wrap each ledger write transaction in with_busy_retry: retry the whole closure on transient SQLITE_BUSY/SQLITE_LOCKED with a short capped linear backoff. Safe for every write because each attempt re-reads the authoritative tail (seq + prev_hash) inside a fresh BEGIN IMMEDIATE, so no fork/duplicate seq can result; bounded by an attempt cap so a genuinely stuck lock still surfaces as an error. Shipped PR #96.", &["HFTASK-0028"]),
-        mk("HFTASK-0058", "Canonical .handoff durability policy + hf gitignore swallow-guard (ADR-0016)", Priority::P1,
-           "The kernel OWNS and SHIPS the .handoff commit-vs-ignore policy instead of every consumer hand-rolling its own .gitignore: a dir-form `.handoff/`/`.claude/` ignore silently SWALLOWS durable tasks/decisions/loop ledgers (git cannot re-include past an excluded parent dir; !-negations can't rescue it). Ship hf/src/durability.rs (durable-vs-regenerable taxonomy + canonical CONTENTS-FORM .gitignore fragment + git check-ignore swallow_report + repair_gitignore), the `hf gitignore [--check|--repair|--write]` verb, and the fail-closed swallow-guard wired into `hf doctor` (DEGRADED + exit 1 on a swallow). docs/adr-0016-handoff-durability-policy.md. Shipped PR #98.", &["HFTASK-0001"]),
-        mk("HFTASK-0060", "RVF sidecar open retries on lock contention (fix intermittent hf panic)", Priority::P1,
-           "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().", &["HFTASK-0028"]),
+        mk(
+            "HFTASK-0055",
+            "PRD §20 kernel hardening test matrix (proptest property + crash + golden/replay/concurrent suite)",
+            Priority::P1,
+            "PRD §20.2/§20.3/§20.4/§20.6 — the kernel has NO property/crash/golden suite (only one concurrency test at ledger/src/lib.rs:871; no proptest dependency anywhere). The original backlog TASK-0015 'hardening suite' lost its tracking when the HFTASK-0015 slot was repurposed to the policy engine. Build: (a) §20.2 proptest property tests — random path_scopes never falsely overlap; random event streams replay to identical final state; random checkpoint interruptions preserve last valid state; packet roundtrip; (b) §20.4 crash tests — crash during claim/checkpoint/handoff/index; ledger lock held by a dead process; corrupted task YAML/JSON fails CLOSED and is NEVER silently marked done; (c) §20.3/§20.6 golden/replay + fresh-agent acceptance integration tests. Distinct from HFTASK-0045 (hf test runs a TASK's own test_commands) — this is the KERNEL's own hardening matrix.",
+            &["HFTASK-0028"],
+        ),
+        mk(
+            "HFTASK-0056",
+            "PRD §11.5/§15/§16 merge serialization: merge.lock/index.lock + single-writer merge (merge-steward)",
+            Priority::P2,
+            "PRD §11.3/§11.5/§15/§16 (lines 404/419/421/612/627/640/725): the kernel specifies repo-local .handoff/locks/{merge,index}.lock and a SINGLE-WRITER merge path — 'Merge is single-writer; only the merge steward can hold merge.lock; no merge without merge lock' — plus merge-steward/conflict-arbiter roles. None exist in code: HFTASK-0048 built only the CLAIM lease lockfile, HFTASK-0009 ship leaves the merge to GitHub-native auto-merge, and grit (ADR-0009) covers the fleet-level INTENT but not the PRD's concrete merge.lock artifact + steward contract. Build merge.lock/index.lock acquisition + single-writer merge serialization gated by it. No-downgrade: an accepted PRD commitment that composes with grit and auto-merge.",
+            &["HFTASK-0048"],
+        ),
+        mk(
+            "HFTASK-0057",
+            "PRD §7.3/§23 JSON Schema generation (schemars) + runtime validation (jsonschema) + invalid-card rejection",
+            Priority::P2,
+            "PRD §7.3 (lines 256-257: schemars for generation, jsonschema for validation), §20.1, §23 TASK-0002 acceptance ('JSON Schema is generated or checked in' + 'Invalid task cards fail validation'): there is NO schemars/jsonschema dependency; only 3 hand-written schemas (schemas/{task,session,packet}.schema.json) exist and nothing validates against them, so a malformed task card is NOT rejected at load. Build schema generation for the handoff.*.v1 types via schemars (or keep curated schemas in lockstep) AND wire jsonschema runtime validation so an invalid card fails closed instead of loading. No-downgrade: completes the typed-contract guarantee (HFTASK-0052 added Rust hook types but not schema gen/validation).",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0059",
+            "Bounded SQLITE_BUSY retry for concurrent ledger writes",
+            Priority::P1,
+            "busy_timeout (set in Ledger::open) handles most contention, but under heavy concurrency — especially Windows file-locking — a BEGIN IMMEDIATE write can still surface SQLITE_BUSY (cumulative wait across serialized writers exceeds the timeout, or SQLite returns busy without invoking the handler on a lock upgrade). Wrap each ledger write transaction in with_busy_retry: retry the whole closure on transient SQLITE_BUSY/SQLITE_LOCKED with a short capped linear backoff. Safe for every write because each attempt re-reads the authoritative tail (seq + prev_hash) inside a fresh BEGIN IMMEDIATE, so no fork/duplicate seq can result; bounded by an attempt cap so a genuinely stuck lock still surfaces as an error. Shipped PR #96.",
+            &["HFTASK-0028"],
+        ),
+        mk(
+            "HFTASK-0058",
+            "Canonical .handoff durability policy + hf gitignore swallow-guard (ADR-0016)",
+            Priority::P1,
+            "The kernel OWNS and SHIPS the .handoff commit-vs-ignore policy instead of every consumer hand-rolling its own .gitignore: a dir-form `.handoff/`/`.claude/` ignore silently SWALLOWS durable tasks/decisions/loop ledgers (git cannot re-include past an excluded parent dir; !-negations can't rescue it). Ship hf/src/durability.rs (durable-vs-regenerable taxonomy + canonical CONTENTS-FORM .gitignore fragment + git check-ignore swallow_report + repair_gitignore), the `hf gitignore [--check|--repair|--write]` verb, and the fail-closed swallow-guard wired into `hf doctor` (DEGRADED + exit 1 on a swallow). docs/adr-0016-handoff-durability-policy.md. Shipped PR #98.",
+            &["HFTASK-0001"],
+        ),
+        mk(
+            "HFTASK-0060",
+            "RVF sidecar open retries on lock contention (fix intermittent hf panic)",
+            Priority::P1,
+            "Sibling of HFTASK-0059: the SQLite write path got with_busy_retry, but ledger v2's RVF sidecar open (ledger/src/v2.rs Ledger::open) did NOT, so two `hf` processes touching the same ledger back-to-back (a session + a checkpoint hook, or rapid CLI calls) intermittently hit RVF 0x0300 LockHeld ('another writer holds the lock'), which the six Ledger::open(...).unwrap() call sites in hf turned into a panic+backtrace. Fix: ledger v2 acquire_store retries open/create on transient LockHeld/LockStale with a short capped linear backoff (the RVF analogue of busy-retry; the v1 SQLite store stays authoritative so a bounded wait never risks the chain), and hf opens via a fail-closed open_ledger_or_exit helper instead of .unwrap().",
+            &["HFTASK-0028"],
+        ),
         // --- Fail-closed harness-upgrade burst (2026-06-21, owner-authorized via /handoff-loop +
         //     /harness-evolution). Root lesson L7: the FAIL-OPEN anti-pattern — a guard/loader/
         //     evidence-check that proceeds when it can't confirm its precondition. Each target
         //     closes one fail-open surface; #0064 is the systemic sweep that asserts the class. ---
-        mk("HFTASK-0061", "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason", Priority::P1,
-           "The fail-closed kernel had no way to CORRECT a false-Done: a task marked Done via a pre-PR#103 blanket-`cargo test` rubber stamp (e.g. HFTASK-0057, whose schemars/jsonschema feature was never built) was stuck Done with no inverse op (`hf release` only un-claims in-progress states; `should_unclaim` excludes Done/Review). Add `hf reopen <ID> \"<reason>\"`: a reason is MANDATORY (no silent un-completion), only a terminal state (Done/Review) is reopenable, the WHY is witnessed as a `task_reopened` event before the `task_transition -> Backlog` replay acts on, kb planning-plane reverts via write-back, and the on-disk card snapshot is re-synced. Pure `should_reopen` gate, unit-tested disjoint from `should_unclaim`. Shipped: reconciled HFTASK-0057's false-Done.", &["HFTASK-0038"]),
-        mk("HFTASK-0062", "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf", Priority::P1,
-           "Liveness gap surfaced after HFTASK-0060: acquire_store (ledger/src/v2.rs) RETRIES transient 0x0300 LockHeld/0x0301 LockStale but never RECLAIMS a persistently-orphaned lock whose holder PROCESS IS DEAD, so a leftover `.handoff/ledger.db.rvf.lock` returns LockHeld past the retry cap and wedges EVERY subsequent `hf` invocation (fail-closed, no panic — but the kernel is unusable until a human `rm`s it, violating no-human-in-loop). Fix: detect a provably-dead holder (PID liveness and/or mtime age-out beyond the lock TTL) and reclaim it, emitting a witnessed `lock_reclaimed` event; REFUSE to steal a live or unverifiable-liveness holder (fail-closed both ways). NOT 'raise the retry cap' — that is a fail-open band-aid (longer wait, same wedge). The v1 SQLite store stays authoritative so a bounded reclaim never risks the chain.", &["HFTASK-0060"]),
-        mk("HFTASK-0063", "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest)", Priority::P2,
-           "PR #103 made `hf test` fail closed on zero executed tests, but only for libtest: `parse_tests_ran` parses only cargo's `test result:` lines, so a pytest/jest/go-test card degrades to exit-code-only (the None branch) and can still be rubber-stamped by a zero-match run. Also `cmd_test` runs `sh -c` with NO `current_dir`, so test_commands are fragile to the invocation cwd. Fix: (a) pin the command's working dir to the task home (repo/meta root via the existing route/anchor helpers) so commands are cwd-stable; (b) extend executed-count parsing to recognized non-libtest runners (pytest summary line, jest 'Tests:' line, go-test '--- PASS/FAIL' / 'ok' counts), keeping the None->exit-code-only degrade ONLY for genuinely-unrecognized runners. Positive evidence for non-cargo cards, not just cargo.", &["HFTASK-0045"]),
-        mk("HFTASK-0064", "hf doctor fail-closed invariant sweep + stale-lock self-heal (assert the FAIL-OPEN class is closed)", Priority::P1,
-           "The systemic guard (5th target, harness-evolution L7/L10): a point fix per surface isn't enough — `hf doctor` must ASSERT the whole fail-open class stays closed AND auto-heal the one liveness wedge. Extend cmd_doctor to: (a) enumerate every `tasks/*.task.json` and FAIL (DEGRADED + exit 1) if any card on disk is absent from `hf status` (catches the load_tasks silent-drop that hid card #95 a whole session); (b) assert ledger replay + witness-chain verify with NO empty/default fallback masking a read error; (c) detect a provably-dead `*.rvf.lock` and reclaim it via HFTASK-0062 (witnessed `lock_reclaimed`), REFUSING live/unverifiable holders; (d) `hf doctor --json` structured report. Unit-tested: dead-reclaim, live-refusal, missing-card-fails, empty-status-fails. Depends on 0062 (consume reclaim) + the loud-load fix in 0057 (assert). Detection-only form can ship first (additive, no-downgrade).", &["HFTASK-0062","HFTASK-0057"]),
-        mk("HFTASK-0065", "Package the handoff loop skills as `harness:` plugin skills (/harness:handoff-loop, /harness:handoff-loop-init)", Priority::P2,
-           "Owner's standing 'proper harness setup': make the handoff loop + init invokable under the published `harness:` plugin namespace, not only as handoff-local project skills. DISCOVERY (verify, don't assume): `harness_hub/harness/` is the vendored `harness` plugin (separate repo — upstream revfactory/harness + FlexNetOS skills) and ALREADY ships `skills/handoff-loop-init/` + `skills/handoff-loop-run/`, so the work is RECONCILE not create: sync the current script-driven `handoff/.claude/skills/handoff-loop-init` (PR #113) + the `handoff-loop` orchestrator skill + the bundled `scripts/handoff-loop-init.sh`/`scripts/handoff-lib.sh` drivers + the PR #114 out-of-tree-backup behavior INTO the plugin copies so `/harness:handoff-loop-init` and `/harness:handoff-loop` run the LATEST, non-downgraded implementation. Distinct from the generic `harness-loop-init` (loop-state-dir init) — do NOT conflate the two. CROSS-REPO: harness_hub changes are a separate-repo commit/PR over its SSH remote and go through the gatekeeper; the bundled `scripts/*.sh` must be reachable when the skill is ejected (vendor them under the skill dir or document the `$HANDOFF_KERNEL_HOME` dependency). No-downgrade: neither the handoff-local skills nor the plugin copies may lose capability; if the plugin copies are stale they get upgraded, never the reverse.", &[]),
-        mk("HFTASK-0066", "Converge fleet-rollout.sh ledger-guard onto scripts/handoff-lib.sh (single source of the residency guards)", Priority::P3,
-           "`scripts/handoff-lib.sh` is the canonical sourceable home for the `.gitignore` residency + redb-migration-artifact guards (HFTASK-0035/0037/0053 — `ensure_ledger_guard`/`ensure_active_md_guard`), but `scripts/fleet-rollout.sh` still keeps its OWN copy of `ensure_ledger_guard`, so the two definitions can drift (the lib already extends the guard with `*.sqlite.bak`/`*.redb.tmp`; fleet-rollout's copy may not). Converge: make `fleet-rollout.sh` source `handoff-lib.sh` and delegate to its guard functions (delete the duplicate body), so there is exactly ONE definition. Preserve fleet-rollout's existing behavior exactly (idempotent; new + existing members; README rev-model; never clobber a foreign `.gitignore`). No-downgrade. Low-risk/maintainability — a fresh redb dir never produces a `.sqlite.bak`, so this is correctness-of-single-source, not a live bug.", &[]),
+        mk(
+            "HFTASK-0061",
+            "hf reopen verb — witnessed Done/Review -> Backlog with a recorded reason",
+            Priority::P1,
+            "The fail-closed kernel had no way to CORRECT a false-Done: a task marked Done via a pre-PR#103 blanket-`cargo test` rubber stamp (e.g. HFTASK-0057, whose schemars/jsonschema feature was never built) was stuck Done with no inverse op (`hf release` only un-claims in-progress states; `should_unclaim` excludes Done/Review). Add `hf reopen <ID> \"<reason>\"`: a reason is MANDATORY (no silent un-completion), only a terminal state (Done/Review) is reopenable, the WHY is witnessed as a `task_reopened` event before the `task_transition -> Backlog` replay acts on, kb planning-plane reverts via write-back, and the on-disk card snapshot is re-synced. Pure `should_reopen` gate, unit-tested disjoint from `should_unclaim`. Shipped: reconciled HFTASK-0057's false-Done.",
+            &["HFTASK-0038"],
+        ),
+        mk(
+            "HFTASK-0062",
+            "RVF stale-lock reclaim — provably-dead .rvf.lock no longer wedges hf",
+            Priority::P1,
+            "Liveness gap surfaced after HFTASK-0060: acquire_store (ledger/src/v2.rs) RETRIES transient 0x0300 LockHeld/0x0301 LockStale but never RECLAIMS a persistently-orphaned lock whose holder PROCESS IS DEAD, so a leftover `.handoff/ledger.db.rvf.lock` returns LockHeld past the retry cap and wedges EVERY subsequent `hf` invocation (fail-closed, no panic — but the kernel is unusable until a human `rm`s it, violating no-human-in-loop). Fix: detect a provably-dead holder (PID liveness and/or mtime age-out beyond the lock TTL) and reclaim it, emitting a witnessed `lock_reclaimed` event; REFUSE to steal a live or unverifiable-liveness holder (fail-closed both ways). NOT 'raise the retry cap' — that is a fail-open band-aid (longer wait, same wedge). The v1 SQLite store stays authoritative so a bounded reclaim never risks the chain.",
+            &["HFTASK-0060"],
+        ),
+        mk(
+            "HFTASK-0063",
+            "hf test --cwd pin + runner-aware executed-count (pytest/jest/go beyond libtest)",
+            Priority::P2,
+            "PR #103 made `hf test` fail closed on zero executed tests, but only for libtest: `parse_tests_ran` parses only cargo's `test result:` lines, so a pytest/jest/go-test card degrades to exit-code-only (the None branch) and can still be rubber-stamped by a zero-match run. Also `cmd_test` runs `sh -c` with NO `current_dir`, so test_commands are fragile to the invocation cwd. Fix: (a) pin the command's working dir to the task home (repo/meta root via the existing route/anchor helpers) so commands are cwd-stable; (b) extend executed-count parsing to recognized non-libtest runners (pytest summary line, jest 'Tests:' line, go-test '--- PASS/FAIL' / 'ok' counts), keeping the None->exit-code-only degrade ONLY for genuinely-unrecognized runners. Positive evidence for non-cargo cards, not just cargo.",
+            &["HFTASK-0045"],
+        ),
+        mk(
+            "HFTASK-0064",
+            "hf doctor fail-closed invariant sweep + stale-lock self-heal (assert the FAIL-OPEN class is closed)",
+            Priority::P1,
+            "The systemic guard (5th target, harness-evolution L7/L10): a point fix per surface isn't enough — `hf doctor` must ASSERT the whole fail-open class stays closed AND auto-heal the one liveness wedge. Extend cmd_doctor to: (a) enumerate every `tasks/*.task.json` and FAIL (DEGRADED + exit 1) if any card on disk is absent from `hf status` (catches the load_tasks silent-drop that hid card #95 a whole session); (b) assert ledger replay + witness-chain verify with NO empty/default fallback masking a read error; (c) detect a provably-dead `*.rvf.lock` and reclaim it via HFTASK-0062 (witnessed `lock_reclaimed`), REFUSING live/unverifiable holders; (d) `hf doctor --json` structured report. Unit-tested: dead-reclaim, live-refusal, missing-card-fails, empty-status-fails. Depends on 0062 (consume reclaim) + the loud-load fix in 0057 (assert). Detection-only form can ship first (additive, no-downgrade).",
+            &["HFTASK-0062", "HFTASK-0057"],
+        ),
+        mk(
+            "HFTASK-0065",
+            "Package the handoff loop skills as `harness:` plugin skills (/harness:handoff-loop, /harness:handoff-loop-init)",
+            Priority::P2,
+            "Owner's standing 'proper harness setup': make the handoff loop + init invokable under the published `harness:` plugin namespace, not only as handoff-local project skills. DISCOVERY (verify, don't assume): `harness_hub/harness/` is the vendored `harness` plugin (separate repo — upstream revfactory/harness + FlexNetOS skills) and ALREADY ships `skills/handoff-loop-init/` + `skills/handoff-loop-run/`, so the work is RECONCILE not create: sync the current script-driven `handoff/.claude/skills/handoff-loop-init` (PR #113) + the `handoff-loop` orchestrator skill + the bundled `scripts/handoff-loop-init.sh`/`scripts/handoff-lib.sh` drivers + the PR #114 out-of-tree-backup behavior INTO the plugin copies so `/harness:handoff-loop-init` and `/harness:handoff-loop` run the LATEST, non-downgraded implementation. Distinct from the generic `harness-loop-init` (loop-state-dir init) — do NOT conflate the two. CROSS-REPO: harness_hub changes are a separate-repo commit/PR over its SSH remote and go through the gatekeeper; the bundled `scripts/*.sh` must be reachable when the skill is ejected (vendor them under the skill dir or document the `$HANDOFF_KERNEL_HOME` dependency). No-downgrade: neither the handoff-local skills nor the plugin copies may lose capability; if the plugin copies are stale they get upgraded, never the reverse.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0066",
+            "Converge fleet-rollout.sh ledger-guard onto scripts/handoff-lib.sh (single source of the residency guards)",
+            Priority::P3,
+            "`scripts/handoff-lib.sh` is the canonical sourceable home for the `.gitignore` residency + redb-migration-artifact guards (HFTASK-0035/0037/0053 — `ensure_ledger_guard`/`ensure_active_md_guard`), but `scripts/fleet-rollout.sh` still keeps its OWN copy of `ensure_ledger_guard`, so the two definitions can drift (the lib already extends the guard with `*.sqlite.bak`/`*.redb.tmp`; fleet-rollout's copy may not). Converge: make `fleet-rollout.sh` source `handoff-lib.sh` and delegate to its guard functions (delete the duplicate body), so there is exactly ONE definition. Preserve fleet-rollout's existing behavior exactly (idempotent; new + existing members; README rev-model; never clobber a foreign `.gitignore`). No-downgrade. Low-risk/maintainability — a fresh redb dir never produces a `.sqlite.bak`, so this is correctness-of-single-source, not a live bug.",
+            &[],
+        ),
         // --- ADR-0018: full-auto agentic operation (owner directive 2026-06-21) ---
-        mk("HFTASK-0067", "ADR-0018 D1: commit ALL dotfiles/dirs — reverse the .handoff residency-ignore + invert fleet P7", Priority::P1,
-           "ADR-0018 D1: moving forward every dotfile/dotdir is git-TRACKED (.handoff incl. ledger + rendered views, .idea, .claude, .github, .kb, .grit config). Stop `hf init`/`scripts/fleet-rollout.sh`/`scripts/handoff-lib.sh` from writing the `.handoff/**/ledger.db`(+wal/shm/rvf/active.md/locks/deliveries/packets) ignore block; REMOVE the existing blocks; ensure those paths are tracked instead. INVERT `hf fleet status` P7 (HFTASK-0034 git_tracks_handoff_db/ledger_guard_present): a tracked `.handoff/ledger.db` is now CONFORMANT; a missing ledger or a present ignore-guard is the VIOLATION. Decide + implement the binary ledger.db conflict story (worktree-isolated per batch HFTASK-0075 + FLEET rollup + serialized merge; binary-merge=ours-replay OR a deterministic text export beside it). Migration artifacts (*.sqlite.bak/*.redb.tmp) stay OUT-OF-TREE (already true, PR #114) — only durable state is committed. Roll the guard removal + P7 inversion ATOMICALLY. Supersedes the ignore half of ADR-0004 §3/§6 + ADR-0016/HFTASK-0035/0037/0048/0021/0066.", &[]),
-        mk("HFTASK-0068", "ADR-0018 D3: context-budget loop wrap (~50% window), not fixed cycle_flush", Priority::P1,
-           "ADR-0018 D3: replace 'wrap after cycle_flush tasks' with 'run until ~50% of the context window is consumed, then checkpoint -> handoff'. Add `policy.toml [loop] context_budget_pct = 50` + `wrap_strategy = \"context\"` to hf/src/policy.rs LoopCfg with compiled defaults + round-trip tests; keep `cycle_flush` as an UPPER safety bound. The kernel exposes the policy + the wrap verbs; ENFORCEMENT is at the loop-skill layer (handoff-loop Phase 5 + session-relay-wrap-up read the running token/context budget and trigger the wrap at the threshold). Wire the threshold into the handoff-loop skill + session-relay-wrap-up.", &[]),
-        mk("HFTASK-0069", "ADR-0018 D2: central pre/post hook contract + deployable canonical bundle", Priority::P2,
-           "ADR-0018 D2: extend the typed hook contract (hf/src/hooks.rs, HFTASK-0052: hook_event.v1/hook_result.v1/severity_for) to robustly + fail-closed cover ALL 8 events (SessionStart/Resume/End, Pre/PostCommand, Pre/PostTest, PostHandoff), and make `.handoff/hooks/{loop-entry,session-end,...}.sh` + `hooks.toml` a SINGLE handoff-central canonical bundle deployed identically fleet-wide (via the HFTASK-0065 /handoff-loop-init mechanism). Idempotent; no dangling settings.json refs (fail-closed skip when a hook source is absent).", &["HFTASK-0052"]),
-        mk("HFTASK-0070", "ADR-0018 D5: handoff-central format + cross-fleet deploy for session-relay-resume/-wrap-up", Priority::P2,
-           "ADR-0018 D5: the `session-relay-resume`/`-wrap-up` skills (today harness_hub-owned per-repo) get their canonical format/templates defined IN handoff (rendered from the witnessed ledger/packet, NEVER hand-authored prose), and handoff deploys them + enforces byte-consistency to every fleet member via the /handoff-loop-init family (HFTASK-0065). Cross-repo (harness_hub) — gatekeeper-gated.", &["HFTASK-0065"]),
-        mk("HFTASK-0071", "ADR-0018 D4: more direction from handoff (next-action in hf resume + packet)", Priority::P2,
-           "ADR-0018 D4: `hf resume` + the rendered packet emit EXPLICIT next-action direction — the single next safe task, the exact next command, the cycle/context-budget state, and the blocking walls — so a fresh agent needs zero archaeology. The handoff-loop skill gives richer steering (decision rationale + 'do this next', not just 'here is state').", &[]),
-        mk("HFTASK-0072", "ADR-0018 D7: full adoption of meta/.kb/AGENTS.md (init full .kb + create-first + two-way seam)", Priority::P2,
-           "ADR-0018 D7: fully adopt the FlexNetOS agent guide meta/.kb/AGENTS.md (765 lines: document-before-implement, context docs, `git kb board`, traceability) in handoff. Init the FULL `.kb` (handoff is code-intelligence-only today: `git kb init`), wire the create-first discipline + board + traceability into the loop, and bind the planning<->execution seam (ADR-0003) BOTH ways per the guide (mint-in + write-back). No downgrade of the existing one-way ledger->kb mirror; kb still never overrides execution truth.", &[]),
-        mk("HFTASK-0073", "ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check)", Priority::P2,
-           "ADR-0018 D8: make the `hf claim -> grit claim <file::symbol> -> grit worktree -> grit done` cycle (ADR-0009) the DEFAULT path for every batch; advance the shared grit backend (ADR-0010) past degrade. GitHub: ground the autonomous AI gatekeeper (HFTASK-0014) as a REQUIRED status check feeding branch protection (HFTASK-0010/0012) + gh-aw guardrails so develop->trunk promotion needs NO manual gh api.", &["HFTASK-0075"]),
-        mk("HFTASK-0074", "ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI)", Priority::P3,
-           "ADR-0018 D9: commit `.idea/` (per D1) and actually USE it — shared run/debug configurations for the hf binary + tests, the Qodana inspection profile (`qodana.yaml`) wired as ADVISORY CI, the Rust plugin config. `workspace.xml` (the one genuinely per-user file) is committed per D1 unless it churns destructively — then carve it out with a recorded rationale (the ONLY allowed D1 exception).", &["HFTASK-0067"]),
-        mk("HFTASK-0075", "ADR-0018 D10: worktree per task batch, reaped on verified PR merge", Priority::P1,
-           "ADR-0018 D10: every task batch starts a NEW grit worktree (ADR-0009); it is removed ONLY on verified PR merge (not before); abandoned/discarded batches keep their worktree until reconciled. Wire into `hf session`/`hf claim --batch` + the handoff-loop preflight. This isolation is the precondition that makes D1's committed binary ledger.db safe (parallel batches never share a working ledger).", &[]),
-        mk("HFTASK-0076", "ADR-0018 D11: all PRs->develop; hands-off develop->trunk auto-promotion + master/main reconcile", Priority::P1,
-           "ADR-0018 D11: fix/replace the `sync-master.yml` stall so develop promotes to trunk AUTOMATICALLY on green with NO manual `gh api` ff. Reconcile the trunk NAME: directive says `main`, repo uses `master` — standardize on `main` (or keep `master` with `main` as the documented alias) across `policy.toml`, `.github/workflows/*`, and the docs, ONE decision applied everywhere. The pipeline is fixed: branch off develop -> PR --base develop -> auto-promote on green.", &[]),
-        mk("HFTASK-0077", "ADR-0018 D6: update .claude/rules/* + meta rules to the full-auto model + fleet deploy", Priority::P2,
-           "ADR-0018 D6: update `handoff/.claude/rules/*` + the meta-level rules to the full-auto operating model (committed dotfiles, worktree-per-batch, context-budget wrap, full `.kb` adoption, grit+gh grounding, designated-agent-replaces-human). Deploy the updated rules fleet-wide via the HFTASK-0065 /handoff-loop-init mechanism.", &["HFTASK-0067","HFTASK-0068","HFTASK-0075"]),
+        mk(
+            "HFTASK-0067",
+            "ADR-0018 D1: commit ALL dotfiles/dirs — reverse the .handoff residency-ignore + invert fleet P7",
+            Priority::P1,
+            "ADR-0018 D1: moving forward every dotfile/dotdir is git-TRACKED (.handoff incl. ledger + rendered views, .idea, .claude, .github, .kb, .grit config). Stop `hf init`/`scripts/fleet-rollout.sh`/`scripts/handoff-lib.sh` from writing the `.handoff/**/ledger.db`(+wal/shm/rvf/active.md/locks/deliveries/packets) ignore block; REMOVE the existing blocks; ensure those paths are tracked instead. INVERT `hf fleet status` P7 (HFTASK-0034 git_tracks_handoff_db/ledger_guard_present): a tracked `.handoff/ledger.db` is now CONFORMANT; a missing ledger or a present ignore-guard is the VIOLATION. Decide + implement the binary ledger.db conflict story (worktree-isolated per batch HFTASK-0075 + FLEET rollup + serialized merge; binary-merge=ours-replay OR a deterministic text export beside it). Migration artifacts (*.sqlite.bak/*.redb.tmp) stay OUT-OF-TREE (already true, PR #114) — only durable state is committed. Roll the guard removal + P7 inversion ATOMICALLY. Supersedes the ignore half of ADR-0004 §3/§6 + ADR-0016/HFTASK-0035/0037/0048/0021/0066.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0068",
+            "ADR-0018 D3: context-budget loop wrap (~50% window), not fixed cycle_flush",
+            Priority::P1,
+            "ADR-0018 D3: replace 'wrap after cycle_flush tasks' with 'run until ~50% of the context window is consumed, then checkpoint -> handoff'. Add `policy.toml [loop] context_budget_pct = 50` + `wrap_strategy = \"context\"` to hf/src/policy.rs LoopCfg with compiled defaults + round-trip tests; keep `cycle_flush` as an UPPER safety bound. The kernel exposes the policy + the wrap verbs; ENFORCEMENT is at the loop-skill layer (handoff-loop Phase 5 + session-relay-wrap-up read the running token/context budget and trigger the wrap at the threshold). Wire the threshold into the handoff-loop skill + session-relay-wrap-up.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0069",
+            "ADR-0018 D2: central pre/post hook contract + deployable canonical bundle",
+            Priority::P2,
+            "ADR-0018 D2: extend the typed hook contract (hf/src/hooks.rs, HFTASK-0052: hook_event.v1/hook_result.v1/severity_for) to robustly + fail-closed cover ALL 8 events (SessionStart/Resume/End, Pre/PostCommand, Pre/PostTest, PostHandoff), and make `.handoff/hooks/{loop-entry,session-end,...}.sh` + `hooks.toml` a SINGLE handoff-central canonical bundle deployed identically fleet-wide (via the HFTASK-0065 /handoff-loop-init mechanism). Idempotent; no dangling settings.json refs (fail-closed skip when a hook source is absent).",
+            &["HFTASK-0052"],
+        ),
+        mk(
+            "HFTASK-0070",
+            "ADR-0018 D5: handoff-central format + cross-fleet deploy for session-relay-resume/-wrap-up",
+            Priority::P2,
+            "ADR-0018 D5: the `session-relay-resume`/`-wrap-up` skills (today harness_hub-owned per-repo) get their canonical format/templates defined IN handoff (rendered from the witnessed ledger/packet, NEVER hand-authored prose), and handoff deploys them + enforces byte-consistency to every fleet member via the /handoff-loop-init family (HFTASK-0065). Cross-repo (harness_hub) — gatekeeper-gated.",
+            &["HFTASK-0065"],
+        ),
+        mk(
+            "HFTASK-0071",
+            "ADR-0018 D4: more direction from handoff (next-action in hf resume + packet)",
+            Priority::P2,
+            "ADR-0018 D4: `hf resume` + the rendered packet emit EXPLICIT next-action direction — the single next safe task, the exact next command, the cycle/context-budget state, and the blocking walls — so a fresh agent needs zero archaeology. The handoff-loop skill gives richer steering (decision rationale + 'do this next', not just 'here is state').",
+            &[],
+        ),
+        mk(
+            "HFTASK-0072",
+            "ADR-0018 D7: full adoption of meta/.kb/AGENTS.md (init full .kb + create-first + two-way seam)",
+            Priority::P2,
+            "ADR-0018 D7: fully adopt the FlexNetOS agent guide meta/.kb/AGENTS.md (765 lines: document-before-implement, context docs, `git kb board`, traceability) in handoff. Init the FULL `.kb` (handoff is code-intelligence-only today: `git kb init`), wire the create-first discipline + board + traceability into the loop, and bind the planning<->execution seam (ADR-0003) BOTH ways per the guide (mint-in + write-back). No downgrade of the existing one-way ledger->kb mirror; kb still never overrides execution truth.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0073",
+            "ADR-0018 D8: deeper grit + GitHub grounding (default grit cycle + gatekeeper-as-required-check)",
+            Priority::P2,
+            "ADR-0018 D8: make the `hf claim -> grit claim <file::symbol> -> grit worktree -> grit done` cycle (ADR-0009) the DEFAULT path for every batch; advance the shared grit backend (ADR-0010) past degrade. GitHub: ground the autonomous AI gatekeeper (HFTASK-0014) as a REQUIRED status check feeding branch protection (HFTASK-0010/0012) + gh-aw guardrails so develop->trunk promotion needs NO manual gh api.",
+            &["HFTASK-0075"],
+        ),
+        mk(
+            "HFTASK-0074",
+            "ADR-0018 D9: real .idea integration + use (run configs, Qodana advisory CI)",
+            Priority::P3,
+            "ADR-0018 D9: commit `.idea/` (per D1) and actually USE it — shared run/debug configurations for the hf binary + tests, the Qodana inspection profile (`qodana.yaml`) wired as ADVISORY CI, the Rust plugin config. `workspace.xml` (the one genuinely per-user file) is committed per D1 unless it churns destructively — then carve it out with a recorded rationale (the ONLY allowed D1 exception).",
+            &["HFTASK-0067"],
+        ),
+        mk(
+            "HFTASK-0075",
+            "ADR-0018 D10: worktree per task batch, reaped on verified PR merge",
+            Priority::P1,
+            "ADR-0018 D10: every task batch starts a NEW grit worktree (ADR-0009); it is removed ONLY on verified PR merge (not before); abandoned/discarded batches keep their worktree until reconciled. Wire into `hf session`/`hf claim --batch` + the handoff-loop preflight. This isolation is the precondition that makes D1's committed binary ledger.db safe (parallel batches never share a working ledger).",
+            &[],
+        ),
+        mk(
+            "HFTASK-0076",
+            "ADR-0018 D11: all PRs->develop; hands-off develop->trunk auto-promotion + master/main reconcile",
+            Priority::P1,
+            "ADR-0018 D11: fix/replace the `sync-master.yml` stall so develop promotes to trunk AUTOMATICALLY on green with NO manual `gh api` ff. Reconcile the trunk NAME: directive says `main`, repo uses `master` — standardize on `main` (or keep `master` with `main` as the documented alias) across `policy.toml`, `.github/workflows/*`, and the docs, ONE decision applied everywhere. The pipeline is fixed: branch off develop -> PR --base develop -> auto-promote on green.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0077",
+            "ADR-0018 D6: update .claude/rules/* + meta rules to the full-auto model + fleet deploy",
+            Priority::P2,
+            "ADR-0018 D6: update `handoff/.claude/rules/*` + the meta-level rules to the full-auto operating model (committed dotfiles, worktree-per-batch, context-budget wrap, full `.kb` adoption, grit+gh grounding, designated-agent-replaces-human). Deploy the updated rules fleet-wide via the HFTASK-0065 /handoff-loop-init mechanism.",
+            &["HFTASK-0067", "HFTASK-0068", "HFTASK-0075"],
+        ),
         // --- Owner directive 2026-06-21 (relay #134 from harness-agent-rs): institutionalize the
         // LIVE differential-drive verification that "caught what 1000+ green tests missed". ---
-        mk("HFTASK-0078", "Live differential-drive verification as a fleet handoff action workflow", Priority::P1,
-           "Owner directive (relay #134): a LIVE differential drive (drive the REAL binary/CLI and DIFF its actual output against an expectation) caught what 1000+ green unit tests missed; capture it as a fleet-deployable handoff action workflow that institutionalizes the FAIL-OPEN doctrine the kernel already lives by (green is not proof; cases-run must be > 0; ABSENCE is a FAILURE, never a silent pass). Add `.github/workflows/differential-drive.yml` — a GENERIC, repo-agnostic reusable (`workflow_call` + `workflow_dispatch`) GitHub Actions workflow that runs `scripts/differential-drive.sh`; it is DORMANT by default (no push/PR trigger) so deploying it never spams red checks on a repo that has not yet authored cases. Add `scripts/differential-drive.sh` — a self-contained, fail-closed harness exposing `drive <name> <cmd> <expected-substring>` (PASS iff exit 0 AND output contains the substring), sourcing optional repo-specific cases from `scripts/differential-drive.cases.sh`, asserting total-cases>0 (fail-closed with an actionable message when absent/empty), and emitting a libtest-compatible `test result:` summary so `hf test` COUNT-verifies it (the tests-ran>0 gate, HFTASK-0045/0063) rather than trusting exit code alone. Ship handoff's OWN `scripts/differential-drive.cases.sh` driving the real `hf` binary (CLI-contract invariants: usage exposes claim/ship/promote/drift/handoff) + a handoff-local `.github/workflows/differential-drive-ci.yml` caller (PR-triggered, advisory/NOT-required so it never blocks the develop->trunk promote gate, replicating ci.yml's RuVector-sibling layout) that dogfoods the harness. Deploy ONLY the generic workflow + harness fleet-wide via the canonical scripts/handoff-loop-init.sh deploy_diff_drive() (HFTASK-0065/0066 mechanism), idempotent, dry-run aware; the handoff-local caller + cases file are NOT deployed (each repo authors its own cases). Making the check branch-protection-REQUIRED is the follow-on (HFTASK-0073/D8) and is NOT done here (account-level wall).", &["HFTASK-0045","HFTASK-0065"]),
+        mk(
+            "HFTASK-0078",
+            "Live differential-drive verification as a fleet handoff action workflow",
+            Priority::P1,
+            "Owner directive (relay #134): a LIVE differential drive (drive the REAL binary/CLI and DIFF its actual output against an expectation) caught what 1000+ green unit tests missed; capture it as a fleet-deployable handoff action workflow that institutionalizes the FAIL-OPEN doctrine the kernel already lives by (green is not proof; cases-run must be > 0; ABSENCE is a FAILURE, never a silent pass). Add `.github/workflows/differential-drive.yml` — a GENERIC, repo-agnostic reusable (`workflow_call` + `workflow_dispatch`) GitHub Actions workflow that runs `scripts/differential-drive.sh`; it is DORMANT by default (no push/PR trigger) so deploying it never spams red checks on a repo that has not yet authored cases. Add `scripts/differential-drive.sh` — a self-contained, fail-closed harness exposing `drive <name> <cmd> <expected-substring>` (PASS iff exit 0 AND output contains the substring), sourcing optional repo-specific cases from `scripts/differential-drive.cases.sh`, asserting total-cases>0 (fail-closed with an actionable message when absent/empty), and emitting a libtest-compatible `test result:` summary so `hf test` COUNT-verifies it (the tests-ran>0 gate, HFTASK-0045/0063) rather than trusting exit code alone. Ship handoff's OWN `scripts/differential-drive.cases.sh` driving the real `hf` binary (CLI-contract invariants: usage exposes claim/ship/promote/drift/handoff) + a handoff-local `.github/workflows/differential-drive-ci.yml` caller (PR-triggered, advisory/NOT-required so it never blocks the develop->trunk promote gate, replicating ci.yml's RuVector-sibling layout) that dogfoods the harness. Deploy ONLY the generic workflow + harness fleet-wide via the canonical scripts/handoff-loop-init.sh deploy_diff_drive() (HFTASK-0065/0066 mechanism), idempotent, dry-run aware; the handoff-local caller + cases file are NOT deployed (each repo authors its own cases). Making the check branch-protection-REQUIRED is the follow-on (HFTASK-0073/D8) and is NOT done here (account-level wall).",
+            &["HFTASK-0045", "HFTASK-0065"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -2896,8 +3215,7 @@ fn cmd_seed() {
     let mut backlog = backlog;
     {
         let id = "HFTASK-0026";
-        let title =
-            "Anchor hf core ledger ops to meta-root + kernel/fleet routing (fix kb-mint contamination)";
+        let title = "Anchor hf core ledger ops to meta-root + kernel/fleet routing (fix kb-mint contamination)";
         let objective = "ADR-0004 §3 two-ledger residency: hf resolved .handoff/ledger.db + tasks/ CWD-relative with no anchoring, so `hf task mint --from-kb` + claim/checkpoint/done run from handoff/ wrote envctl-domain KBTASK cards into handoff's KERNEL ledger instead of the FLEET ledger (meta/.handoff). Add route_for_task(id) (LOCAL card -> KERNEL home; else FLEET card -> meta/.handoff; else FAIL CLOSED) and route every per-task ledger op (claim/checkpoint/done/review verdict/ship) through it; mint kb cards to the FLEET tasks dir via find_meta_root(). Global/self ops (status/resume/handoff/drift) stay LOCAL.";
         let path_scope = vec!["handoff/**".to_string()];
         let acceptance = vec![
@@ -3039,38 +3357,54 @@ fn cmd_seed() {
     }
     // ADR-0004 §3.3 revision (2026-06-13, owner-directed): per-repo gitignored ledger + central rollup.
     for (id, title, objective, deps) in [
-        ("HFTASK-0031",
-         "Ledger schema: rollup provenance (origin_repo/origin_seq/origin_action_hash) + sync_cursor",
-         "ADR-0004 §3.3 (rev): additive, backward-compatible migration in ledger/src/lib.rs — ALTER events ADD COLUMN origin_repo TEXT / origin_seq INTEGER / origin_action_hash BLOB (NULL = native local event); CREATE UNIQUE INDEX idx_events_origin ON events(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL (idempotency); CREATE TABLE sync_cursor(origin_repo PK, last_seq, updated_ns) in the CENTRAL ledger. Old rows verify unchanged (verify_witness_chain rebuilds from ordered action_hash, ignores stored prev_hash). No rvf-crypto change.",
-         Vec::<String>::new()),
-        ("HFTASK-0032",
-         "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx)",
-         "ADR-0004 §3.3 (rev): hf/src/sync.rs + a ledger rollup API. For each member repo, read its gitignored .handoff/ledger.db events with seq > sync_cursor.last_seq, RE-APPEND each through the central ledger's witnessed append() path (re-chained onto the central tail), tagging provenance (origin_repo, origin_seq, origin_action_hash = the source action_hash, byte-identical since hash_action inputs match). Advance the cursor in the SAME central transaction. UNIQUE(origin_repo,origin_seq) makes re-runs no-ops (at-least-once -> exactly-once). Chains are never merged; self-contained events are re-appended (CT/RFC6962 model).",
-         vec!["HFTASK-0031".to_string()]),
-        ("HFTASK-0033",
-         "verify_rollup_provenance() + hf fleet status verifies both chains + provenance",
-         "ADR-0004 §3.3 (rev): add verify_rollup_provenance() (pure SQL + existing hash_action) that, for each rolled-up central row, re-derives SHA3-256(event_type||work_order_id||payload_json) and byte-compares to origin_action_hash (the proof bridge). Extend hf fleet status to verify (i) the central chain via verify_witness_chain (unchanged), (ii) each per-repo chain independently, (iii) provenance faithfulness. Both chains verify independently; any central event traces to its repo.",
-         vec!["HFTASK-0031".to_string()]),
-        ("HFTASK-0034",
-         "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard",
-         "ADR-0004 §6 (rev): flip hf/src/fleet.rs P7 enforcement — a gitignored local .handoff/ledger.db is LEGITIMATE; only a git-TRACKED .db under .handoff is a violation. Gate: fail on tracked .db; fail if the .handoff/**/ledger.db .gitignore guard is missing; a .db merely present on disk is NOT a violation (remove the stray-ledger flag at fleet.rs:102/111/145-154). Cross-fleet follow-up (other repos): envctl ci/gates/p7.sh Gate 3b removal; prompt_hub/lane member-rule capsule/README edits.",
-         Vec::<String>::new()),
-        ("HFTASK-0035",
-         "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide",
-         "ADR-0004 §3.3/§6 (rev): ensure every continuity member's .gitignore ignores .handoff/**/ledger.db (and *.db-wal/*.db-shm) so the per-repo local ledger is never committed (keeps the one good half of the old rule). Update the handoff repo + the fleet rollout generator so seeded repos get the guard. Idempotent.",
-         Vec::<String>::new()),
-        ("HFTASK-0036",
-         "hf ship fail-closed exit codes (L2 hf-verb-safety)",
-         "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
-         vec!["HFTASK-0008".to_string()]),
-        ("HFTASK-0037",
-         "gitignore .handoff/active.md (derived view, stop the churn/drift)",
-         "Verify-found gap: .handoff/active.md is a TRACKED derived view that hf resume/handoff regenerate every run, so it perpetually dirties the tree and trips `hf drift` (deny_without_claim) at the start of every session — yet its sibling derived view .handoff/packets/latest.md is already gitignored. Both are hf-rendered from ledger truth (the ledger + capsule.json are the committed cold-start sources). Fix: add /.handoff/active.md to .gitignore and `git rm --cached` it (untrack), consistent with packets/. hf still renders it locally; it just stops churning git.",
-         Vec::<String>::new()),
-        ("HFTASK-0038",
-         "hf release un-claims: revert ledger status to Backlog (not lease-only)",
-         "Verify-found gap (HFTASK-0018 cycle): cmd_release (hf/src/main.rs) is lease-only — it frees the weave lease but never records a ledger transition, so a released in-progress task stays Claimed in the ledger (HFTASK-0006 got stuck Claimed, and `hf claim --batch` then resumed the phantom). Fix: after freeing the lease, if the task's replayed status is in-progress (Claimed/Checkpointed/Active), record_transition(&wo, Status::Backlog, now_ns()) via the routed per-task ledger (mirror cmd_claim_with), so a release TRULY un-claims. Leave terminal/post-work states (Review/Done) and already-Backlog untouched. Unit-test the un-claim decision; runtime-verify by reverting the stuck HFTASK-0006 to Backlog.",
-         Vec::<String>::new()),
+        (
+            "HFTASK-0031",
+            "Ledger schema: rollup provenance (origin_repo/origin_seq/origin_action_hash) + sync_cursor",
+            "ADR-0004 §3.3 (rev): additive, backward-compatible migration in ledger/src/lib.rs — ALTER events ADD COLUMN origin_repo TEXT / origin_seq INTEGER / origin_action_hash BLOB (NULL = native local event); CREATE UNIQUE INDEX idx_events_origin ON events(origin_repo, origin_seq) WHERE origin_repo IS NOT NULL (idempotency); CREATE TABLE sync_cursor(origin_repo PK, last_seq, updated_ns) in the CENTRAL ledger. Old rows verify unchanged (verify_witness_chain rebuilds from ordered action_hash, ignores stored prev_hash). No rvf-crypto change.",
+            Vec::<String>::new(),
+        ),
+        (
+            "HFTASK-0032",
+            "hf sync Part C: per-repo -> central rollup (cursor-driven, idempotent, single tx)",
+            "ADR-0004 §3.3 (rev): hf/src/sync.rs + a ledger rollup API. For each member repo, read its gitignored .handoff/ledger.db events with seq > sync_cursor.last_seq, RE-APPEND each through the central ledger's witnessed append() path (re-chained onto the central tail), tagging provenance (origin_repo, origin_seq, origin_action_hash = the source action_hash, byte-identical since hash_action inputs match). Advance the cursor in the SAME central transaction. UNIQUE(origin_repo,origin_seq) makes re-runs no-ops (at-least-once -> exactly-once). Chains are never merged; self-contained events are re-appended (CT/RFC6962 model).",
+            vec!["HFTASK-0031".to_string()],
+        ),
+        (
+            "HFTASK-0033",
+            "verify_rollup_provenance() + hf fleet status verifies both chains + provenance",
+            "ADR-0004 §3.3 (rev): add verify_rollup_provenance() (pure SQL + existing hash_action) that, for each rolled-up central row, re-derives SHA3-256(event_type||work_order_id||payload_json) and byte-compares to origin_action_hash (the proof bridge). Extend hf fleet status to verify (i) the central chain via verify_witness_chain (unchanged), (ii) each per-repo chain independently, (iii) provenance faithfulness. Both chains verify independently; any central event traces to its repo.",
+            vec!["HFTASK-0031".to_string()],
+        ),
+        (
+            "HFTASK-0034",
+            "P7 flip: hf fleet status forbids only git-TRACKED ledger.db, requires the .gitignore guard",
+            "ADR-0004 §6 (rev): flip hf/src/fleet.rs P7 enforcement — a gitignored local .handoff/ledger.db is LEGITIMATE; only a git-TRACKED .db under .handoff is a violation. Gate: fail on tracked .db; fail if the .handoff/**/ledger.db .gitignore guard is missing; a .db merely present on disk is NOT a violation (remove the stray-ledger flag at fleet.rs:102/111/145-154). Cross-fleet follow-up (other repos): envctl ci/gates/p7.sh Gate 3b removal; prompt_hub/lane member-rule capsule/README edits.",
+            Vec::<String>::new(),
+        ),
+        (
+            "HFTASK-0035",
+            "Standardize .gitignore residency guard `.handoff/**/ledger.db` fleet-wide",
+            "ADR-0004 §3.3/§6 (rev): ensure every continuity member's .gitignore ignores .handoff/**/ledger.db (and *.db-wal/*.db-shm) so the per-repo local ledger is never committed (keeps the one good half of the old rule). Update the handoff repo + the fleet rollout generator so seeded repos get the guard. Idempotent.",
+            Vec::<String>::new(),
+        ),
+        (
+            "HFTASK-0036",
+            "hf ship fail-closed exit codes (L2 hf-verb-safety)",
+            "Verify-found gap (HFTASK-0033..0035 cycle): every refusal/error path in cmd_ship (empty id, unknown remote.model, fork-deferred, not-on-branch, ship-from-base/trunk guard, git add/commit/push failure, PR-create/auto-merge failure) uses a bare `return` and exits 0, so hooks/scripts/the loop cannot detect a refused or failed ship — the same L2 hf-verb-safety class fixed for hf claim in HFTASK-0029. Make every cmd_ship error/refusal path exit nonzero (std::process::exit(1); empty-id usage exit 2) while the happy path stays 0.",
+            vec!["HFTASK-0008".to_string()],
+        ),
+        (
+            "HFTASK-0037",
+            "gitignore .handoff/active.md (derived view, stop the churn/drift)",
+            "Verify-found gap: .handoff/active.md is a TRACKED derived view that hf resume/handoff regenerate every run, so it perpetually dirties the tree and trips `hf drift` (deny_without_claim) at the start of every session — yet its sibling derived view .handoff/packets/latest.md is already gitignored. Both are hf-rendered from ledger truth (the ledger + capsule.json are the committed cold-start sources). Fix: add /.handoff/active.md to .gitignore and `git rm --cached` it (untrack), consistent with packets/. hf still renders it locally; it just stops churning git.",
+            Vec::<String>::new(),
+        ),
+        (
+            "HFTASK-0038",
+            "hf release un-claims: revert ledger status to Backlog (not lease-only)",
+            "Verify-found gap (HFTASK-0018 cycle): cmd_release (hf/src/main.rs) is lease-only — it frees the weave lease but never records a ledger transition, so a released in-progress task stays Claimed in the ledger (HFTASK-0006 got stuck Claimed, and `hf claim --batch` then resumed the phantom). Fix: after freeing the lease, if the task's replayed status is in-progress (Claimed/Checkpointed/Active), record_transition(&wo, Status::Backlog, now_ns()) via the routed per-task ledger (mirror cmd_claim_with), so a release TRULY un-claims. Leave terminal/post-work states (Review/Done) and already-Backlog untouched. Unit-test the un-claim decision; runtime-verify by reverting the stuck HFTASK-0006 to Backlog.",
+            Vec::<String>::new(),
+        ),
     ] {
         backlog.push(WorkOrder {
             schema: "handoff.task.v1".into(),
@@ -3080,7 +3414,9 @@ fn cmd_seed() {
             priority: Priority::P1,
             objective: objective.into(),
             path_scope: vec!["handoff/**".to_string()],
-            acceptance_criteria: vec![format!("{title}: implemented + cargo test green + drift-audited")],
+            acceptance_criteria: vec![format!(
+                "{title}: implemented + cargo test green + drift-audited"
+            )],
             test_commands: vec!["cargo test".into()],
             dependencies: deps,
             blocked_by: vec![],
@@ -3091,7 +3427,9 @@ fn cmd_seed() {
             intent_lock: WorkOrder::compute_intent_lock(
                 objective,
                 &["handoff/**".to_string()],
-                &[format!("{title}: implemented + cargo test green + drift-audited")],
+                &[format!(
+                    "{title}: implemented + cargo test green + drift-audited"
+                )],
             ),
         });
     }
@@ -3209,10 +3547,14 @@ fn cmd_seed() {
 /// HFTASK-0054: extract a global `--ledger <path>` flag from the raw argument list. When
 /// present, the path is exported as `HANDOFF_LEDGER` so `ledger_path()` honors it. The flag
 /// and its value are removed so subcommand dispatch stays positional.
+// `env::set_var` is `unsafe` in edition 2024 (it data-races concurrent env reads). This runs in
+// `main`'s argv preprocessing, before any thread is spawned — single-threaded by construction —
+// so it is sound. Justified exception to the workspace `unsafe_code = "deny"` policy.
+#[allow(unsafe_code)]
 fn apply_ledger_flag(args: &mut Vec<String>) {
     if let Some(pos) = args.iter().position(|a| a == "--ledger") {
         if let Some(path) = args.get(pos + 1).cloned() {
-            std::env::set_var("HANDOFF_LEDGER", &path);
+            unsafe { std::env::set_var("HANDOFF_LEDGER", &path) };
         }
         // Remove both tokens; if no value was provided, just drop the flag.
         args.remove(pos);
@@ -3459,10 +3801,10 @@ fn main() {
                         .map(|s| s.as_str());
                     // Witness each typed result as a `hook_result` ledger event (best-effort).
                     let code = hooks::cmd_hook_run(event, payload, json, |r| {
-                        if let Ok(mut led) = Ledger::open(&ledger_path()) {
-                            if let Ok(p) = serde_json::to_string(r) {
-                                let _ = led.append("hook_result", &r.event, &p, now_ns());
-                            }
+                        if let Ok(mut led) = Ledger::open(&ledger_path())
+                            && let Ok(p) = serde_json::to_string(r)
+                        {
+                            let _ = led.append("hook_result", &r.event, &p, now_ns());
                         }
                     });
                     if code != 0 {
@@ -3470,7 +3812,9 @@ fn main() {
                     }
                 }
                 _ => {
-                    eprintln!("hf hook: use `hf hook list` or `hf hook run <event> [--payload <json>] [--json]`");
+                    eprintln!(
+                        "hf hook: use `hf hook list` or `hf hook run <event> [--payload <json>] [--json]`"
+                    );
                     std::process::exit(2);
                 }
             }
@@ -3528,7 +3872,9 @@ fn main() {
                 }
                 Some("list") => delivery::cmd_delivery_list(json),
                 _ => {
-                    eprintln!("hf delivery: use `hf delivery get <correlation_id> [--json]` or `hf delivery list [--json]`");
+                    eprintln!(
+                        "hf delivery: use `hf delivery get <correlation_id> [--json]` or `hf delivery list [--json]`"
+                    );
                     std::process::exit(2);
                 }
             }
@@ -3585,7 +3931,9 @@ fn main() {
             if let Some(verb) = other {
                 eprintln!("hf: unknown command '{verb}'");
             }
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!(
+                "hf [--ledger PATH] <init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
+            );
             if other.is_some() {
                 std::process::exit(2);
             }
@@ -3595,6 +3943,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    // Tests set/clear `HANDOFF_LEDGER*` env vars (unsafe in edition 2024). Test binaries run each
+    // test in a controlled context and these env mutations are serialized via the cwd/env lock,
+    // so the data-race precondition does not arise. Justified test-only `unsafe_code` allow.
+    #![allow(unsafe_code)]
     use super::*;
 
     /// HFTASK-0058: the two tests that mutate the process-global `HANDOFF_LEDGER` env var
@@ -3622,14 +3974,17 @@ mod tests {
         // shared env lock and restore the prior value so no sibling test is destabilized.
         let _g = ENV_LOCK.lock().unwrap();
         let prev = std::env::var("HANDOFF_LEDGER_BACKUP_DIR").ok();
-        std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", "/tmp/hb-test-dir");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", "/tmp/hb-test-dir") };
         assert_eq!(
             ledger_backup_dir(),
             Some(std::path::PathBuf::from("/tmp/hb-test-dir"))
         );
         match prev {
-            Some(v) => std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", v),
-            None => std::env::remove_var("HANDOFF_LEDGER_BACKUP_DIR"),
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            Some(v) => unsafe { std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", v) },
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            None => unsafe { std::env::remove_var("HANDOFF_LEDGER_BACKUP_DIR") },
         }
     }
 
@@ -3703,10 +4058,12 @@ mod tests {
         // The kernel home keeps its curated identity + doctrine.
         let kernel = init_capsule(true, "handoff", "kernel", "orchestration", KERNEL_NORTHSTAR);
         assert_eq!(kernel["project_name"], "handoff (Continuity Ledger Kernel)");
-        assert!(kernel["northstar"]
-            .as_str()
-            .unwrap()
-            .contains("KERNEL DOCTRINE"));
+        assert!(
+            kernel["northstar"]
+                .as_str()
+                .unwrap()
+                .contains("KERNEL DOCTRINE")
+        );
     }
 
     #[test]
@@ -3880,7 +4237,8 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // HFTASK-0054: without an override, ledger_path() is cwd-relative.
         let prev = std::env::var("HANDOFF_LEDGER").ok();
-        std::env::remove_var("HANDOFF_LEDGER");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("HANDOFF_LEDGER") };
         // Build the expected default the same way ledger_path() does so the
         // assertion holds on Windows too (Path::join yields a `\` separator).
         let default_local = Path::new(super::HF)
@@ -3890,16 +4248,20 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         assert_eq!(super::ledger_path(), default_local);
 
         // With the override, it points exactly at the supplied path.
-        std::env::set_var("HANDOFF_LEDGER", "/tmp/fleet.ledger.db");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("HANDOFF_LEDGER", "/tmp/fleet.ledger.db") };
         assert_eq!(super::ledger_path(), "/tmp/fleet.ledger.db");
 
         // Empty override is treated as unset (defensive).
-        std::env::set_var("HANDOFF_LEDGER", "");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("HANDOFF_LEDGER", "") };
         assert_eq!(super::ledger_path(), default_local);
 
         match prev {
-            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
-            None => std::env::remove_var("HANDOFF_LEDGER"),
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            Some(v) => unsafe { std::env::set_var("HANDOFF_LEDGER", v) },
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            None => unsafe { std::env::remove_var("HANDOFF_LEDGER") },
         }
     }
 
@@ -3908,7 +4270,8 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // HFTASK-0054: the global `--ledger <path>` flag is stripped and exported.
         let prev = std::env::var("HANDOFF_LEDGER").ok();
-        std::env::remove_var("HANDOFF_LEDGER");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("HANDOFF_LEDGER") };
 
         let mut args = vec![
             "--ledger".into(),
@@ -3923,15 +4286,18 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         assert_eq!(args, vec!["status"]);
 
         // No flag => no mutation (clear the var exported above first).
-        std::env::remove_var("HANDOFF_LEDGER");
+        // FIXME: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("HANDOFF_LEDGER") };
         let mut args2 = vec!["handoff".into()];
         super::apply_ledger_flag(&mut args2);
         assert!(std::env::var("HANDOFF_LEDGER").is_err());
         assert_eq!(args2, vec!["handoff"]);
 
         match prev {
-            Some(v) => std::env::set_var("HANDOFF_LEDGER", v),
-            None => std::env::remove_var("HANDOFF_LEDGER"),
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            Some(v) => unsafe { std::env::set_var("HANDOFF_LEDGER", v) },
+            // FIXME: Audit that the environment access only happens in single-threaded code.
+            None => unsafe { std::env::remove_var("HANDOFF_LEDGER") },
         }
     }
 
@@ -3993,7 +4359,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         assert_eq!(latest_pr_opened(&led, "HFTASK-0001"), None);
         let _ = std::fs::remove_file(&path);
     }
-    use work_order::{work_orders_from_bundle, SwarmBundle};
+    use work_order::{SwarmBundle, work_orders_from_bundle};
 
     fn sample_tasks() -> Vec<WorkOrder> {
         work_orders_from_bundle(&SwarmBundle {

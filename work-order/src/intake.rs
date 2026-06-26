@@ -376,10 +376,11 @@ mod tests {
         // first criterion references the primary test command (the §12.3 #7 mapping)
         assert!(spec.acceptance_criteria[0].contains("cargo test"));
         // provenance/drift criterion is always present
-        assert!(spec
-            .acceptance_criteria
-            .iter()
-            .any(|c| c.contains("Drift audit") && c.contains("out-of-scope")));
+        assert!(
+            spec.acceptance_criteria
+                .iter()
+                .any(|c| c.contains("Drift audit") && c.contains("out-of-scope"))
+        );
     }
 
     #[test]

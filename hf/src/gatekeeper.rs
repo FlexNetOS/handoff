@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::{
-    ledger_path, now_ns, policy::Policy, route::route_for_task, run_out, GhPrView, Ledger, HF,
+    GhPrView, HF, Ledger, ledger_path, now_ns, policy::Policy, route::route_for_task, run_out,
 };
 
 /// The result of an impact scan.
@@ -453,9 +453,11 @@ mod tests {
             verdict_from_signals(&changed, true, None, &policy, false);
         assert_eq!(verdict, GatekeeperVerdict::Deny);
         assert_eq!(protected, changed);
-        assert!(reasons
-            .iter()
-            .any(|r| r.contains("require explicit steward clearance")));
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("require explicit steward clearance"))
+        );
     }
 
     #[test]
@@ -466,8 +468,10 @@ mod tests {
             verdict_from_signals(&changed, true, None, &policy, true);
         assert_eq!(verdict, GatekeeperVerdict::Approve);
         assert_eq!(protected, changed);
-        assert!(reasons
-            .iter()
-            .any(|r| r.contains("covered by explicit steward task clearance")));
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("covered by explicit steward task clearance"))
+        );
     }
 }

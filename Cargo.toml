@@ -1,9 +1,10 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["work-order", "ledger", "hf", "crates/cli", "crates/core", "crates/runner", "crates/spec", "crates/tui"]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
+rust-version = "1.96"
 version = "0.1.0"
 license = "Apache-2.0 OR MIT"
 authors = ["FlexNetOS <team@flexnetos.com>"]

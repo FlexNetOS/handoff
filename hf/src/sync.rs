@@ -103,10 +103,10 @@ fn part_c_rollup(root: &Path, dry: bool) {
             continue; // git-text-only member / no local ledger — nothing to roll
         }
         // Never roll the central ledger into itself.
-        if let (Ok(s), Some(c)) = (src_path.canonicalize(), central_canon.as_ref()) {
-            if &s == c {
-                continue;
-            }
+        if let (Ok(s), Some(c)) = (src_path.canonicalize(), central_canon.as_ref())
+            && &s == c
+        {
+            continue;
         }
 
         let src_lp = src_path.to_string_lossy().into_owned();
@@ -461,7 +461,7 @@ mod tests {
         seed_member_ledger(&root, "repo_b", 2, 200);
 
         part_c_rollup(&root, true); // dry
-                                    // Central ledger.db should not even be created by a dry pass (no append path).
+        // Central ledger.db should not even be created by a dry pass (no append path).
         assert!(
             !root.join(".handoff").join("ledger.db").is_file() || central_count(&root) == 0,
             "dry-run must not append to central"

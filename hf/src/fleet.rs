@@ -57,12 +57,13 @@ pub(crate) fn parse_members(meta_yaml: &str) -> Vec<String> {
             continue;
         }
         // A member is a 2-space-indented key with no inline value: `name:`.
-        if in_projects && indent == 2 {
-            if let Some(name) = body.strip_suffix(':') {
-                if !name.is_empty() && !name.contains(char::is_whitespace) {
-                    out.push(name.to_string());
-                }
-            }
+        if in_projects
+            && indent == 2
+            && let Some(name) = body.strip_suffix(':')
+            && !name.is_empty()
+            && !name.contains(char::is_whitespace)
+        {
+            out.push(name.to_string());
         }
     }
     out
@@ -332,14 +333,14 @@ pub fn cmd_fleet_status(json: bool) {
     }
     // HFTASK-0033: a broken provenance bridge is an integrity alarm, not a style nit —
     // surface it as a warning so the loop's drift/gate sees it.
-    if let Some(p) = &provenance {
-        if !p.is_faithful() {
-            warnings.push(format!(
+    if let Some(p) = &provenance
+        && !p.is_faithful()
+    {
+        warnings.push(format!(
                 "FLEET ledger: rollup provenance BROKEN — {} of {} rolled-up row(s) do not reproduce their origin_action_hash (ADR-0004 §3.3)",
                 p.mismatched,
                 p.total()
             ));
-        }
     }
 
     if json {

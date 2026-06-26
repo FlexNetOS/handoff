@@ -11,15 +11,15 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use rvf_runtime::{
-    options::{DistanceMetric, MetadataEntry, MetadataValue, QueryOptions, RvfOptions},
     RvfStore,
+    options::{DistanceMetric, MetadataEntry, MetadataValue, QueryOptions, RvfOptions},
 };
 
 use crate::v1;
 
 pub use crate::v1::{
-    file_is_legacy_sqlite, hash_action, resolve_lease, EventRow, LeaseOutcome, LedgerError, Result,
-    RollupProvenance, RollupStat,
+    EventRow, LeaseOutcome, LedgerError, Result, RollupProvenance, RollupStat,
+    file_is_legacy_sqlite, hash_action, resolve_lease,
 };
 
 /// v2 ledger: v1 structured storage + RVF vector overlay for semantic recall.
@@ -119,7 +119,7 @@ fn pid_is_alive(pid: u32) -> bool {
     }
     #[cfg(unix)]
     {
-        extern "C" {
+        unsafe extern "C" {
             fn kill(pid: i32, sig: i32) -> i32;
         }
         // SAFETY: signal 0 performs only an existence/permission check; no signal is sent,
@@ -134,7 +134,7 @@ fn pid_is_alive(pid: u32) -> bool {
     #[cfg(windows)]
     {
         use windows_sys::Win32::Foundation::{
-            CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER,
+            CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, GetLastError,
         };
         use windows_sys::Win32::System::Threading::{
             OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,

@@ -6,9 +6,9 @@
 //! or relay bearer lifecycle.
 
 use envctl_secrets::broker::{
-    decide::{decide, CanonRequest, RelayDecision},
-    policy::{Method, Provider, RelayKind, RelayPolicy, SwapMode},
     VerifiedBearer,
+    decide::{CanonRequest, RelayDecision, decide},
+    policy::{Method, Provider, RelayKind, RelayPolicy, SwapMode},
 };
 
 /// Build the default GitHub merge-gate relay policy.

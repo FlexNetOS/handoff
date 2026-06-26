@@ -162,12 +162,12 @@ pub fn prove_contract(
                 return Err(ProofError::IntentDrift {
                     task: task.id.clone(),
                     field,
-                })
+                });
             }
             Err(()) => {
                 return Err(ProofError::EnvironmentBroken {
                     task: task.id.clone(),
-                })
+                });
             }
         }
     }
@@ -206,12 +206,12 @@ pub fn prove_contract(
                 return Err(ProofError::IntentDrift {
                     task: task.id.clone(),
                     field,
-                })
+                });
             }
             Err(()) => {
                 return Err(ProofError::EnvironmentBroken {
                     task: task.id.clone(),
-                })
+                });
             }
         }
     }
@@ -235,9 +235,13 @@ pub fn prove_contract(
                         "status {:?} with no witnessed checkpoint — run `hf checkpoint {}` before handoff",
                         evidence.status, task.id
                     ),
-                })
+                });
             }
-            Err(()) => return Err(ProofError::EnvironmentBroken { task: task.id.clone() }),
+            Err(()) => {
+                return Err(ProofError::EnvironmentBroken {
+                    task: task.id.clone(),
+                });
+            }
         }
     }
 
@@ -348,10 +352,12 @@ mod tests {
         assert_eq!(proof.proof_terms, 3);
         // Real ruvector-verified receipt: lean-agentic 0.1.0 = 0x0001_0000.
         assert_eq!(proof.attestation.verifier_version, 0x0001_0000);
-        assert!(proof
-            .obligations
-            .iter()
-            .all(|o| o.name.starts_with("intent:")));
+        assert!(
+            proof
+                .obligations
+                .iter()
+                .all(|o| o.name.starts_with("intent:"))
+        );
     }
 
     #[test]
@@ -416,14 +422,18 @@ mod tests {
         let proof = prove_contract(&task, &evidence).expect("full contract should prove");
         // 3 base + constraint + northstar = 5 intent obligations (mid-work, no completion).
         assert_eq!(proof.obligations.len(), 5);
-        assert!(proof
-            .obligations
-            .iter()
-            .any(|o| o.name == "intent:constraint"));
-        assert!(proof
-            .obligations
-            .iter()
-            .any(|o| o.name == "intent:northstar"));
+        assert!(
+            proof
+                .obligations
+                .iter()
+                .any(|o| o.name == "intent:constraint")
+        );
+        assert!(
+            proof
+                .obligations
+                .iter()
+                .any(|o| o.name == "intent:northstar")
+        );
     }
 
     #[test]
@@ -469,13 +479,17 @@ mod tests {
         evidence.northstar_revision = "blake3:rev-1".to_string();
         let proof = prove_contract(&task, &evidence).expect("legacy contract still proves");
         assert_eq!(proof.obligations.len(), 3);
-        assert!(!proof
-            .obligations
-            .iter()
-            .any(|o| o.name == "intent:constraint"));
-        assert!(!proof
-            .obligations
-            .iter()
-            .any(|o| o.name == "intent:northstar"));
+        assert!(
+            !proof
+                .obligations
+                .iter()
+                .any(|o| o.name == "intent:constraint")
+        );
+        assert!(
+            !proof
+                .obligations
+                .iter()
+                .any(|o| o.name == "intent:northstar")
+        );
     }
 }

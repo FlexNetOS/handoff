@@ -15,7 +15,7 @@ use ledger::Ledger;
 
 use crate::lease::{Leaser, WeaveCli};
 use crate::policy::Policy;
-use crate::{ledger_path, now_ns, HF};
+use crate::{HF, ledger_path, now_ns};
 
 /// Sessions run longer than a single claim; the lease TTL is heartbeat-extended.
 const SESSION_TTL_SECS: u64 = 28_800; // 8h
@@ -159,27 +159,27 @@ fn grit_enable(worktree: &Path) {
 /// (separate dir) when in a meta workspace, else plain `git worktree` standalone —
 /// both are then grit-enabled.
 fn create_worktree(repo_root: &Path, branch: &str, from_ref: &str) -> Result<PathBuf, String> {
-    if meta_available() {
-        if let Some(root) = meta_root(repo_root) {
-            run_out_in(
-                &root,
-                "meta",
-                &[
-                    "git",
-                    "worktree",
-                    "create",
-                    "--repo",
-                    "handoff",
-                    "--branch",
-                    branch,
-                    "--from-ref",
-                    from_ref,
-                ],
-            )?;
-            let wt = root.join(".worktrees").join(branch).join("handoff");
-            grit_enable(&wt);
-            return Ok(wt);
-        }
+    if meta_available()
+        && let Some(root) = meta_root(repo_root)
+    {
+        run_out_in(
+            &root,
+            "meta",
+            &[
+                "git",
+                "worktree",
+                "create",
+                "--repo",
+                "handoff",
+                "--branch",
+                branch,
+                "--from-ref",
+                from_ref,
+            ],
+        )?;
+        let wt = root.join(".worktrees").join(branch).join("handoff");
+        grit_enable(&wt);
+        return Ok(wt);
     }
     // Standalone fallback: sibling worktree dir next to the repo.
     let dest = repo_root
@@ -349,7 +349,9 @@ fn session_end(recycle: bool, force: bool, base_override: Option<&str>, leaser: 
                 "hf session end: closed {branch} (lease released) — worktree RETAINED: {reason}"
             );
             if worktree_dir_exists(&repo_root, &branch) {
-                println!("  retained worktree for {branch} — reconcile with `hf session reap` after merge, or `hf session end --reap` to force-remove");
+                println!(
+                    "  retained worktree for {branch} — reconcile with `hf session reap` after merge, or `hf session end --reap` to force-remove"
+                );
             }
         }
     }
@@ -535,25 +537,24 @@ fn replay_event_triples() -> Vec<(String, Option<String>, Option<bool>)> {
 /// in `session_end` so the reap paths (`hf session reap`, the `cmd_done` post-merge reap)
 /// share one implementation.
 fn remove_worktree(repo_root: &Path, branch: &str) {
-    if meta_available() {
-        if let Some(root) = meta_root(repo_root) {
-            let _ = run_out_in(&root, "meta", &["git", "worktree", "remove", branch]);
-        }
+    if meta_available()
+        && let Some(root) = meta_root(repo_root)
+    {
+        let _ = run_out_in(&root, "meta", &["git", "worktree", "remove", branch]);
     }
 }
 
 /// Does a retained session worktree dir for `branch` still exist on disk? Used by
 /// `hf session reap` to only act on worktrees that were not already removed out-of-band.
 fn worktree_dir_exists(repo_root: &Path, branch: &str) -> bool {
-    if let Some(root) = meta_root(repo_root) {
-        if root
+    if let Some(root) = meta_root(repo_root)
+        && root
             .join(".worktrees")
             .join(branch)
             .join("handoff")
             .is_dir()
-        {
-            return true;
-        }
+    {
+        return true;
     }
     repo_root
         .parent()
@@ -594,7 +595,9 @@ pub fn cmd_session_reap(force: bool) {
                 })
                 .to_string();
                 crate::witness_lifecycle("worktree_reaped", "session", &payload);
-                println!("hf session reap: reaped {branch} (merge_verified={merge_verified}, forced={force})");
+                println!(
+                    "hf session reap: reaped {branch} (merge_verified={merge_verified}, forced={force})"
+                );
                 reaped_any = true;
             }
             ReapDecision::Keep(reason) => {

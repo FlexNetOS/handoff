@@ -66,11 +66,11 @@ pub fn cmd_schema(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("--write") => {
             let path = schema_file();
-            if let Some(parent) = path.parent() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    eprintln!("hf: cannot create {}: {e}", parent.display());
-                    return 1;
-                }
+            if let Some(parent) = path.parent()
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
+                eprintln!("hf: cannot create {}: {e}", parent.display());
+                return 1;
             }
             // Trailing newline so the committed file ends cleanly (git-friendly).
             if let Err(e) = std::fs::write(&path, format!("{generated}\n")) {

@@ -62,15 +62,18 @@ fn scans_repo_and_generates_workspace() {
     let out = temp_dir("workspace");
     generate_workspace(&inv_a, &inv_b, &out, "smoke").unwrap();
     assert!(out.join("AI_MERGE/04_merge_plan.md").exists());
-    assert!(out
-        .join("AI_MERGE/03_env_and_secret_contracts.json")
-        .exists());
+    assert!(
+        out.join("AI_MERGE/03_env_and_secret_contracts.json")
+            .exists()
+    );
     assert!(out.join("AI_MERGE/08_agent_queue.md").exists());
     assert!(out.join(".github/ISSUE_TEMPLATE/idd-task.yml").exists());
     assert!(out.join(".idd/MANIFEST.tsv").exists());
 
     let findings = validate_workspace(&out).unwrap();
-    assert!(findings
-        .iter()
-        .all(|f| f.severity.to_string() != "critical"));
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.severity.to_string() != "critical")
+    );
 }

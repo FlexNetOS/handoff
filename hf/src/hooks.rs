@@ -310,11 +310,7 @@ pub fn cmd_hook_run(
             }
         }
     }
-    if blocked {
-        1
-    } else {
-        0
-    }
+    if blocked { 1 } else { 0 }
 }
 
 #[cfg(test)]
