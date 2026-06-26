@@ -1,24 +1,17 @@
 # cargo-audit configuration (read by `cargo audit` and the rustsec/audit-check CI action).
 #
-# Policy: vulnerabilities are NEVER ignored. The only entries here are UNMAINTAINED
-# (informational) advisories that have NO maintained successor we can upgrade to today —
-# i.e. genuine upstream blockers, documented with a watch in
-# docs/rusty-idd/security-advisories.md. Anything fixable upgrade-only is FIXED, not ignored.
+# Policy: NOTHING is ignored here. Vulnerabilities are never ignored, and every UNMAINTAINED
+# advisory we hit has been FIXED upgrade-only, not suppressed:
+#
+#   - RUSTSEC-2024-0320 (yaml-rust unmaintained)  -> FIXED: the `[patch.crates-io] syntect`
+#     vendored fork moves syntect onto the maintained `yaml-rust2`.
+#   - RUSTSEC-2025-0141 (bincode unmaintained)    -> FIXED: the same vendored fork replaces
+#     bincode with the maintained `postcard` for the dump format (assets regenerated).
+#
+# Both crates are gone from the dependency tree (verify: `cargo tree -i yaml-rust` /
+# `cargo tree -i bincode` both report "did not match any packages"). See
+# docs/rusty-idd/security-advisories.md. If either reappears, that is a real regression and
+# `cargo audit` SHOULD fail — do not add an `ignore` here to paper over it.
 
 [advisories]
-ignore = [
-  # bincode — RUSTSEC-2025-0141 (UNMAINTAINED, not a vulnerability). The advisory flags ALL
-  # bincode versions (1/2/3): the crate was permanently frozen (`patched = []`). It enters the
-  # tree ONLY via syntect's bundled default syntax/theme dumps, which are structurally
-  # bincode-encoded (`default-syntaxes` -> `dump-load` -> bincode) and used by the rusty-idd
-  # TUI's code-block highlighting. There is no drop-in maintained successor; the real fix is
-  # upstream (trishume/syntect#623/#694, slated for syntect 6.0.0). REMOVE this ignore once
-  # syntect ships its bincode replacement and the `[patch] syntect` in Cargo.toml is updated.
-  # Tracked: docs/rusty-idd/security-advisories.md
-  "RUSTSEC-2025-0141",
-]
-
-# NOTE: RUSTSEC-2024-0320 (yaml-rust unmaintained) is deliberately NOT ignored — it is FIXED
-# upgrade-only by the `[patch.crates-io] syntect` pin in the workspace Cargo.toml, which moves
-# syntect onto the maintained `yaml-rust2`. If yaml-rust reappears in the tree, that is a real
-# regression and audit SHOULD fail.
+ignore = []
