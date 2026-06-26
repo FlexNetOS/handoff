@@ -1933,8 +1933,10 @@ fn cmd_ship(id: &str, base: &str) {
     // HFTASK-0081 (ADR-0017 / R13): govern the ship action through the cognitum gate before any
     // outward effect (push/PR). Ship is the loop's least-reversible action; the governor witnesses
     // a `cognitum_decision` and BLOCKS (exit 1) on defer/deny. Default thresholds permit benign
-    // actions, so the live pipeline is unaffected; a `--no-default-features` build returns
-    // `unavailable` and proceeds. This is the in-loop wiring the governor verb previously lacked.
+    // actions, so the live pipeline is unaffected. The governor is feature-gated (`cognitum`, a
+    // default feature); a `--no-default-features` build compiles the gate out and ship proceeds
+    // ungoverned. This is the in-loop wiring the governor verb previously lacked.
+    #[cfg(feature = "cognitum")]
     cognitum::gate_action_or_block(&format!("ship-{id}"), "ship", Some(id));
     // HFTASK-0008: resolve the branch/remote policy (clone/fork model + base/trunk) once,
     // so ship decides the same way everything else does instead of hardcoding "master".

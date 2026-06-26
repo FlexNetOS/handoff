@@ -5,7 +5,7 @@
 //! it uses the secrets-engine `broker::decide` logic directly without requiring a live vault
 //! or relay bearer lifecycle.
 
-use envctl_secrets_engine::broker::{
+use envctl_secrets::broker::{
     decide::{decide, CanonRequest, RelayDecision},
     policy::{Method, Provider, RelayKind, RelayPolicy, SwapMode},
     VerifiedBearer,
