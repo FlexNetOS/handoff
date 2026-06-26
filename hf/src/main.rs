@@ -3146,6 +3146,31 @@ fn cmd_seed() {
             "Owner directive (relay #134): a LIVE differential drive (drive the REAL binary/CLI and DIFF its actual output against an expectation) caught what 1000+ green unit tests missed; capture it as a fleet-deployable handoff action workflow that institutionalizes the FAIL-OPEN doctrine the kernel already lives by (green is not proof; cases-run must be > 0; ABSENCE is a FAILURE, never a silent pass). Add `.github/workflows/differential-drive.yml` — a GENERIC, repo-agnostic reusable (`workflow_call` + `workflow_dispatch`) GitHub Actions workflow that runs `scripts/differential-drive.sh`; it is DORMANT by default (no push/PR trigger) so deploying it never spams red checks on a repo that has not yet authored cases. Add `scripts/differential-drive.sh` — a self-contained, fail-closed harness exposing `drive <name> <cmd> <expected-substring>` (PASS iff exit 0 AND output contains the substring), sourcing optional repo-specific cases from `scripts/differential-drive.cases.sh`, asserting total-cases>0 (fail-closed with an actionable message when absent/empty), and emitting a libtest-compatible `test result:` summary so `hf test` COUNT-verifies it (the tests-ran>0 gate, HFTASK-0045/0063) rather than trusting exit code alone. Ship handoff's OWN `scripts/differential-drive.cases.sh` driving the real `hf` binary (CLI-contract invariants: usage exposes claim/ship/promote/drift/handoff) + a handoff-local `.github/workflows/differential-drive-ci.yml` caller (PR-triggered, advisory/NOT-required so it never blocks the develop->trunk promote gate, replicating ci.yml's RuVector-sibling layout) that dogfoods the harness. Deploy ONLY the generic workflow + harness fleet-wide via the canonical scripts/handoff-loop-init.sh deploy_diff_drive() (HFTASK-0065/0066 mechanism), idempotent, dry-run aware; the handoff-local caller + cases file are NOT deployed (each repo authors its own cases). Making the check branch-protection-REQUIRED is the follow-on (HFTASK-0073/D8) and is NOT done here (account-level wall).",
             &["HFTASK-0045", "HFTASK-0065"],
         ),
+        // --- ADR-0019 reconciliation cards (2026-06-26). The code-research run shipped the P0/P2
+        // fixes (#140–#156) and the ADR records the deferred D5 work, but those were never seeded
+        // as witnessed cards. Seed them retroactively (0079, already built) + forward (0080/0081,
+        // the open D5 increments) so the backlog matches the ADR and Git truth. ---
+        mk(
+            "HFTASK-0079",
+            "Harden verify_witness_chain: content+linkage re-derivation (close the count-only tautology)",
+            Priority::P0,
+            "code-research P0 (#140): the prior `ledger::v1::verify_witness_chain` was a tautology — it rebuilt a fresh witness chain from the *trusted* stored action_hash values (prev_hash forced to 0) then verified that just-built chain, so it always passed and returned events.len() for honest, content-tampered, and garbage rows alike. It never recomputed the action_hash from the payload nor checked on-disk prev_hash linkage, so it could not detect tampering of the binary redb cache. Harden it to walk events in seq order and enforce the SAME two invariants `append` establishes: (1) CONTENT — re-derive hash_action(event_type, work_order_id, payload_json) and byte-compare to the stored action_hash; (2) LINKAGE — stored prev_hash must equal the prior event's stored action_hash (genesis [0;32]). Keep the RVF witness-segment round-trip only as a secondary structural check. Already shipped in code (ledger/src/v1.rs); this card records the witnessed work.",
+            &[],
+        ),
+        mk(
+            "HFTASK-0080",
+            "ADR-0019 D5 #3: adopt unwrap_used/expect_used/panic = deny (error-handling hardening)",
+            Priority::P1,
+            "ADR-0019 D5 #3 (the Cargo.toml workspace.lints comment calls this 'the next increment ... NOT left as a standing TODO'): the kernel claims a fail-closed continuity substrate yet the production tree carries hundreds of `.unwrap()`/`.expect()`/`panic!` sites — exactly the FAIL-OPEN class (LESSONS L7–L10) where a guard proceeds when it cannot confirm its precondition. Adopt clippy `unwrap_used`/`expect_used`/`panic` = deny in `[workspace.lints.clippy]`. Allow them crate-wide ONLY under `#[cfg(test)]` (idiomatic; tests assert). For every PRODUCTION site: propagate with `?` where genuinely fallible, or replace with `.expect(\"<invariant reason>\")` where the call is infallible by a documented invariant (mutex-poison, compile-time-constant parse, etc.) so the unsafe assumption is VISIBLE and audited at the call site rather than a bare `.unwrap()`. Verify `cargo clippy --workspace --all-targets -- -D warnings` green (the exact CI gate).",
+            &[],
+        ),
+        mk(
+            "HFTASK-0081",
+            "ADR-0019 D5 #4: continue the 12-crate decomposition (peel feature crates from hf)",
+            Priority::P2,
+            "ADR-0019 D5 #4 (PRD §7.2 target): the hf monolith is being decomposed into the planned handoff-* crate layout. `handoff-core` (leaf primitives) was peeled in #154 and edition-2024/resolver-3 landed in #153. Continue peeling cohesive feature modules out of `hf/src/*` into their own crates that depend on `handoff-core` (candidates: drift, hooks, contract/gatekeeper, fleet, intake) — behavior-preserving moves with `hf` re-exporting so existing `crate::` paths stay valid, each its own PR, each verified green. The work is incremental; one or more feature crates per increment.",
+            &["HFTASK-0079"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
