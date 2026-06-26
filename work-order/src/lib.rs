@@ -327,7 +327,9 @@ pub fn work_orders_from_bundle_with(
         .iter()
         .enumerate()
         .map(|(i, (role, prompt))| {
-            let id = format!("TASK-{:04}", i + 1);
+            // HFTASK-0084: scope the id to the bundle's workflow_id so re-runs of a DIFFERENT
+            // bundle never clobber an existing TASK-NNNN card on disk (save_task overwrites by id).
+            let id = synthesized_task_id(&bundle.workflow_id, i + 1);
             let classified;
             let intent = match intent_override {
                 Some(it) => it,
@@ -368,6 +370,35 @@ pub fn work_orders_from_bundle_with(
 /// Back-compat convenience: synthesize with a per-role classified Intent and default scope.
 pub fn work_orders_from_bundle(bundle: &SwarmBundle) -> Vec<WorkOrder> {
     work_orders_from_bundle_with(bundle, None, None)
+}
+
+/// Deterministic 64-bit FNV-1a hash (mirrors the prompt_hub vibe handle).
+fn stable_hash(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// HFTASK-0084: the collision-free, schema-valid task id for a synthesized order.
+///
+/// The old sites minted `TASK-0001`, `TASK-0002`, … counting from a FIXED base, so a second
+/// intake/prompt-hub run silently clobbered any existing `TASK-NNNN.task.json` on disk
+/// (`save_task` overwrites by id) — durable continuity-state loss (FAIL-OPEN). The fix derives a
+/// stable 24-bit prefix from the unique `workflow_id` (which already carries a hash + nanos), so
+/// distinct bundles get disjoint id sets while the same bundle re-mints the SAME ids (idempotent,
+/// not data loss). The intake determinism property holds: same `workflow_id` → byte-identical id.
+///
+/// Form `TASK-{:06X}-{:04}` is valid under the live schema id pattern
+/// `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$` (uppercase hex `0-9A-F` + a hyphen separator).
+pub fn synthesized_task_id(workflow_id: &str, seq: usize) -> String {
+    format!(
+        "TASK-{:06X}-{:04}",
+        stable_hash(workflow_id) & 0x00FF_FFFF,
+        seq
+    )
 }
 
 /// Compose a schema-valid objective (`minLength: 10`) from the task_type + prompt. When the
@@ -424,9 +455,42 @@ mod tests {
         assert_eq!(orders.len(), 2);
         // every order carries the workflow_id as correlation_id (the cross-ref handle)
         assert!(orders.iter().all(|o| o.correlation_id == "wf-0001"));
-        assert_eq!(orders[0].id, "TASK-0001");
+        // HFTASK-0084: ids are bundle-scoped (TASK-<6hex>-<seq>), no longer the fixed TASK-0001.
+        assert_eq!(orders[0].id, synthesized_task_id("wf-0001", 1));
+        assert!(orders[0].id.ends_with("-0001") && orders[1].id.ends_with("-0002"));
         assert_eq!(orders[0].role.as_deref(), Some("architect"));
         assert_eq!(orders[0].schema, "handoff.task.v1");
+    }
+
+    #[test]
+    fn synthesized_task_id_is_deterministic_and_schema_valid() {
+        // same workflow_id → byte-identical id (intake determinism property)
+        assert_eq!(
+            synthesized_task_id("vibe-abc-123", 1),
+            synthesized_task_id("vibe-abc-123", 1)
+        );
+        // valid under the live schema pattern ^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$
+        let id = synthesized_task_id("vibe-abc-123", 7);
+        let body = id.strip_prefix("TASK-").expect("starts with TASK-");
+        assert!(
+            body.starts_with(|c: char| c.is_ascii_uppercase() || c.is_ascii_digit())
+                && body
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'),
+            "id {id} must match the schema id pattern"
+        );
+        assert!(id.ends_with("-0007"));
+    }
+
+    #[test]
+    fn synthesized_task_ids_do_not_collide_across_bundles() {
+        // Two DISTINCT bundles must produce DISJOINT id sets — the clobber bug (HFTASK-0084).
+        let a: Vec<_> = (1..=3).map(|i| synthesized_task_id("wf-A", i)).collect();
+        let b: Vec<_> = (1..=3).map(|i| synthesized_task_id("wf-B", i)).collect();
+        assert!(
+            a.iter().all(|x| !b.contains(x)),
+            "distinct workflow_ids must yield disjoint ids: {a:?} vs {b:?}"
+        );
     }
 
     #[test]
