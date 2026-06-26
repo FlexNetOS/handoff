@@ -58,8 +58,9 @@ use work_order::{Priority, Status, WorkOrder};
 // `crate::ledger_path` / `crate::tasks_dir` / `crate::run_out` / `crate::current_statuses` /
 // `crate::status_of` references across the feature modules are unchanged (behavior-preserving).
 pub(crate) use handoff_core::{
-    HF, current_statuses, ledger_path, must_witness, now_ns, pretty_json, run_out, status_of,
-    tasks_dir,
+    HF, current_statuses, ledger_path, load_task_in, load_tasks, must_witness, next_safe, now_ns,
+    parse_card_file, pretty_json, run_out, save_task, save_task_in, scan_card_conformance,
+    status_of, tasks_dir,
 };
 
 /// TTL of a claim lease: a claim represents an active work session. Re-claiming
@@ -143,89 +144,11 @@ fn cmd_import() {
     }
 }
 
-/// Parse one card file fail-closed (HFTASK-0057, PRD §7.3/§23): read → schema-validate the raw
-/// JSON against the generated handoff.task.v1 schema → deserialize. A card that is unreadable,
-/// is not valid JSON, violates the schema (missing `intent_lock`, bad `id`, wrong `schema`
-/// const), or fails to deserialize is **never silently dropped** — it emits a loud WARNING and
-/// returns `None`. This fixes the FAIL-OPEN bug where a present-but-broken card (e.g. #95's
-/// missing `intent_lock`) vanished from `hf status` with no signal. The CLI is not bricked on
-/// one bad card (the `hf doctor` sweep, HFTASK-0064, will turn this into a hard fail).
-/// Core card load: read → JSON-parse → schema-validate → deserialize. Returns the WorkOrder or
-/// a concise human reason. The single source of truth for "does this card conform", shared by
-/// the loud loader (`parse_card_file`) and the quiet `hf doctor` audit (`scan_card_conformance`).
-fn try_parse_card(p: &Path) -> Result<WorkOrder, String> {
-    let s = fs::read_to_string(p).map_err(|e| format!("unreadable: {e}"))?;
-    let value: serde_json::Value =
-        serde_json::from_str(&s).map_err(|e| format!("invalid JSON: {e}"))?;
-    schema::validate_card(&value).map_err(|v| format!("schema violation [{v}]"))?;
-    serde_json::from_value::<WorkOrder>(value).map_err(|e| format!("deserialize: {e}"))
-}
+// HFTASK-0083 (ADR-0019 D5 #4): the loud, schema-validated card load/save helpers (try_parse_card,
+// parse_card_file, scan_card_conformance, load_tasks, save_task, save_task_in, load_task_in) +
+// next_safe were lifted into handoff-core so the peeled feature crates (fleet/index/…) load cards
+// through the SAME fail-closed path. Re-exported below; call sites are unchanged.
 
-/// Load a card LOUDLY: on any failure emit a fail-closed WARNING (the card is never silently
-/// dropped — the bug that hid card #95 for a whole session) and return None.
-///
-/// `pub(crate)` so the fleet member-card loader reuses the SAME loud, schema-validated path
-/// (fail-open-audit R1) instead of its own silent `if let Ok` drop.
-pub(crate) fn parse_card_file(p: &Path) -> Option<WorkOrder> {
-    match try_parse_card(p) {
-        Ok(wo) => Some(wo),
-        Err(reason) => {
-            eprintln!(
-                "hf: WARNING — card {} failed to load: {reason} (NOT in status; fix or remove it)",
-                p.display()
-            );
-            None
-        }
-    }
-}
-
-/// HFTASK-0064: enumerate every card file on disk and return the non-conforming ones with a
-/// reason, QUIETLY (no eprintln — `hf doctor` formats the report). A non-empty result is a
-/// fail-closed health violation: a card that can't load is invisible to `hf status` and must
-/// surface as a hard failure, never hide.
-fn scan_card_conformance() -> Vec<(String, String)> {
-    let mut bad = vec![];
-    let Ok(rd) = fs::read_dir(tasks_dir()) else {
-        return bad;
-    };
-    let mut paths: Vec<_> = rd
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "json"))
-        .collect();
-    paths.sort();
-    for p in paths {
-        if let Err(reason) = try_parse_card(&p) {
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            bad.push((name, reason));
-        }
-    }
-    bad
-}
-
-fn load_tasks() -> Vec<WorkOrder> {
-    let mut v = vec![];
-    if let Ok(rd) = fs::read_dir(tasks_dir()) {
-        let mut paths: Vec<_> = rd
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "json"))
-            .collect();
-        paths.sort();
-        for p in paths {
-            if let Some(wo) = parse_card_file(&p) {
-                v.push(wo);
-            }
-        }
-    }
-    v
-}
-fn save_task(wo: &WorkOrder) {
-    save_task_in(&tasks_dir(), wo);
-}
 /// Open the ledger or exit fail-closed with a clean message — never panic. Transient RVF
 /// lock contention (0x0300 LockHeld) is already retried inside `Ledger::open` (HFTASK-0060);
 /// this guards the genuinely-fatal open errors (corruption, disk) at the call site instead of
@@ -258,45 +181,7 @@ pub(crate) fn witness_lifecycle(event: &str, wo_id: &str, payload: &str) {
         }
     }
 }
-/// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
-/// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
-fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
-    let _ = fs::create_dir_all(tasks_dir);
-    let _ = fs::write(tasks_dir.join(format!("{}.task.json", wo.id)), wo.to_json());
-}
-/// Load the card for one id from an explicit tasks dir (routing-aware read for the
-/// resolved home, so per-task ops see the card that lives where the ledger lives).
-fn load_task_in(tasks_dir: &Path, id: &str) -> Option<WorkOrder> {
-    let p = tasks_dir.join(format!("{id}.task.json"));
-    // HFTASK-0057: an ABSENT file is a silent None (legitimately "no such card here"); a
-    // PRESENT-but-unparseable/invalid file is a loud WARNING (the fail-closed discipline) so a
-    // broken card never silently disappears from a per-task lookup.
-    if !p.exists() {
-        return None;
-    }
-    parse_card_file(&p)
-}
-
-/// Replay the ledger to get the current status per task id (overrides the card's stored status).
-///
-/// Next safe task: resume the in-progress task first (Claimed/Checkpointed/Active);
-/// else the first backlog card whose dependencies are all Done.
-fn next_safe<'a>(tasks: &'a [WorkOrder], replay: &[(String, Status)]) -> Option<&'a WorkOrder> {
-    let done = |id: &str| replay.iter().any(|(k, s)| k == id && *s == Status::Done);
-    // 1) an already-claimed/checkpointed/active task is the one to resume
-    if let Some(t) = tasks.iter().find(|t| {
-        matches!(
-            status_of(&t.id, replay, t),
-            Status::Claimed | Status::Checkpointed | Status::Active | Status::Review
-        )
-    }) {
-        return Some(t);
-    }
-    // 2) otherwise the first backlog task whose deps are all Done
-    tasks.iter().find(|t| {
-        status_of(&t.id, replay, t) == Status::Backlog && t.dependencies.iter().all(|d| done(d))
-    })
-}
+// HFTASK-0083: save_task_in / load_task_in / next_safe lifted to handoff-core (re-exported below).
 
 /// The handoff *kernel*'s own North Star doctrine. Used only when `hf init` runs in the
 /// kernel home (the handoff repo); a member repo gets a neutral "(seed me)" northstar so
@@ -3466,10 +3351,15 @@ fn cmd_seed() {
             // runner-aware executed-count parsers (libtest/pytest/jest/go): 11 tests
             "HFTASK-0063" => &["cargo test -p hf parse_tests_ran"],
             // schemars gen + serialization-stability + jsonschema card validation/rejection
-            "HFTASK-0057" => &["cargo test -p work-order schema", "cargo test -p hf schema"],
+            // HFTASK-0081/0083: schema validator + card loader were peeled out of hf into
+            // handoff-schema / handoff-core, so the tests live there now.
+            "HFTASK-0057" => &[
+                "cargo test -p work-order schema",
+                "cargo test -p handoff-schema",
+            ],
             // doctor card-conformance core (try_parse_card) + RVF reclaim (ledger lock tests)
             "HFTASK-0064" => &[
-                "cargo test -p hf try_parse_card",
+                "cargo test -p handoff-core try_parse_card",
                 "cargo test -p ledger lock",
             ],
             // skills/docs reconcile — smoke the bundled driver (exits 0, exercises the script)
@@ -4089,40 +3979,8 @@ mod tests {
         assert!(!should_unclaim(None));
     }
 
-    #[test]
-    fn try_parse_card_accepts_valid_and_names_violations() {
-        // HFTASK-0064: the doctor card-conformance core — a valid card loads; every failure
-        // mode returns a concise reason (never a silent None) so `hf doctor` can fail closed.
-        let dir = std::env::temp_dir().join(format!("hf-card-{}-{}", std::process::id(), now_ns()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let valid = r#"{"schema":"handoff.task.v1","id":"HFTASK-9001","title":"t","status":"backlog","priority":"P2","objective":"o","path_scope":[],"acceptance_criteria":[],"test_commands":[],"correlation_id":"c","intent_lock":{"objective_hash":"a","path_scope_hash":"b","acceptance_hash":"c"}}"#;
-        let ok = dir.join("ok.json");
-        std::fs::write(&ok, valid).unwrap();
-        assert!(try_parse_card(&ok).is_ok(), "a complete card must load");
-
-        // missing intent_lock → schema violation naming the field (the card #95 bug).
-        let bad = valid.replace(
-            r#","intent_lock":{"objective_hash":"a","path_scope_hash":"b","acceptance_hash":"c"}"#,
-            "",
-        );
-        let bp = dir.join("missing_lock.json");
-        std::fs::write(&bp, &bad).unwrap();
-        let e = try_parse_card(&bp).unwrap_err();
-        assert!(e.contains("intent_lock"), "reason must name the field: {e}");
-
-        // invalid JSON → distinct reason.
-        let gp = dir.join("garbage.json");
-        std::fs::write(&gp, "{not json").unwrap();
-        assert!(try_parse_card(&gp).unwrap_err().contains("invalid JSON"));
-
-        // free-form id → schema violation.
-        let badid = valid.replace("HFTASK-9001", "nope");
-        let ip = dir.join("bad_id.json");
-        std::fs::write(&ip, badid).unwrap();
-        assert!(try_parse_card(&ip).unwrap_err().contains("schema"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+    // HFTASK-0083: try_parse_card_accepts_valid_and_names_violations moved to handoff-core with
+    // the function it tests (handoff-core::tests).
 
     #[test]
     fn reopen_targets_only_terminal_states() {

@@ -12,6 +12,10 @@ repository.workspace = true
 [dependencies]
 ledger = { path = "../ledger" }
 work-order = { path = "../work-order" }
+# HFTASK-0083: the loud, schema-validated card loader (parse_card_file/load_tasks) is a core
+# primitive lifted from hf, so handoff-core owns the validate-on-load path. No cycle:
+# handoff-schema deps only work-order + jsonschema.
+handoff-schema = { path = "../handoff-schema" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
