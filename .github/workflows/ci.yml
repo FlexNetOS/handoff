@@ -220,4 +220,7 @@ jobs:
         # the ruvector-verified path-dep (PR #54) includes RuVector's own crates
         # (e.g. ruvector-graph). Upstream fmt drift there would otherwise red-light
         # every handoff PR. Mirrors HFTASK-0030's per-repo scoping for clippy.
-        run: cargo fmt -p hf -p ledger -p work-order -- --check
+        # HFTASK-0081 (ADR-0019 D5 #4): keep this list in sync with the kernel crates
+        # peeled from hf — handoff-core/policy/schema/lease — so the decomposition
+        # crates are fmt-gated too (clippy already covers them via --workspace).
+        run: cargo fmt -p hf -p ledger -p work-order -p handoff-core -p handoff-policy -p handoff-schema -p handoff-lease -- --check

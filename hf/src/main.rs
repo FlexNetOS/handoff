@@ -3232,6 +3232,13 @@ fn cmd_seed() {
             "Follow-up to HFTASK-0080. The kernel crates (work-order, ledger, handoff-core, hf) adopt clippy unwrap_used/expect_used/panic = deny; the co-located rusty-idd toolkit (crates/{cli,core,runner,spec,tui}, ADR-0019 D2: a SEPARATE Intent-Driven-Development toolkit, never invoked by hf) carries a documented crate-root `#![allow(...)]` opt-out so the kernel hardening is not blocked on the toolkit's ~577 sites. Harden the toolkit the same way (test-only allow + per-site propagate/justify) and REMOVE the root allows so the whole tree enforces the deny. Lower priority because the toolkit is not on the kernel's trust path.",
             &["HFTASK-0080"],
         ),
+        mk(
+            "HFTASK-0083",
+            "ADR-0019 D5 #4: peel the COUPLED hf modules (drift/gatekeeper/fleet/intake) after lifting shared helpers to handoff-core",
+            Priority::P2,
+            "Continuation of HFTASK-0081, which peeled the LEAF/clean feature crates (handoff-policy #160, handoff-schema #161, handoff-lease #162) — bringing the workspace to 7 crates toward the PRD §7.2 12-crate target. The remaining feature modules (drift, gatekeeper, fleet, intake, gates, hooks, index) are COUPLED to hf-main helpers (crate::must_witness, crate::pretty_json, crate::now_ns, crate::load_tasks, crate::save_task, crate::current_northstar_revision, crate::next_safe), so they cannot move cleanly yet. PREP: lift those shared helpers from hf/src/main.rs into handoff-core (behavior-preserving, hf re-exports), THEN peel the coupled modules into their own crates (handoff-drift, handoff-gatekeeper, handoff-fleet, handoff-intake) one PR each, each verified green. This is the higher-risk half of the decomposition and is deliberately a separate witnessed card, not free-handed onto 0081.",
+            &["HFTASK-0081"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
