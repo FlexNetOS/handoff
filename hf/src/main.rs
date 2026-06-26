@@ -11,7 +11,6 @@
 //!        · ship <id> [--base BRANCH] · review request <pr> [--task <id>] · review verdict <id> <pr> <approve|deny> [--by WHO]
 //! State precedence (tier 2/3): `.handoff/ledger.db` (events) > `.handoff/tasks/*.task.json` (cards).
 
-mod branch;
 #[cfg(feature = "cognitum")]
 mod cognitum;
 mod contract;
@@ -25,7 +24,6 @@ mod index;
 mod intake;
 mod kb;
 mod lease;
-mod policy;
 mod prompt_hub;
 mod route;
 mod routing;
@@ -39,6 +37,11 @@ mod test_support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+// HFTASK-0081 (ADR-0019 D5 #4): the branch/remote/merge policy engine was peeled into the
+// `handoff-policy` crate. Re-export its modules so existing `crate::policy::…` / `crate::branch::…`
+// / `policy::…` / `branch::…` paths across hf (main, gatekeeper, session) stay valid unchanged.
+pub(crate) use handoff_policy::{branch, policy};
 
 use lease::Leaser;
 use ledger::Ledger;

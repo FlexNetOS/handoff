@@ -1,0 +1,13 @@
+[package]
+name = "handoff-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-policy — the branch/remote/merge/loop policy engine (ADR-0001 §3), peeled from hf"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[lints]
+workspace = true
