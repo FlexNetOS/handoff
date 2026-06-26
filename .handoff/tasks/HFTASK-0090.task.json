@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0090",
+  "title": "Fix Ledger::open abnormal-exit flake (retry transient DatabaseAlreadyOpen)",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "Surfaced by the climbing-the-ladder /verify drive: `cargo test -p hf --bin hf` aborted abnormally ~50% of runs under default parallelism (serial + --no-capture always passed) — undermining the COUNT-verified `hf test` gate that is the kernel's core integrity mechanism. Root-caused via marker-file backtrace instrumentation to `hf::tests::claim_returns_false_when_blocked_true_when_acquired → cmd_claim_with → open_ledger_or_exit → process::exit(1)`, with captured error `Database(DatabaseAlreadyOpen)` on `./.handoff/ledger.db`. Mechanism: redb refuses a second SAME-PROCESS open of one file; under the libtest harness's shared process cwd, a test that chdir's into its temp `.handoff` (holding cwd_lock) and a concurrent test that opens the cwd-relative default `ledger_path()` both resolve to the SAME file → two live handles → `DatabaseAlreadyOpen` → `open_ledger_or_exit` aborts the WHOLE binary (killing sibling tests; exit 1; no `test result: FAILED`). Pre-existing (reproduced with `hf/build.rs` removed: 6/12), exposed by the 16-crate decomposition spreading ledger-opening tests. Fix at the chokepoint: `ledger::v1::Ledger::open` now wraps `Database::create` in the EXISTING `with_busy_retry` (HFTASK-0059/0060), which already treats `DatabaseAlreadyOpen` as transient (`is_busy`) and is documented safe to retry — previously only WRITES retried, the OPEN failed closed. Bounded (100×≤10ms) so a genuinely stuck handle still surfaces an error. Production-safe (helps concurrent hf processes too). Verified: 0/25 parallel runs fail (was ~50%); ledger 34 tests green; clippy/fmt green.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Fix Ledger::open abnormal-exit flake (retry transient DatabaseAlreadyOpen): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0083"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:7d4c699ed3e0c323077853290ead947fa2acb19714cc8871232e1cdc1492eb37",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:9b2cbf965b394bb129794755d06fe9e2baadca678bf52d4bb8995cb1fbd378ef",
+    "constraint_hash": "blake3:1e16a78acf19be1982e0efb61a1dafed0915b9bc6f134bd7493f6cfbc5a3bb4c",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
