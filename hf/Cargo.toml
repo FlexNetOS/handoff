@@ -33,6 +33,8 @@ handoff-index = { path = "../handoff-index" }
 handoff-fleet = { path = "../handoff-fleet" }
 # HFTASK-0083 (ADR-0019 D5 #4): the drift-audit + policy-check engine was peeled into `handoff-drift`; hf aliases as `gates`.
 handoff-drift = { path = "../handoff-drift" }
+# HFTASK-0083: the AI gatekeeper (+ GhPrView) was peeled into `handoff-gatekeeper`; hf aliases as `gatekeeper`.
+handoff-gatekeeper = { path = "../handoff-gatekeeper" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
@@ -47,9 +49,9 @@ ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-
 # serde/thiserror/rand. Path dep, crates-only, CI-safe (same as the other RuVector crates).
 ruvector-domain-expansion = { path = "../../RuVector/crates/ruvector-domain-expansion", default-features = false }
 rand = "0.8"
-# HFTASK-0013 (ADR-0001 §9.5/R10): envctl secrets-engine — optional until the relay-bearer
-# and child-env injection paths are fully wired. default-features off keeps the build lean.
-envctl-secrets-engine = { path = "../../envctl/crates/secrets-engine", default-features = false, features = ["inmem-store"], optional = true }
+# HFTASK-0083: the envctl secrets merge-gate moved into `handoff-secrets` (optional, behind the
+# `secrets` feature). main's `policy gate` path calls it directly; the gatekeeper crate has its own.
+handoff-secrets = { path = "../handoff-secrets", optional = true }
 # HFTASK-0017 (ADR-0001 R13): cognitum-gate-tilezero — RuVector coherence-gate arbiter for
 # in-loop action decisions (Permit/Defer/Deny) witnessed into the ledger.
 cognitum-gate-tilezero = { path = "../../RuVector/crates/cognitum-gate-tilezero", default-features = false, optional = true }
@@ -64,7 +66,8 @@ handoff-test-support = { path = "../handoff-test-support" }
 [features]
 default = ["cognitum"]
 # Enable the experimental secrets-engine seam (merge-gate decision helper, relay prep).
-secrets = ["dep:envctl-secrets-engine"]
+# Propagates to the gatekeeper crate's own secrets feature + hf's direct handoff-secrets use.
+secrets = ["dep:handoff-secrets", "handoff-gatekeeper/secrets"]
 # Enable the cognitum-gate action governor behind `hf policy gate`.
 cognitum = ["dep:cognitum-gate-tilezero", "dep:tokio"]
 # Build the one-time legacy C-SQLite → redb ledger importer (`hf migrate`). Pulls bundled

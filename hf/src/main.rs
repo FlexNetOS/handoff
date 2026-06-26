@@ -16,13 +16,10 @@ mod cognitum;
 mod contract;
 mod delivery;
 mod durability;
-mod gatekeeper;
 mod intake;
 mod kb;
 mod prompt_hub;
 mod routing;
-#[cfg(feature = "secrets")]
-mod secrets;
 mod session;
 mod sync;
 
@@ -50,6 +47,10 @@ use handoff_fleet as fleet;
 use handoff_drift as gates;
 // HFTASK-0083: the ledger-routing module peeled into `handoff-route`; alias as `route`.
 use handoff_route as route;
+// HFTASK-0083: the AI gatekeeper peeled into `handoff-gatekeeper`; alias as `gatekeeper`. It also
+// owns the shared `GhPrView` GitHub-PR type used by hf's review-request flow.
+use handoff_gatekeeper as gatekeeper;
+use handoff_gatekeeper::GhPrView;
 
 use lease::Leaser;
 use ledger::Ledger;
@@ -1953,18 +1954,7 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
 }
 
-/// PR metadata fields we need from `gh pr view --json`.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub(crate) struct GhPrView {
-    pub(crate) url: String,
-    pub(crate) number: u64,
-    #[serde(rename = "headRefName")]
-    pub(crate) head_ref_name: String,
-    #[serde(rename = "baseRefName")]
-    pub(crate) base_ref_name: String,
-    #[serde(rename = "isDraft")]
-    pub(crate) is_draft: bool,
-}
+// HFTASK-0083: GhPrView moved to handoff-gatekeeper (imported above).
 
 /// Fetch the list of changed file paths for a PR using `gh pr diff --name-only`.
 fn review_changed_files(pr: &str) -> Result<Vec<String>, String> {
@@ -3650,7 +3640,7 @@ fn main() {
                 .and_then(|i| args.get(i + 1))
                 .map(|s| s.as_str())
                 .unwrap_or("/");
-            match secrets::github_merge_gate(method, host, path) {
+            match handoff_secrets::github_merge_gate(method, host, path) {
                 Ok(true) => println!("allow"),
                 Ok(false) => {
                     println!("deny");
