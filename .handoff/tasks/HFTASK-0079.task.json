@@ -1,0 +1,31 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0079",
+  "title": "Harden verify_witness_chain: content+linkage re-derivation (close the count-only tautology)",
+  "status": "backlog",
+  "priority": "P0",
+  "objective": "code-research P0 (#140): the prior `ledger::v1::verify_witness_chain` was a tautology — it rebuilt a fresh witness chain from the *trusted* stored action_hash values (prev_hash forced to 0) then verified that just-built chain, so it always passed and returned events.len() for honest, content-tampered, and garbage rows alike. It never recomputed the action_hash from the payload nor checked on-disk prev_hash linkage, so it could not detect tampering of the binary redb cache. Harden it to walk events in seq order and enforce the SAME two invariants `append` establishes: (1) CONTENT — re-derive hash_action(event_type, work_order_id, payload_json) and byte-compare to the stored action_hash; (2) LINKAGE — stored prev_hash must equal the prior event's stored action_hash (genesis [0;32]). Keep the RVF witness-segment round-trip only as a secondary structural check. Already shipped in code (ledger/src/v1.rs); this card records the witnessed work.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Harden verify_witness_chain: content+linkage re-derivation (close the count-only tautology): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:1c3ecb9142dbc2a13b7e9208879e87512847db68de4cdea4b9b4686b994727c7",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:cd32b9ee18da555869b9d0d6882fa7a9d3a2a185c75c0e9695f802403265683b",
+    "constraint_hash": "blake3:5864f0ba73a4e068f3203ef3eb5fbabb5f4cb3ca7f28f6110f904a12a2ae0ac3",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

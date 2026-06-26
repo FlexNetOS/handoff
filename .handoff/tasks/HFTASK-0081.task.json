@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0081",
+  "title": "ADR-0019 D5 #4: continue the 12-crate decomposition (peel feature crates from hf)",
+  "status": "backlog",
+  "priority": "P2",
+  "objective": "ADR-0019 D5 #4 (PRD §7.2 target): the hf monolith is being decomposed into the planned handoff-* crate layout. `handoff-core` (leaf primitives) was peeled in #154 and edition-2024/resolver-3 landed in #153. Continue peeling cohesive feature modules out of `hf/src/*` into their own crates that depend on `handoff-core` (candidates: drift, hooks, contract/gatekeeper, fleet, intake) — behavior-preserving moves with `hf` re-exporting so existing `crate::` paths stay valid, each its own PR, each verified green. The work is incremental; one or more feature crates per increment.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "ADR-0019 D5 #4: continue the 12-crate decomposition (peel feature crates from hf): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0079"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:0f805329843bd1d500396bd3cd95f27dc11e3359c18c5fb3c10adc028affada2",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:c35509f15813b5aba5d3b0dccd27c7940afa629c32321dc146e258d2386ff117",
+    "constraint_hash": "blake3:474bd29fcfd3605960a01ecfa417c4881eceacb2b6ad7db823ef868cb10bd940",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
