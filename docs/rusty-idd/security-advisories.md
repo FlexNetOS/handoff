@@ -70,12 +70,22 @@ cargo run --features=metadata --example gendata -- themepack testdata assets/def
 rm testdata   # regen-only; never committed
 ```
 
-## Deferred (noted, not blocking)
+## C-dependency removal — `onig` / `onig-sys` — ✅ DONE (no-C highlighting)
 
-- **`onig` / `onig_sys` (C dependency)** is still pulled by syntect's default `regex-onig` backend.
-  Not a `cargo audit` finding (maintained), but a C dep in a no-C-preferring tree. The fork could
-  redefine its `default` to `regex-fancy` (pure-Rust `fancy-regex`) to drop it; deferred to keep
-  this change scoped to the audit findings.
-- **`crates/spec` comrak footprint:** `crates/spec` uses comrak only for parse/emit (no
-  `SyntectAdapter`), so `comrak = { version = "0.52", default-features = false }` would drop
-  syntect from the spec path. Standalone-footprint hygiene only; deferred.
+Not a `cargo audit` finding (oniguruma is maintained), but a **C** dependency in a no-C-preferring
+tree. Removed by flipping the highlighting backend to pure-Rust `fancy-regex`, via two coordinated
+changes (one alone is insufficient — the two syntect entry points request features differently):
+
+1. **`vendor/syntect/Cargo.toml`:** the fork's `default` flipped from `default-onig` to
+   `default-fancy`. `tui-markdown` requests syntect's *default* features, so owning the fork's
+   default flips that path to `fancy-regex`. The regex *source* strings live in the `.packdump`
+   assets and compile under either backend, so **no asset regeneration** was needed.
+2. **`crates/spec/Cargo.toml`:** `comrak = { version = "0.52", default-features = false }`. comrak
+   sets `default-features = false` on syntect and explicitly selects an onig backend, so the fork
+   default flip does **not** reach the comrak path. But `crates/spec` uses comrak only for
+   parse/emit (`parse_document`/`format_commonmark`/`Arena`/`nodes`, no `SyntectAdapter`), so
+   dropping comrak's default features removes its syntect (and onig) entirely.
+
+Verified: `cargo tree -i onig` / `onig-sys` → both "did not match"; `fancy-regex 0.18` is the
+active backend; highlight parity holds (the `crates/tui` test passes and `syncat --features
+default-fancy` produces identical colors to the onig backend).

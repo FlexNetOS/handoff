@@ -88,7 +88,13 @@ yaml-load = ["dep:yaml-rust2", "parsing"]
 default-onig = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-onig"]
 # In order to switch to the fancy-regex engine, disable default features then add the default-fancy feature
 default-fancy = ["parsing", "default-syntaxes", "default-themes", "html", "plist-load", "yaml-load", "dump-load", "dump-create", "regex-fancy"]
-default = ["default-onig"]
+# FlexNetOS fork: default flipped from `default-onig` to `default-fancy` to drop the C oniguruma
+# backend (`onig`/`onig-sys`) in favor of the pure-Rust `fancy-regex` engine. Downstream crates
+# (comrak/tui-markdown) request syntect's DEFAULT features, so owning the fork's `default` flips
+# the whole tree to no-C. The regex SOURCE strings live in the .packdump assets and compile under
+# either backend, so no asset regeneration is needed. (Upstream default stays onig; see the line
+# above on how upstream documents the fancy switch.)
+default = ["default-fancy"]
 
 # [profile.release]
 # debug = true
