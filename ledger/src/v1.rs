@@ -420,10 +420,17 @@ impl Ledger {
         if path != ":memory:" && file_is_legacy_sqlite(path) {
             return Err(LedgerError::LegacySqlite(path.to_string()));
         }
+        // HFTASK-0090: the OPEN itself must retry on the transient `DatabaseAlreadyOpen`, not
+        // just writes. redb refuses a second concurrent open of one file IN THE SAME PROCESS;
+        // when a second handle (another thread, or — under the test harness's shared process cwd
+        // — a concurrent test resolving the same cwd-relative ledger) opens while the first is
+        // still live, `Database::create` returns `DatabaseAlreadyOpen`. That is transient (the
+        // other handle WILL drop), so retry the open with the SAME bounded backoff as writes
+        // instead of failing closed — otherwise `open_ledger_or_exit` aborts the whole process.
         let db = if path == ":memory:" {
             Builder::new().create_with_backend(InMemoryBackend::new())?
         } else {
-            Database::create(path)?
+            with_busy_retry(|| Database::create(path).map_err(LedgerError::from))?
         };
         // Ensure all tables exist (idempotent self-migration: open == create-if-absent for
         // every table). A no-op on an already-initialized DB.
