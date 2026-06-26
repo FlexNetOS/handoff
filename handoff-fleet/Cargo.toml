@@ -1,0 +1,15 @@
+[package]
+name = "handoff-fleet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-fleet — fleet rollup aggregation + member packet rendering (hf fleet status, ADR-0004 §4), peeled from hf"
+
+[dependencies]
+handoff-core = { path = "../handoff-core" }
+ledger = { path = "../ledger" }
+work-order = { path = "../work-order" }
+serde_json = "1"
+
+[lints]
+workspace = true

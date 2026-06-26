@@ -35,6 +35,22 @@ pub enum Priority {
     P3,
 }
 
+/// HFTASK-0083: priority display (`Priority` → `"P0".."P3"`), lifted from hf so the peeled feature
+/// crates (handoff-fleet, …) and the in-hf modules (sync) share one impl.
+pub trait PrioStr {
+    fn priority_str(&self) -> &'static str;
+}
+impl PrioStr for WorkOrder {
+    fn priority_str(&self) -> &'static str {
+        match self.priority {
+            Priority::P0 => "P0",
+            Priority::P1 => "P1",
+            Priority::P2 => "P2",
+            Priority::P3 => "P3",
+        }
+    }
+}
+
 /// The handoff.task.v1 envelope (mirrors `~/Downloads/tmp/handoff/handoff/schemas/task.schema.json`),
 /// plus provenance fields that link it back to the front door and make it provable.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
