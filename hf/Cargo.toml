@@ -35,6 +35,8 @@ handoff-fleet = { path = "../handoff-fleet" }
 handoff-drift = { path = "../handoff-drift" }
 # HFTASK-0083: the AI gatekeeper (+ GhPrView) was peeled into `handoff-gatekeeper`; hf aliases as `gatekeeper`.
 handoff-gatekeeper = { path = "../handoff-gatekeeper" }
+# HFTASK-0083: the front-door intake/dispatch verbs were peeled into `handoff-intake`; hf aliases as `intake`.
+handoff-intake = { path = "../handoff-intake" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

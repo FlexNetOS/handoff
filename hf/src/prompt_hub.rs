@@ -90,7 +90,11 @@ pub fn cmd_prompt_hub(vibe: &str, scope: Option<&[String]>, dispatch: bool, json
             .filter(|t| t.correlation_id == workflow_id && t.status == work_order::Status::Claimed)
             .map(|t| t.id)
             .collect();
-        intake::cmd_dispatch(Some(&workflow_id), true);
+        // HFTASK-0083: inject the witnessed claim path (see the main dispatch arm).
+        let leaser = crate::lease::WeaveCli::from_env();
+        intake::cmd_dispatch(Some(&workflow_id), true, &|id| {
+            crate::cmd_claim_with(id, &leaser)
+        });
         let after: std::collections::HashSet<String> = crate::load_tasks()
             .into_iter()
             .filter(|t| t.correlation_id == workflow_id && t.status == work_order::Status::Claimed)

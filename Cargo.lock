@@ -1173,6 +1173,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-intake"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "serde_json",
+ "work-order",
+]
+
+[[package]]
 name = "handoff-lease"
 version = "0.1.0"
 
@@ -1297,6 +1306,7 @@ dependencies = [
  "handoff-gatekeeper",
  "handoff-hooks",
  "handoff-index",
+ "handoff-intake",
  "handoff-lease",
  "handoff-policy",
  "handoff-route",
