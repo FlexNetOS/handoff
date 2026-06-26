@@ -19,6 +19,7 @@ mod fleet;
 mod gatekeeper;
 mod gates;
 mod hooks;
+mod index;
 mod intake;
 mod kb;
 mod lease;
@@ -3226,6 +3227,9 @@ fn main() {
         Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
+        // PRD §8/§9: generate navigation maps + the task DAG (HFTASK-0050, now actually built).
+        Some("index") => index::cmd_index(),
+        Some("plan") => index::cmd_plan(args.iter().any(|a| a == "--json")),
         Some("claim") => {
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
                 cmd_claim_batch();
@@ -3579,7 +3583,7 @@ fn main() {
             if let Some(verb) = other {
                 eprintln!("hf: unknown command '{verb}'");
             }
-            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
+            eprintln!("hf [--ledger PATH] <init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>");
             if other.is_some() {
                 std::process::exit(2);
             }
