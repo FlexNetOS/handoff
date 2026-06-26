@@ -54,6 +54,12 @@ pub enum LedgerError {
     /// Fail-closed (never silently treat it as empty/redb): the holder must run the one-time
     /// `hf migrate` importer. Carries the offending path.
     LegacySqlite(String),
+    /// The witness chain failed verification: a stored event no longer matches its own
+    /// content hash, or its `prev_hash` does not link to the prior event's `action_hash`.
+    /// Tamper-evidence (HFTASK-0079): proves the binary cache was altered after commit.
+    /// `seq` = the offending event sequence; `field` = `"action_hash"` (content tampered),
+    /// `"prev_hash"` (linkage broken: reorder/delete/splice), or `"rvf_segment"` (structural).
+    WitnessTampered { seq: u64, field: &'static str },
 }
 
 impl std::fmt::Display for LedgerError {
@@ -78,6 +84,13 @@ impl std::fmt::Display for LedgerError {
                  store (ADR-0017). Run the one-time importer `hf migrate {p}` (a binary built \
                  with `--features legacy-sqlite`) to convert it to redb; refusing to proceed \
                  (fail-closed) rather than treat it as an empty ledger."
+            ),
+            LedgerError::WitnessTampered { seq, field } => write!(
+                f,
+                "witness chain verification failed at seq {seq}: {field} mismatch — the stored \
+                 event no longer matches its committed hash/linkage. The binary ledger cache has \
+                 been altered after commit; rebuild it from the committed JSONL export \
+                 (`hf import`) and audit git history (fail-closed)."
             ),
         }
     }
@@ -824,24 +837,65 @@ impl Ledger {
         Ok(map.into_iter().collect())
     }
 
-    /// Build the RVF witness chain over all events and verify it (tamper-evidence).
-    /// Returns the number of verified entries.
+    /// Verify the witness chain over all events — genuine, fail-closed tamper-evidence.
+    /// Returns the number of verified entries, or `WitnessTampered` on the first break.
+    ///
+    /// HFTASK-0079: the prior implementation was a tautology. It rebuilt a fresh chain from the
+    /// *trusted* stored `action_hash` values (forcing `prev_hash` to 0 so `create_witness_chain`
+    /// recomputed every link) and then verified that just-built chain — which therefore always
+    /// passed, returning `events.len()` for honest, content-tampered, and garbage rows alike, and
+    /// `.expect`-panicked on the impossible failure. It never recomputed `action_hash` from the
+    /// payload nor checked the on-disk `prev_hash` linkage, so it could not detect tampering of
+    /// the binary redb cache.
+    ///
+    /// This walks events in `seq` order and enforces the SAME two invariants `append`
+    /// establishes (v1.rs `append`), so any post-commit edit of the cache fails closed:
+    /// 1. **Content** — re-derive `hash_action(event_type, work_order_id, payload_json)` and
+    ///    byte-compare to the stored `action_hash`. A mutated payload/type/work-order no longer
+    ///    matches its hash.
+    /// 2. **Linkage** — the stored `prev_hash` must equal the prior event's stored `action_hash`
+    ///    (genesis `[0u8; 32]`), so reordering, deleting, or splicing rows breaks the chain.
+    ///
+    /// The RVF witness-segment round-trip is retained as a secondary structural check (now over
+    /// the REAL stored linkage), but it is no longer the sole — nor a load-bearing — gate.
     pub fn verify_witness_chain(&self) -> Result<usize> {
         let tx = self.db.begin_read()?;
         let events = tx.open_table(EVENTS)?;
         let mut entries: Vec<WitnessEntry> = Vec::new();
+        let mut expected_prev = [0u8; 32];
         for item in events.iter()? {
-            let (_, v) = item?;
+            let (k, v) = item?;
+            let seq = k.value();
             let body = decode_body(v.value())?;
+            // (1) Content integrity — the load-bearing tamper check.
+            let recomputed = hash_action(&body.event_type, &body.work_order_id, &body.payload_json);
+            if recomputed != body.action_hash {
+                return Err(LedgerError::WitnessTampered {
+                    seq,
+                    field: "action_hash",
+                });
+            }
+            // (2) Linkage integrity — chains exactly as `append` did.
+            if body.prev_hash != expected_prev {
+                return Err(LedgerError::WitnessTampered {
+                    seq,
+                    field: "prev_hash",
+                });
+            }
+            expected_prev = body.action_hash;
             entries.push(WitnessEntry {
-                prev_hash: [0u8; 32], // chain links recomputed by create_witness_chain
+                prev_hash: body.prev_hash,
                 action_hash: body.action_hash,
                 timestamp_ns: body.ts_ns,
                 witness_type: 0x02, // COMPUTATION
             });
         }
+        // (3) Secondary structural check: RVF witness-segment continuity. Fail-closed, no panic.
         let chain = create_witness_chain(&entries);
-        let verified = verify_witness_chain(&chain).expect("witness chain must verify");
+        let verified = verify_witness_chain(&chain).map_err(|_| LedgerError::WitnessTampered {
+            seq: entries.len() as u64,
+            field: "rvf_segment",
+        })?;
         Ok(verified.len())
     }
 
@@ -1032,6 +1086,71 @@ mod tests {
         // 4. tamper-evidence: the RVF witness chain over all events verifies
         let n = led.verify_witness_chain().unwrap();
         assert_eq!(n, 6); // 2 orders x 3 transitions
+    }
+
+    /// HFTASK-0079: tampering an event's payload in the binary cache (leaving its `action_hash`
+    /// stale) MUST be caught. The old tautological `verify_witness_chain` returned the event
+    /// count here; the hardened one fails closed with `WitnessTampered { field: "action_hash" }`.
+    #[test]
+    fn tampering_a_payload_fails_witness_verification() {
+        let mut led = Ledger::open(":memory:").unwrap();
+        led.append("checkpoint", "HFTASK-T", "{\"k\":1}", 1)
+            .unwrap();
+        led.append("checkpoint", "HFTASK-T", "{\"k\":2}", 2)
+            .unwrap();
+        led.append("checkpoint", "HFTASK-T", "{\"k\":3}", 3)
+            .unwrap();
+        assert_eq!(led.verify_witness_chain().unwrap(), 3); // honest baseline verifies
+
+        // Mutate seq 2's payload directly in redb; its stored action_hash now no longer matches.
+        {
+            let tx = led.db.begin_write().unwrap();
+            {
+                let mut events = tx.open_table(EVENTS).unwrap();
+                let bytes = events.get(2u64).unwrap().unwrap().value().to_vec();
+                let mut body = decode_body(&bytes).unwrap();
+                body.payload_json = "{\"k\":999}".to_string();
+                events.insert(2u64, encode_body(&body).as_slice()).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        match led.verify_witness_chain() {
+            Err(LedgerError::WitnessTampered { seq, field }) => {
+                assert_eq!(seq, 2);
+                assert_eq!(field, "action_hash");
+            }
+            other => panic!("expected WitnessTampered/action_hash, got {other:?}"),
+        }
+    }
+
+    /// HFTASK-0079: breaking the `prev_hash` linkage (reorder/splice/delete) MUST be caught even
+    /// when the row's own content stays self-consistent — fails closed on `field: "prev_hash"`.
+    #[test]
+    fn breaking_prev_hash_linkage_fails_closed() {
+        let mut led = Ledger::open(":memory:").unwrap();
+        led.append("checkpoint", "HFTASK-L", "{}", 1).unwrap();
+        led.append("checkpoint", "HFTASK-L", "{}", 2).unwrap();
+        assert_eq!(led.verify_witness_chain().unwrap(), 2);
+
+        // Corrupt only seq 2's prev_hash; payload/action_hash stay self-consistent (content ok).
+        {
+            let tx = led.db.begin_write().unwrap();
+            {
+                let mut events = tx.open_table(EVENTS).unwrap();
+                let bytes = events.get(2u64).unwrap().unwrap().value().to_vec();
+                let mut body = decode_body(&bytes).unwrap();
+                body.prev_hash = [9u8; 32]; // no longer == seq 1's action_hash
+                events.insert(2u64, encode_body(&body).as_slice()).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        match led.verify_witness_chain() {
+            Err(LedgerError::WitnessTampered { seq, field }) => {
+                assert_eq!(seq, 2);
+                assert_eq!(field, "prev_hash");
+            }
+            other => panic!("expected WitnessTampered/prev_hash, got {other:?}"),
+        }
     }
 
     /// Isolated temp dir for a file-backed ledger (NEVER the real .handoff/ledger.db).
