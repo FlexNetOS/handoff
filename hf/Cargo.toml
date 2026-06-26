@@ -53,3 +53,6 @@ cognitum = ["dep:cognitum-gate-tilezero", "dep:tokio"]
 # Build the one-time legacy C-SQLite → redb ledger importer (`hf migrate`). Pulls bundled
 # C-SQLite for the read side — NEVER part of the default no-C runtime build (ADR-0017 cutover).
 legacy-sqlite = ["ledger/legacy-sqlite"]
+
+[lints]
+workspace = true

@@ -31,3 +31,6 @@ rusty-idd-tui = { path = "../tui" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true
