@@ -1,53 +1,81 @@
 # rusty-idd — security advisory ledger
 
-Tracks `cargo audit` findings for the workspace, the doctrine applied (STRICT UPGRADE-ONLY;
-no unmaintained dep left in the tree if a maintained successor exists), and the disposition of
-each. The machine-enforced policy lives in `.cargo/audit.toml`.
+Tracks `cargo audit` findings for the workspace and their disposition. Doctrine: **STRICT
+UPGRADE-ONLY — no unmaintained dependency is left in the tree, and nothing is suppressed.**
+Every finding below is FIXED (the crate is gone from the tree), not ignored. The machine-enforced
+policy lives in `.cargo/audit.toml`, which has an **empty `ignore` list**.
 
 Last reviewed: **2026-06-26**.
 
-## Standing policy
+## Policy
 
-- **Vulnerabilities** (`RUSTSEC` with a non-empty `patched`): never ignored — upgrade or replace.
-- **Unmaintained** (informational): FIX upgrade-only if a maintained successor exists; otherwise
-  record here as accepted-risk **with a watch**, and ignore in `.cargo/audit.toml` so the gate
-  stays honest-green on the genuinely-blocked item only.
+- **Vulnerabilities** (`RUSTSEC` with a non-empty `patched`): upgrade or replace. Never ignored.
+- **Unmaintained** (informational): if a maintained successor exists, switch to it; if the dead
+  crate is buried in an upstream dependency, **host that upstream locally and upgrade the dead
+  dep ourselves** (the vendored-fork pattern below). Do **not** add an `ignore` to paper over it.
 
-## Findings
+## The vendored syntect fork — `vendor/syntect`
 
-### RUSTSEC-2024-0320 — `yaml-rust 0.4.5` unmaintained — ✅ FIXED (2026-06-26)
+All three problem crates entered via `syntect 5.3.0` (pulled by `comrak`/`tui-markdown`, used by
+`crates/{spec,tui,cli}`; the TUI genuinely uses `tui-markdown`'s `highlight-code`). syntect could
+not be dropped, and downstream crates can't subtract a transitive's features, so we took syntect
+under our control: `vendor/syntect` is a FlexNetOS fork of syntect `master` (rev `4aa78031`),
+wired in via `[patch.crates-io] syntect = { path = "vendor/syntect" }` in the workspace `Cargo.toml`.
 
-- **Entered via:** `syntect 5.3.0` (`yaml-load`) ← `comrak` / `tui-markdown` ← rusty-idd crates.
-- **Fix:** `[patch.crates-io] syntect = { git, rev = 4aa78031… }` (workspace `Cargo.toml`).
-  syntect's unreleased `master` already migrated to the maintained **`yaml-rust2 0.10.4`** and is
-  still package-version `5.3.0`, so the pin satisfies `tui-markdown ^5.3.0` with zero source edits.
-- **Verified:** `cargo tree -i yaml-rust` → not present; `yaml-rust2 0.10.4` present; the
-  `tui` `highlight-code` parity test (`test_code_blocks_rendered_with_highlighting`) still passes.
-- **NOT ignored** in `.cargo/audit.toml` — if `yaml-rust 0.4` reappears it is a real regression.
+### RUSTSEC-2024-0320 — `yaml-rust 0.4.5` unmaintained — ✅ FIXED
+syntect `master` had already migrated to the maintained **`yaml-rust2 0.10.4`**; the fork inherits
+that. `cargo tree -i yaml-rust` → not present.
 
-### RUSTSEC-2025-0141 — `bincode 1.3.3` unmaintained — ⏸️ ACCEPTED-RISK (watch)
+### RUSTSEC-2025-0141 — `bincode 1.3.3` unmaintained — ✅ FIXED
+This advisory flags **all** bincode versions (the crate was permanently frozen, `patched = []`),
+so a version bump could not clear it. bincode was syntect's dump (`.packdump`/`.themedump`) format.
+The fork **replaces bincode with the maintained `postcard`** in `vendor/syntect/src/dumps.rs`
+(postcard is, like bincode, a compact non-self-describing serde format, so syntect's existing
+`Serialize`/`Deserialize` types port unchanged) and the bundled `assets/*` were **regenerated in
+postcard format** via the `gendata` example. `cargo tree -i bincode` → not present.
 
-- **Why not fixable upgrade-only:** the advisory flags **all** bincode versions (1/2/3) —
-  the crate was permanently frozen (`patched = []`, 2025-12-16). bincode 2.x/3.x are **not** a
-  maintained successor; moving to them would not clear the advisory and would require
-  regenerating syntect's embedded dumps in a new format.
-- **Why it can't be dropped:** it enters ONLY via `syntect`'s bundled default syntax/theme set,
-  which is structurally bincode-encoded (`default-syntaxes` → `dump-load` → `bincode`). The
-  rusty-idd TUI's code-block highlighting needs the default syntaxes. No drop-in, no-bincode,
-  maintained highlighter exists that preserves `tui-markdown`'s `highlight-code` integration
-  (synoptic/syntastica/inkjet are not drop-in and/or pull C tree-sitter grammars).
-- **Disposition:** ignored in `.cargo/audit.toml` (`RUSTSEC-2025-0141`) with this rationale.
-- **Watch / exit condition:** upstream `trishume/syntect#623` (bincode-unmaintained) and `#694`
-  (replace bincode), slated for **syntect 6.0.0**. When 6.0.0 ships and `tui-markdown` revs to it:
-  update the `[patch] syntect` pin (or drop it), **remove the ignore**, and mark this FIXED.
+### RUSTSEC-2023-0089 — `atomic-polyfill` unmaintained — ✅ FIXED (avoided)
+postcard's *default* features pull `heapless 0.7`, which pulls the unmaintained `atomic-polyfill`.
+The fork depends on postcard with `default-features = false, features = ["use-std"]` — we only need
+`to_allocvec`/`from_bytes` on std `Vec`/slices, never heapless — so neither `heapless` nor
+`atomic-polyfill` enters the tree. `cargo tree -i atomic-polyfill --target all` → not present.
 
-## Not-yet-pursued (noted, not blocking)
+## Verification (2026-06-26)
 
-- **`onig` / `onig_sys` (C dependency)** is pulled by syntect's default `regex-onig` backend.
-  Not a `cargo audit` finding (it is maintained), but it is a C dep in a no-C-preferring tree.
-  Removable by vendoring a syntect fork whose `default` uses `regex-fancy` (pure-Rust
-  `fancy-regex`) — the heavier "host locally" option. Deferred; revisit with the syntect 6.0 bump.
+- `cargo tree -i` for `yaml-rust` / `bincode` / `atomic-polyfill` / `heapless` → all "did not match".
+- `cargo audit --deny warnings` → **exit 0 with an empty ignore list** (nothing suppressed).
+- Highlight parity preserved: `crates/tui` `test_code_blocks_rendered_with_highlighting` passes;
+  the `gendata`-regenerated assets load and highlight (verified via syntect's `syncat` example).
+- Workspace: 695 tests pass; build green default / `--no-default-features` / `--all-features`;
+  clippy `--workspace --all-targets -- -D warnings` clean.
+
+## Maintenance / exit condition
+
+The fork tracks syntect `master` rev `4aa78031`. When upstream ships **syntect 6.0.0** with its own
+bincode replacement (`trishume/syntect#623`/`#694`) and `tui-markdown` revs to it, reconcile:
+re-evaluate whether the fork is still needed; if upstream's serializer is maintained, drop
+`vendor/syntect` and the patch and depend on the released crate. Until then we carry the fork
+(rebase onto new syntect master as needed; regenerate `assets/*` with the `gendata` example after
+any serializer change).
+
+### Regenerating the assets (after a serializer/source change)
+
+```
+# from a checkout that has syntect's testdata submodules populated:
+cd vendor/syntect && ln -s <syntect-testdata> testdata
+cargo run --features=metadata --example gendata -- synpack testdata/Packages \
+  assets/default_newlines.packdump assets/default_nonewlines.packdump \
+  assets/default_metadata.packdump testdata/DefaultPackage
+cargo run --features=metadata --example gendata -- themepack testdata assets/default.themedump
+rm testdata   # regen-only; never committed
+```
+
+## Deferred (noted, not blocking)
+
+- **`onig` / `onig_sys` (C dependency)** is still pulled by syntect's default `regex-onig` backend.
+  Not a `cargo audit` finding (maintained), but a C dep in a no-C-preferring tree. The fork could
+  redefine its `default` to `regex-fancy` (pure-Rust `fancy-regex`) to drop it; deferred to keep
+  this change scoped to the audit findings.
 - **`crates/spec` comrak footprint:** `crates/spec` uses comrak only for parse/emit (no
   `SyntectAdapter`), so `comrak = { version = "0.52", default-features = false }` would drop
-  syntect from the spec path. Pure standalone-footprint hygiene; does not change the workspace
-  audit (the `tui` path still pulls syntect). Deferred to keep the dep-fix PR surgical.
+  syntect from the spec path. Standalone-footprint hygiene only; deferred.

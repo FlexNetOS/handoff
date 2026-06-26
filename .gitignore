@@ -40,3 +40,7 @@ node_modules/
 .kb/workspace/
 .kb/workspaces/
 .kb/config.toml
+
+# Vendored syntect fork (postcard) — ignore build artifacts + regen-only testdata symlink
+vendor/syntect/target/
+vendor/syntect/testdata
