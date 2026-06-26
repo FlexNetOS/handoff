@@ -646,6 +646,18 @@ pub fn cmd_drift(json: bool) {
         for i in &r.drift {
             println!("  ⚠ {i}");
         }
+        // PRD §12.3 #8 advisory: surface decision-record contradictions here too (not only in the
+        // clean branch) so the detail accompanies its required_action when drift is non-clean for
+        // another reason. JSON already carries it; this keeps the human text complete.
+        if !r.decision_contradictions.is_empty() {
+            println!(
+                "advisory (PRD §12.3 #8): {} decision-record contradiction(s):",
+                r.decision_contradictions.len()
+            );
+            for c in &r.decision_contradictions {
+                println!("  • {c}");
+            }
+        }
         if !r.required_actions.is_empty() {
             println!("required actions:");
             for a in &r.required_actions {
