@@ -475,6 +475,30 @@ Checks:
 9. Did the agent create undocumented architecture changes?
 10. Did the agent update handoff state after material changes?
 
+#### Implementation mapping (`hf/src/gates.rs::detect`, schema `handoff.drift_report.v1`)
+
+The sentinel is **content-matched** to this list — every check above maps to a concrete
+detector, and the kernel adds three checks beyond the original ten. `B` = blocking
+(`clean()` ⇔ `drift` empty; fails `hf drift` / `hf policy check-handoff`); `A` = advisory
+(surfaced in the report + `required_actions`, never blocking).
+
+| PRD # | Check | Detector | Mode |
+|------|-------|----------|------|
+| 1 | task active | `active_tasks` (explicit set) + `out_of_scope` deny-without-claim when changes exist with no claim | A + B |
+| 2 | objective hash | `objective_hash_match` (intent_lock surface) | B |
+| 3 | path scope hash | `path_scope_match` | B |
+| 4 | acceptance hash | `acceptance_hash_match` | B |
+| 5 | repo constraints | `constraint_hash_match` (§12.1 constraint surface) | B |
+| 6 | edit outside scope | `out_of_scope_files` vs claimed `path_scope` | B |
+| 7 | tests map to acceptance | `acceptance_without_tests` | B |
+| 8 | contradicts a decision record | *approximated* by #9's decision-surface advisory; a fuller semantic diff against recorded decisions is tracked future work | A (partial) |
+| 9 | undocumented architecture change | `undocumented_decisions` (decision-surface file changed without an ADR) | A |
+| 10 | handoff state updated after material changes | `handoff_state_stale` (active task with changed files but no witnessed checkpoint) | A |
+
+Kernel **additions** (beyond the original ten): `northstar_revision_match` (doctrine-revision
+drift, B), `dependency_unsatisfied` (in-progress task depends on a not-Done task, B), and
+`missing_evidence` (in-progress task with `test_commands` but no green witnessed `test_result`, B).
+
 ### 12.4 Drift audit output
 
 ```json

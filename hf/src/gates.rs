@@ -134,6 +134,24 @@ fn tasks_with_green_tests() -> HashSet<String> {
     green
 }
 
+/// Tasks that have at least one witnessed `checkpoint` event (PRD §12.3 #10 input). Mirrors
+/// `tasks_with_green_tests`'s ledger-read shape; advisory-only, so a ledger-open failure
+/// degrades to "no checkpoints seen" rather than changing any blocking verdict.
+fn tasks_with_checkpoints() -> HashSet<String> {
+    let mut seen = HashSet::new();
+    let path = Path::new(HF).join("ledger.db");
+    if let Ok(led) = Ledger::open(&path.to_string_lossy()) {
+        if let Ok(events) = led.all_events() {
+            for e in events {
+                if e.event_type == "checkpoint" {
+                    seen.insert(e.work_order_id);
+                }
+            }
+        }
+    }
+    seen
+}
+
 /// The full drift sentinel result (HFTASK-0046, schema `handoff.drift_report.v1`).
 /// `drift` is the BLOCKING human-readable union; `undocumented_decisions` is advisory
 /// (surfaced for the gatekeeper, not hard-blocking, so the loop's own ADR'd policy work
@@ -149,6 +167,14 @@ struct DriftReport {
     acceptance_without_tests: Vec<String>,
     dependency_unsatisfied: Vec<String>,
     undocumented_decisions: Vec<String>,
+    /// PRD §12.3 #1 (task-active) — informational: the tasks currently in an active state. An
+    /// empty list while changes are staged is already BLOCKED by the §12.3-#6 deny_without_claim
+    /// path; this surfaces the active set explicitly so the check is observable, not implicit.
+    active_tasks: Vec<String>,
+    /// PRD §12.3 #10 (handoff-state-updated) — ADVISORY (never blocking): an active task with
+    /// material (changed) files but no witnessed checkpoint yet — handoff state not refreshed
+    /// after material changes. Surfaced as a reminder, not a gate (like `undocumented_decisions`).
+    handoff_state_stale: Vec<String>,
     drift: Vec<String>,
     required_actions: Vec<String>,
     /// Tasks whose 5-surface intent_lock drifted this run → the `task_intent_changed` witnesses
@@ -182,14 +208,24 @@ fn detect() -> DriftReport {
         acceptance_without_tests: vec![],
         dependency_unsatisfied: vec![],
         undocumented_decisions: vec![],
+        active_tasks: vec![],
+        handoff_state_stale: vec![],
         drift: vec![],
         required_actions: vec![],
         intent_changed: vec![],
     };
 
-    // 1–3, 9–10) per-surface intent_lock drift across all FIVE surfaces (HFTASK-0047). The
-    // constraint/northstar checks no-op on a legacy partial lock (empty fields), so old cards
-    // are never spuriously flagged.
+    // PRD §12.3 #1 (task-active): surface the currently-active task set explicitly (informational).
+    r.active_tasks = tasks
+        .iter()
+        .filter(|t| in_progress(t))
+        .map(|t| t.id.clone())
+        .collect();
+
+    // PRD §12.3 #2 (objective), #3 (path_scope), #4 (acceptance), #5 (constraints): per-surface
+    // intent_lock drift across all FIVE surfaces (HFTASK-0047). `northstar` is a kernel ADDITION
+    // beyond PRD §12.3 (doctrine-revision drift). The constraint/northstar checks no-op on a
+    // legacy partial lock (empty fields), so old cards are never spuriously flagged.
     let ns_rev = crate::current_northstar_revision();
     for t in &tasks {
         let c = t.intent_components(&ns_rev);
@@ -254,7 +290,8 @@ fn detect() -> DriftReport {
         }
     }
 
-    // 4) out-of-scope edits: changed files outside any claimed task's path_scope.
+    // PRD §12.3 #6 (edit outside path scope) + #1 (task-active, the deny_without_claim arm):
+    // changed files outside any claimed task's path_scope.
     let (claimed, scopes) = claimed_scopes(&tasks, &replay);
     let changed = changed_files();
     if !changed.is_empty() {
@@ -282,7 +319,8 @@ fn detect() -> DriftReport {
         }
     }
 
-    // 5–6) evidence & acceptance↔test mapping for in-progress tasks.
+    // PRD §12.3 #7 (tests map to acceptance criteria) + a kernel ADDITION (missing green test
+    // evidence) for in-progress tasks.
     let green = tasks_with_green_tests();
     for t in tasks.iter().filter(|t| in_progress(t)) {
         if t.acceptance_criteria.iter().any(|a| !a.trim().is_empty()) && t.test_commands.is_empty()
@@ -305,7 +343,8 @@ fn detect() -> DriftReport {
         }
     }
 
-    // 7) dependency satisfaction: an in-progress task must not depend on an unfinished task.
+    // Kernel ADDITION (beyond PRD §12.3): dependency satisfaction — an in-progress task must not
+    // depend on an unfinished task.
     let done = |id: &str| replay.iter().any(|(k, s)| k == id && *s == Status::Done);
     for t in tasks.iter().filter(|t| in_progress(t)) {
         for dep in &t.dependencies {
@@ -321,8 +360,10 @@ fn detect() -> DriftReport {
         }
     }
 
-    // 8) undocumented architecture/decision change (ADVISORY — surfaced, not blocking): a
-    //    decision-surface file changed without an accompanying ADR/decision in the same edit.
+    // PRD §12.3 #9 (undocumented architecture change) + approximates #8 (work contradicting a
+    //    decision record) (ADVISORY — surfaced, not blocking): a decision-surface file changed
+    //    without an accompanying ADR/decision in the same edit. (A fuller semantic #8 — diffing
+    //    against recorded decisions — is tracked as future work, not yet a content check.)
     let touches_adr = changed
         .iter()
         .any(|f| f.contains("docs/adr-") || f.contains(".handoff/decisions/"));
@@ -335,6 +376,24 @@ fn detect() -> DriftReport {
         if !r.undocumented_decisions.is_empty() {
             r.required_actions
                 .push("record an ADR/decision for the policy/CI change".into());
+        }
+    }
+
+    // 10) handoff-state-updated (PRD §12.3 #10) — ADVISORY: an active task with material (changed)
+    //     files but no witnessed checkpoint yet → handoff state not refreshed after material
+    //     changes. Surfaced (not pushed to `drift`), so it never blocks mid-work.
+    if !changed.is_empty() {
+        let checkpointed = tasks_with_checkpoints();
+        for t in tasks.iter().filter(|t| in_progress(t)) {
+            if !checkpointed.contains(&t.id) {
+                r.handoff_state_stale.push(t.id.clone());
+            }
+        }
+        if !r.handoff_state_stale.is_empty() {
+            r.required_actions.push(
+                "checkpoint material changes (`hf checkpoint`) so handoff state reflects them"
+                    .into(),
+            );
         }
     }
 
@@ -407,6 +466,8 @@ pub fn cmd_drift(json: bool) {
             "acceptance_without_tests": r.acceptance_without_tests,
             "dependency_unsatisfied": r.dependency_unsatisfied,
             "undocumented_decisions": r.undocumented_decisions,
+            "active_tasks": r.active_tasks,
+            "handoff_state_stale": r.handoff_state_stale,
             "drift": r.drift,
             "required_actions": r.required_actions,
         });
@@ -417,6 +478,12 @@ pub fn cmd_drift(json: bool) {
             println!(
                 "  ⓘ advisory: {} decision-surface file(s) changed without an ADR — confirm a decision record",
                 r.undocumented_decisions.len()
+            );
+        }
+        if !r.handoff_state_stale.is_empty() {
+            println!(
+                "  ⓘ advisory: {} active task(s) with material changes not yet checkpointed — refresh handoff state (PRD §12.3 #10)",
+                r.handoff_state_stale.len()
             );
         }
     } else {
@@ -555,8 +622,42 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{glob_match, is_decision_surface};
+    use super::{glob_match, is_decision_surface, DriftReport};
     use work_order::WorkOrder;
+
+    #[test]
+    fn advisory_checks_never_block_clean() {
+        // PRD §12.3 #1 (active_tasks) and #10 (handoff_state_stale) are ADVISORY: populating
+        // them must NOT make the report unclean (clean() ⇔ blocking `drift` is empty). This
+        // guards the no-regression contract — the new PRD checks can never false-block the loop.
+        let mut r = DriftReport {
+            objective_hash_match: true,
+            path_scope_match: true,
+            acceptance_hash_match: true,
+            constraint_hash_match: true,
+            northstar_revision_match: true,
+            out_of_scope_files: vec![],
+            missing_evidence: vec![],
+            acceptance_without_tests: vec![],
+            dependency_unsatisfied: vec![],
+            undocumented_decisions: vec!["..handoff/policy.toml".into()],
+            active_tasks: vec!["HFTASK-0001".into()],
+            handoff_state_stale: vec!["HFTASK-0001".into()],
+            drift: vec![],
+            required_actions: vec!["checkpoint".into()],
+            intent_changed: vec![],
+        };
+        assert!(
+            r.clean(),
+            "advisory active_tasks/handoff_state_stale must not block clean()"
+        );
+        // A genuine blocking item DOES flip clean() — proving the gate still bites.
+        r.drift.push("objective drift: HFTASK-0001".into());
+        assert!(
+            !r.clean(),
+            "a blocking drift item must make the report unclean"
+        );
+    }
 
     #[test]
     fn decision_surface_classification() {
