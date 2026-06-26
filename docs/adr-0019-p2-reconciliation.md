@@ -43,16 +43,25 @@ pipeline under runner contention — a regression. The gatekeeper stays **adviso
 bypassable) until the runner-cap constraint changes.
 
 ### D5 — Deferred future work (tracked here, not silently dropped)
-The following are acknowledged gaps, deliberately **not** implemented in the P2 pass, recorded so
-they are not lost:
-1. **Drift §12.3 #8** (work contradicts a decision record): currently *approximated* by the #9
-   decision-surface advisory. A fuller semantic diff against recorded ADR decisions is future work.
-2. **Gatekeeper AST grounding**: `gatekeeper.rs::impact_scan` uses a `git grep` token scan (and its
-   own doc-comment already says AST/`kb_callers`/`kb_impact` grounding "is not yet wired"). Upgrading
-   the impact scan from text-grep to the call-graph is future work.
-3. **`[workspace.lints]` adoption** (`unwrap_used`/`expect_used`/`panic` = deny): the tree has
-   hundreds of `.unwrap()`/`.expect()` sites; adopting the deny lints is a tracked refactor.
-4. **12-crate decomposition + edition 2024 / resolver 3**: a future structural move (D1).
+The following were acknowledged gaps at P2 time. **All have since been DELIVERED** (2026-06-26
+burndown; HFTASK-0079–0083), so this section now records *done* rather than *deferred*:
+1. **Drift §12.3 #8** (work contradicts a decision record): **DONE** (#151) — `hf/src/gates.rs`
+   now parses `drift-guard` markers in ADRs/decision records and surfaces real
+   `decision_contradictions` (e.g. a forbidden `bincode =` reintroduced in a manifest).
+2. **Gatekeeper AST grounding**: **DONE** (#152) — `impact_scan` now unions the code-intelligence
+   call graph (`git kb code impact`) with the grep safety-net and records `impact_grounding`.
+3. **`[workspace.lints]` adoption** (`unwrap_used`/`expect_used`/`panic` = deny): **DONE**
+   (HFTASK-0080 #159 kernel + HFTASK-0082 #164 toolkit) — the whole tree enforces the deny;
+   production sites propagate or carry a justified per-site `#[allow]`; tests allowed under
+   `#[cfg(test)]`.
+4. **12-crate decomposition + edition 2024 / resolver 3**: **DONE** — edition 2024 + resolver 3
+   landed (#153); the decomposition reached **16 kernel crates** (HFTASK-0081 #154/#160/#161/#162
+   leaf set; HFTASK-0083 #165–#173 the coupled set). The hf binary is now a thin orchestrator over
+   `handoff-{core,policy,schema,lease,hooks,index,fleet,drift,route,test-support,secrets,gatekeeper,intake}`
+   + `work-order` + `ledger`. The 4 card-named coupled modules (drift/gatekeeper/fleet/intake) are
+   all peeled — gatekeeper's shared `GhPrView`/secrets-gate were extracted (`handoff-secrets`,
+   optional-feature), and intake's `cmd_claim_with` dispatch coupling was **inverted** via an
+   injected `claim` closure rather than lifted, so no crate reaches back into the binary.
 
 ## Consequences
 
