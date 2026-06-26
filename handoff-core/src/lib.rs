@@ -32,6 +32,25 @@ pub fn tasks_dir() -> PathBuf {
     Path::new(HF).join("tasks")
 }
 
+/// The session capsule path (`.handoff/context/capsule.json`).
+pub fn capsule_path() -> PathBuf {
+    Path::new(HF).join("context").join("capsule.json")
+}
+
+/// Read one string field from the session capsule, or `None` if absent/unreadable/non-string.
+/// HFTASK-0083: lifted from hf so the drift/gate crate can resolve the North-Star revision.
+pub fn capsule_field(key: &str) -> Option<String> {
+    let s = fs::read_to_string(capsule_path()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    v.get(key).and_then(|x| x.as_str()).map(String::from)
+}
+
+/// HFTASK-0047: the current North-Star doctrine revision = blake3 of the capsule `northstar`.
+/// An empty/absent capsule yields an empty revision (no northstar obligation is raised).
+pub fn current_northstar_revision() -> String {
+    work_order::northstar_revision(&capsule_field("northstar").unwrap_or_default())
+}
+
 /// HFTASK-0054: ledger location is overridable via the `HANDOFF_LEDGER` environment variable
 /// (set by the `--ledger <path>` global flag). This lets a member repo render its Tier-A packet
 /// against a shared ledger from its own CWD without a per-repo ledger.db. When unset, the default

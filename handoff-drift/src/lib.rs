@@ -1,9 +1,16 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+//! HFTASK-0083 (ADR-0019 D5 #4): the drift-audit + policy-check engine peeled into `handoff-drift`
+//! after the North-Star + card/next-safe helpers moved to handoff-core. `hf` aliases it as `gates`
+//! so `gates::cmd_drift` / `gates::cmd_policy_check` stay valid. Deps: handoff-core + ledger +
+//! work-order.
+//!
 //! `hf drift` (HFTASK-0005) and `hf policy check-{claim,edit,handoff}` (HFTASK-0015)
 //! — the two hard gates the `.handoff/hooks/hooks.toml` contract fires (PreEdit,
 //! PreHandoff, TaskClaim). Both emit JSON for hook callers and exit non-zero on a
 //! block so `fail_mode = block` hooks actually stop the loop. Fail-closed.
 
-use crate::{current_statuses, load_tasks, status_of};
+use handoff_core::{current_statuses, load_tasks, status_of};
 use ledger::Ledger;
 use std::collections::HashSet;
 use std::path::Path;
@@ -360,7 +367,7 @@ fn detect() -> DriftReport {
     // intent_lock drift across all FIVE surfaces (HFTASK-0047). `northstar` is a kernel ADDITION
     // beyond PRD §12.3 (doctrine-revision drift). The constraint/northstar checks no-op on a
     // legacy partial lock (empty fields), so old cards are never spuriously flagged.
-    let ns_rev = crate::current_northstar_revision();
+    let ns_rev = handoff_core::current_northstar_revision();
     for t in &tasks {
         let c = t.intent_components(&ns_rev);
         let mut changed: Vec<&'static str> = vec![];
@@ -588,7 +595,7 @@ fn emit_intent_changed(report: &DriftReport) {
             "observed": sig,
         })
         .to_string();
-        let _ = led.append("task_intent_changed", id, &payload, crate::now_ns());
+        let _ = led.append("task_intent_changed", id, &payload, handoff_core::now_ns());
     }
 }
 
@@ -617,7 +624,7 @@ pub fn cmd_drift(json: bool) {
             "drift": r.drift,
             "required_actions": r.required_actions,
         });
-        println!("{}", crate::pretty_json(&out));
+        println!("{}", handoff_core::pretty_json(&out));
     } else if clean {
         println!("hf drift: clean — no intent, scope, evidence, or dependency drift");
         if !r.undocumented_decisions.is_empty() {
@@ -710,7 +717,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
         "check-claim" => {
             // A claim is permitted; the gate just confirms the kernel can resolve a
             // next-safe target (else there is nothing legitimately claimable).
-            if crate::next_safe(&tasks, &replay).is_none()
+            if handoff_core::next_safe(&tasks, &replay).is_none()
                 && !tasks.iter().any(|t| {
                     matches!(
                         status_of(&t.id, &replay, t),
@@ -748,7 +755,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
                     items.len()
                 ));
             }
-            if crate::next_safe(&tasks, &replay).is_none()
+            if handoff_core::next_safe(&tasks, &replay).is_none()
                 && tasks
                     .iter()
                     .all(|t| status_of(&t.id, &replay, t) == Status::Done)
@@ -772,7 +779,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
             "pass": pass,
             "blocks": blocks,
         });
-        println!("{}", crate::pretty_json(&out));
+        println!("{}", handoff_core::pretty_json(&out));
     } else if pass {
         println!("hf policy {kind}: PASS");
     } else {
