@@ -1,0 +1,26 @@
+[package]
+name = "handoff-gatekeeper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-gatekeeper — the surgical AI gatekeeper (hf gatekeeper check, §5b) + GhPrView, peeled from hf"
+
+[dependencies]
+handoff-core = { path = "../handoff-core" }
+handoff-policy = { path = "../handoff-policy" }
+handoff-route = { path = "../handoff-route" }
+ledger = { path = "../ledger" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HFTASK-0083: the envctl secrets merge-gate, gated behind this crate's `secrets` feature so the
+# default build stays envctl-free (propagated up from hf's `secrets` feature).
+handoff-secrets = { path = "../handoff-secrets", optional = true }
+
+[dev-dependencies]
+handoff-test-support = { path = "../handoff-test-support" }
+
+[features]
+secrets = ["dep:handoff-secrets"]
+
+[lints]
+workspace = true

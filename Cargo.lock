@@ -1140,6 +1140,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-gatekeeper"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "handoff-policy",
+ "handoff-route",
+ "handoff-secrets",
+ "handoff-test-support",
+ "ledger",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "handoff-hooks"
 version = "0.1.0"
 dependencies = [
@@ -1186,6 +1200,13 @@ dependencies = [
  "jsonschema",
  "serde_json",
  "work-order",
+]
+
+[[package]]
+name = "handoff-secrets"
+version = "0.1.0"
+dependencies = [
+ "envctl-secrets-engine",
 ]
 
 [[package]]
@@ -1270,16 +1291,17 @@ name = "hf"
 version = "0.1.0"
 dependencies = [
  "cognitum-gate-tilezero",
- "envctl-secrets-engine",
  "handoff-core",
  "handoff-drift",
  "handoff-fleet",
+ "handoff-gatekeeper",
  "handoff-hooks",
  "handoff-index",
  "handoff-lease",
  "handoff-policy",
  "handoff-route",
  "handoff-schema",
+ "handoff-secrets",
  "handoff-test-support",
  "ledger",
  "rand",

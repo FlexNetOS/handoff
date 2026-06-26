@@ -1,4 +1,11 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! HFTASK-0014: surgical AI gatekeeper foundation.
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): peeled into `handoff-gatekeeper` (it also now owns the shared
+//! `GhPrView` GitHub-PR type). `hf` aliases it as `gatekeeper`; main's review flow imports
+//! `handoff_gatekeeper::GhPrView`. The `secrets` merge-gate is behind this crate's own `secrets`
+//! feature (`dep:handoff-secrets`), propagated from hf.
 //!
 //! This module adds a deterministic, witnessed `hf gatekeeper check <pr>` command. It is the
 //! §5b code-omniscient merge approver. It uses:
@@ -13,9 +20,25 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::{
-    GhPrView, HF, Ledger, ledger_path, now_ns, policy::Policy, route::route_for_task, run_out,
-};
+use handoff_core::{HF, ledger_path, must_witness, now_ns, run_out};
+use handoff_policy::policy::Policy;
+use handoff_route::route_for_task;
+use ledger::Ledger;
+use serde::{Deserialize, Serialize};
+
+/// HFTASK-0083: the `gh pr view --json` projection used by the gatekeeper + the review-request
+/// flow in hf. Lifted here (it is gatekeeper-adjacent); hf imports `handoff_gatekeeper::GhPrView`.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GhPrView {
+    pub url: String,
+    pub number: u64,
+    #[serde(rename = "headRefName")]
+    pub head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    pub base_ref_name: String,
+    #[serde(rename = "isDraft")]
+    pub is_draft: bool,
+}
 
 /// The result of an impact scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,7 +201,7 @@ fn run_test_gate() -> Result<(), String> {
 
 #[cfg(feature = "secrets")]
 fn merge_gate_check() -> Result<bool, String> {
-    crate::secrets::github_merge_gate(
+    handoff_secrets::github_merge_gate(
         "POST",
         "api.github.com",
         "/repos/FlexNetOS/handoff/check-runs",
@@ -340,7 +363,7 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
     })
     .to_string();
 
-    crate::must_witness(
+    must_witness(
         led.append("gatekeeper_judgment", work_order_id, &payload, now_ns()),
         "gatekeeper_judgment",
     );
@@ -413,15 +436,41 @@ mod tests {
 
     #[test]
     fn impact_scan_detects_reference() {
-        // `impact_scan` runs `git grep` relative to the process cwd, so it must not race
-        // the cwd-mutating tests (route/delivery) — hold the shared cwd lock.
+        // `impact_scan` runs `git grep` relative to the process cwd, so it must not race the
+        // cwd-mutating tests — hold the shared cwd lock. HFTASK-0083: hermetic (a temp git repo
+        // with a known cross-file reference) instead of depending on hf's live file layout, which
+        // changed when this module was peeled out of the hf binary into its own crate.
         let _g = handoff_test_support::cwd_lock();
-        // main.rs declares `mod route;`, so changing route.rs should show main.rs in the
-        // impacted set when we grep for the module name.
-        let impact = impact_scan(&["src/route.rs".into()]);
+        let dir = std::env::temp_dir().join(format!(
+            "hf-impact-{}-{}",
+            std::process::id(),
+            handoff_core::now_ns()
+        ));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        // b.rs references the `widget` module (from src/widget.rs) — the cross-file edge.
+        std::fs::write(dir.join("src/widget.rs"), "pub fn w() {}\n").unwrap();
+        std::fs::write(
+            dir.join("src/b.rs"),
+            "use crate::widget;\nfn go() { widget::w(); }\n",
+        )
+        .unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap();
+        };
+        run(&["init", "-q"]);
+        run(&["add", "."]);
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let impact = impact_scan(&["src/widget.rs".into()]);
+        std::env::set_current_dir(prev).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
         assert!(
-            impact.impacted.iter().any(|f| f.ends_with("main.rs")),
-            "expected main.rs to reference route.rs; got {:?}",
+            impact.impacted.iter().any(|f| f.ends_with("b.rs")),
+            "expected b.rs to reference widget.rs; got {:?}",
             impact.impacted
         );
     }

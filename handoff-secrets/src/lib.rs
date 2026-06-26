@@ -1,4 +1,10 @@
-//! HFTASK-0013: envctl secrets-engine seam (experimental, feature-gated).
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+//! HFTASK-0013: envctl secrets-engine seam (experimental).
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): peeled into `handoff-secrets`. The whole crate is gated behind
+//! the consumer's `secrets` feature (`dep:handoff-secrets`), so the default no-C/envctl-free build
+//! never links it. `hf` and `handoff-gatekeeper` both call `github_merge_gate` under that feature.
 //!
 //! This module provides the deterministic merge-gate decision helper that will eventually
 //! sit beneath the §5b AI gatekeeper. It is intentionally lightweight for the first slice:
