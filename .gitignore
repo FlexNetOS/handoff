@@ -16,6 +16,9 @@ node_modules/
 .handoff/**/*.sqlite.bak
 .handoff/**/*.redb.tmp
 /.handoff/workspaces/
+# Generated navigation maps (HFTASK-0050): derived, rebuilt by `hf index` / `hf plan` —
+# a rebuild cache like ledger.db, never committed (would churn + trip the drift sentinel).
+/.handoff/maps/
 
 .grit
 /_workspace/
