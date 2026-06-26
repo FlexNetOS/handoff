@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `ledger` — the .handoff operational-truth tier.
 //!
 //! Pure-Rust event ledger (ADR-0017 / HFTASK-0053 — no C in the trust boundary):

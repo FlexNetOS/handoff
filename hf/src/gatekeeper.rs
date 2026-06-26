@@ -340,8 +340,10 @@ pub fn cmd_gatekeeper_check(pr: &str, task_id: Option<&str>) {
     })
     .to_string();
 
-    led.append("gatekeeper_judgment", work_order_id, &payload, now_ns())
-        .unwrap();
+    crate::must_witness(
+        led.append("gatekeeper_judgment", work_order_id, &payload, now_ns()),
+        "gatekeeper_judgment",
+    );
 
     match verdict {
         GatekeeperVerdict::Approve => {

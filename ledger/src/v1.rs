@@ -228,8 +228,10 @@ struct RolledRow {
 }
 
 fn encode_body(b: &EventBody) -> Vec<u8> {
-    // serde_json is infallible for this all-owned struct; unwrap is safe and keeps the
-    // storage call non-fallible in the hot path.
+    // INFALLIBLE: `EventBody` is an all-owned struct (String/Option/[u8;32]) with derived
+    // `Serialize` and no non-string map keys, so `to_vec` cannot error. Keeping it non-fallible
+    // here keeps the storage hot path simple. Justified per-site (HFTASK-0080).
+    #[allow(clippy::expect_used)]
     serde_json::to_vec(b).expect("EventBody serializes")
 }
 

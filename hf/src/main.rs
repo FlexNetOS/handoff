@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `hf` — the .handoff continuity CLI (S1 spike).
 //!
 //! Implements the core of the .handoff "hard product standard": a fresh agent runs
@@ -246,6 +248,30 @@ pub(crate) fn witness_lifecycle(event: &str, wo_id: &str, payload: &str) {
         }
     }
 }
+/// HFTASK-0080: witness a PRIMARY lifecycle transition FAIL-CLOSED. For these events the witnessed
+/// record IS the operation (claim/checkpoint/done/test_result/ship/verdict/reopen/gatekeeper), so a
+/// failed append/transition must abort loudly with a clean message — never panic on a bare
+/// `.unwrap()`, and never proceed as if it had succeeded (that is the FAIL-OPEN class, LESSONS
+/// L7–L10). `unwrap_or_else` with a diverging arm keeps the value on success and exits on failure.
+pub(crate) fn must_witness<T>(r: ledger::Result<T>, what: &str) -> T {
+    r.unwrap_or_else(|e| {
+        eprintln!(
+            "hf: FATAL — could not witness {what} ({e}); continuity event NOT recorded, aborting (fail-closed)"
+        );
+        std::process::exit(1);
+    })
+}
+
+/// HFTASK-0080: pretty-print a value as JSON for human/CLI output. INFALLIBLE for the kernel's own
+/// `#[derive(Serialize)]` view structs (owned fields, string map keys, no failing custom
+/// serializer), so the single justified `expect` here replaces ~10 bare `.unwrap()` call sites.
+pub(crate) fn pretty_json<T: serde::Serialize>(v: &T) -> String {
+    #[allow(clippy::expect_used)]
+    {
+        serde_json::to_string_pretty(v).expect("serialize JSON view for CLI output")
+    }
+}
+
 /// Save a card into an explicit tasks dir (routing-aware: a per-task op writes the
 /// card to the same home as the ledger it appends to — ADR-0004 §3). Creates the dir.
 fn save_task_in(tasks_dir: &Path, wo: &WorkOrder) {
@@ -415,10 +441,7 @@ fn cmd_init(args: &[String]) {
     let capsule_existed = capsule_path().exists();
     if !capsule_existed {
         let capsule = init_capsule(kernel, &name, &role, &plane, &northstar);
-        let _ = fs::write(
-            capsule_path(),
-            serde_json::to_string_pretty(&capsule).unwrap(),
-        );
+        let _ = fs::write(capsule_path(), pretty_json(&capsule));
     }
 
     // Member repos get the Tier-A README contract (kernel home has its own docs).
@@ -619,7 +642,7 @@ fn cmd_doctor(json: bool) {
                 "regenerable_unignored": r.regenerable_unignored,
             })),
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", pretty_json(&out));
     } else {
         println!("=== hf doctor ===");
         println!(
@@ -814,20 +837,20 @@ fn backup_stem_for(abs: &str) -> String {
 /// out-of-tree dir is resolvable/creatable — an upgrade over the old always-in-tree behavior.
 #[cfg(feature = "legacy-sqlite")]
 fn resolve_backup_target(path: &str) -> String {
-    if let Some(dir) = ledger_backup_dir() {
-        if std::fs::create_dir_all(&dir).is_ok() {
-            let abs = std::fs::canonicalize(path)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| path.to_string());
-            let stem = backup_stem_for(&abs);
-            let mut cand = dir.join(format!("{stem}.sqlite.bak"));
-            let mut n = 1u32;
-            while cand.exists() {
-                cand = dir.join(format!("{stem}.sqlite.bak.{n}"));
-                n += 1;
-            }
-            return cand.to_string_lossy().into_owned();
+    if let Some(dir) = ledger_backup_dir()
+        && std::fs::create_dir_all(&dir).is_ok()
+    {
+        let abs = std::fs::canonicalize(path)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| path.to_string());
+        let stem = backup_stem_for(&abs);
+        let mut cand = dir.join(format!("{stem}.sqlite.bak"));
+        let mut n = 1u32;
+        while cand.exists() {
+            cand = dir.join(format!("{stem}.sqlite.bak.{n}"));
+            n += 1;
         }
+        return cand.to_string_lossy().into_owned();
     }
     eprintln!(
         "hf migrate: WARNING — no out-of-tree backup dir resolvable; backing up in-tree to \
@@ -1029,8 +1052,10 @@ fn cmd_claim_with(id: &str, leaser: &dyn lease::Leaser) -> bool {
         }
     }
 
-    led.record_transition(&wo, Status::Claimed, now_ns())
-        .unwrap();
+    must_witness(
+        led.record_transition(&wo, Status::Claimed, now_ns()),
+        "claim transition",
+    );
     // ADR-0003 rule 3 (HFTASK-0042): mirror the claim to the kb plan (status → active).
     // One-way + best-effort: a no-op for non-kb cards.
     if kb::write_back(&wo.correlation_id, &kb::KbTransition::Claimed) {
@@ -1162,13 +1187,22 @@ fn cmd_reopen(id: &str, reason: &str) {
         eprintln!("hf reopen: no such task {id} on disk");
         std::process::exit(1);
     };
+    // INVARIANT: `should_reopen(status)` above returns false for `None` (only Done/Review are
+    // reopenable) and we exit on `!should_reopen`, so `status` is necessarily `Some` here.
+    // Justified per-site (HFTASK-0080).
+    #[allow(clippy::expect_used)]
     let from = format!("{:?}", status.expect("matched Done/Review above"));
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
     // Witness the WHY first, then the status revert replay acts on.
     let payload = serde_json::json!({ "id": id, "reason": reason, "from": from }).to_string();
-    led.append("task_reopened", id, &payload, now_ns()).unwrap();
-    led.record_transition(&wo, Status::Backlog, now_ns())
-        .unwrap();
+    must_witness(
+        led.append("task_reopened", id, &payload, now_ns()),
+        "task_reopened",
+    );
+    must_witness(
+        led.record_transition(&wo, Status::Backlog, now_ns()),
+        "reopen transition",
+    );
     println!("hf reopen: {id} {from} -> Backlog (witnessed; reason: {reason})");
     // ADR-0003 rule 3: a reopened kb-minted card reverts its planning-plane status too.
     if kb::write_back(&wo.correlation_id, &kb::KbTransition::Released) {
@@ -1210,7 +1244,7 @@ fn cmd_lease(json: bool) {
             "now_ns": now,
             "held": held.iter().map(|(r, h)| serde_json::json!({"resource": r, "holder": h})).collect::<Vec<_>>(),
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", pretty_json(&out));
     } else if held.is_empty() {
         println!("hf lease: no active in-ledger leases");
     } else {
@@ -1259,7 +1293,10 @@ fn cmd_checkpoint(id: Option<&str>, note: &str, auto: bool, quiet: bool) {
     };
     let payload = serde_json::json!({ "id": id, "note": note }).to_string();
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
-    led.append("checkpoint", &id, &payload, now_ns()).unwrap();
+    must_witness(
+        led.append("checkpoint", &id, &payload, now_ns()),
+        "checkpoint",
+    );
     // ADR-0003 rule 3 (HFTASK-0042): append a progress line to the kb plan (no-op for non-kb).
     if let Some(wo) = load_task_in(&tasks_dir, &id)
         && kb::write_back(
@@ -1308,7 +1345,10 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         );
         std::process::exit(1);
     }
-    led.record_transition(&wo, Status::Done, now_ns()).unwrap();
+    must_witness(
+        led.record_transition(&wo, Status::Done, now_ns()),
+        "done transition",
+    );
     // HFTASK-0052 gap-hunt: auto-detect the merged PR from a prior `pr_opened` event if the
     // user did not pass `--pr N`. This gives every merged task a `pr_merged` ledger marker.
     let resolved_pr = pr.map(String::from).or_else(|| latest_pr_opened(&led, id));
@@ -1820,8 +1860,10 @@ fn cmd_test(id: Option<&str>) {
     })
     .to_string();
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
-    led.append("test_result", &resolved, &payload, now_ns())
-        .unwrap();
+    must_witness(
+        led.append("test_result", &resolved, &payload, now_ns()),
+        "test_result",
+    );
     if all_passed {
         println!(
             "hf test: {resolved} -> PASS ({} command(s) green, {total_ran} test(s) executed, witnessed)",
@@ -2012,7 +2054,7 @@ Implements [[tasks/{id}]]"
     let payload =
         serde_json::json!({ "id": id, "branch": branch, "pr": pr_url, "base": base }).to_string();
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
-    led.append("pr_opened", id, &payload, now_ns()).unwrap();
+    must_witness(led.append("pr_opened", id, &payload, now_ns()), "pr_opened");
     println!("hf ship: pr_opened recorded for {id}");
 }
 
@@ -2034,8 +2076,10 @@ fn cmd_review_verdict(id: &str, pr: &str, verdict: &str, by: &str) {
     let payload =
         serde_json::json!({ "id": id, "pr": pr, "verdict": verdict, "by": by }).to_string();
     let mut led = open_ledger_or_exit(&ledger.to_string_lossy());
-    led.append("review_verdict", id, &payload, now_ns())
-        .unwrap();
+    must_witness(
+        led.append("review_verdict", id, &payload, now_ns()),
+        "review_verdict",
+    );
     println!("hf review: {verdict} recorded for {id} ({pr}) by {by}");
 }
 
@@ -2134,8 +2178,10 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
             "task_id": task_id,
         })
         .to_string();
-        led.append("review_refused_draft", work_order_id, &payload, now_ns())
-            .unwrap();
+        must_witness(
+            led.append("review_refused_draft", work_order_id, &payload, now_ns()),
+            "review_refused_draft",
+        );
         eprintln!("hf review request: refusing draft PR #{}", meta.number);
         std::process::exit(1);
     }
@@ -2158,13 +2204,15 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
             "task_id": task_id,
         })
         .to_string();
-        led.append(
+        must_witness(
+            led.append(
+                "review_refused_protected_files",
+                work_order_id,
+                &payload,
+                now_ns(),
+            ),
             "review_refused_protected_files",
-            work_order_id,
-            &payload,
-            now_ns(),
-        )
-        .unwrap();
+        );
         eprintln!(
             "hf review request: refusing PR #{} — touches protected files: {:?}",
             meta.number, hits
@@ -2182,8 +2230,10 @@ fn cmd_review_request(pr: &str, task_id: Option<&str>) {
         "changed_files": files,
     })
     .to_string();
-    led.append("review_requested", work_order_id, &payload, now_ns())
-        .unwrap();
+    must_witness(
+        led.append("review_requested", work_order_id, &payload, now_ns()),
+        "review_requested",
+    );
     println!(
         "hf review request: PR #{} ({}) queued for {} review",
         meta.number, meta.url, policy.merge.reviewer
@@ -2269,7 +2319,7 @@ fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
         },
         "witnessed_events_verified": witness,
     });
-    println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    println!("{}", pretty_json(&out));
 }
 
 /// Build the handoff.packet.v2 machine summary from already-known facts. Pure over its
@@ -2488,7 +2538,7 @@ fn render_packet_md(tasks: &[WorkOrder], replay: &[(String, Status)], witness: u
         summary["next_command"].as_str().unwrap_or("")
     ));
     md.push_str("\n## 7. Machine Summary\n```json\n");
-    md.push_str(&serde_json::to_string_pretty(&summary).unwrap());
+    md.push_str(&pretty_json(&summary));
     md.push_str("\n```\n");
     md
 }
@@ -2602,10 +2652,7 @@ fn cmd_resume(mode: ResumeMode) {
         ResumeMode::Json => {
             let tasks = load_tasks();
             let replay = current_statuses();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&machine_summary(&tasks, &replay)).unwrap()
-            );
+            println!("{}", pretty_json(&machine_summary(&tasks, &replay)));
         }
         ResumeMode::Compact => {
             let tasks = load_tasks();
@@ -3170,6 +3217,13 @@ fn cmd_seed() {
             Priority::P2,
             "ADR-0019 D5 #4 (PRD §7.2 target): the hf monolith is being decomposed into the planned handoff-* crate layout. `handoff-core` (leaf primitives) was peeled in #154 and edition-2024/resolver-3 landed in #153. Continue peeling cohesive feature modules out of `hf/src/*` into their own crates that depend on `handoff-core` (candidates: drift, hooks, contract/gatekeeper, fleet, intake) — behavior-preserving moves with `hf` re-exporting so existing `crate::` paths stay valid, each its own PR, each verified green. The work is incremental; one or more feature crates per increment.",
             &["HFTASK-0079"],
+        ),
+        mk(
+            "HFTASK-0082",
+            "Extend error-handling deny lints to the rusty-idd toolkit (crates/{cli,core,runner,spec,tui})",
+            Priority::P3,
+            "Follow-up to HFTASK-0080. The kernel crates (work-order, ledger, handoff-core, hf) adopt clippy unwrap_used/expect_used/panic = deny; the co-located rusty-idd toolkit (crates/{cli,core,runner,spec,tui}, ADR-0019 D2: a SEPARATE Intent-Driven-Development toolkit, never invoked by hf) carries a documented crate-root `#![allow(...)]` opt-out so the kernel hardening is not blocked on the toolkit's ~577 sites. Harden the toolkit the same way (test-only allow + per-site propagate/justify) and REMOVE the root allows so the whole tree enforces the deny. Lower priority because the toolkit is not on the kernel's trust path.",
+            &["HFTASK-0080"],
         ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific

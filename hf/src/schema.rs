@@ -14,6 +14,11 @@ use jsonschema::Validator;
 
 /// The compiled handoff.task.v1 validator, built once from `work_order::task_schema_json()`.
 /// `OnceLock` so the (small) schema is parsed + compiled a single time per process.
+///
+/// HFTASK-0080: the two `expect`s here validate the *generated* schema, not user input — a broken
+/// generated schema is a build-time contract bug (schemars produced invalid JSON / an
+/// uncompilable schema), so aborting loudly IS the fail-closed behavior. Justified at the fn.
+#[allow(clippy::expect_used)]
 fn validator() -> &'static Validator {
     static VALIDATOR: OnceLock<Validator> = OnceLock::new();
     VALIDATOR.get_or_init(|| {

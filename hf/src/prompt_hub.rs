@@ -109,7 +109,7 @@ pub fn cmd_prompt_hub(vibe: &str, scope: Option<&[String]>, dispatch: bool, json
             "minted": ids,
             "dispatched": dispatched,
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
     } else {
         println!("hf prompt-hub: minted {} order(s) from vibe", ids.len());
         println!("  correlation_id = {workflow_id}");

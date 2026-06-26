@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! handoff-core — shared continuity primitives extracted from the `hf` monolith.
 //!
 //! The first peeled-off crate of the 12-crate decomposition (ADR-0019 D5 #4, PRD §7.2). It holds
