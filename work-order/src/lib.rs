@@ -1,3 +1,6 @@
+// HFTASK-0080 (ADR-0019 D5 #3): the error-handling deny lints (unwrap_used/expect_used/panic)
+// are allowed under test only — tests assert, which is idiomatic. Production code is hardened.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `work-order` — the handoff.task.v1 work-order envelope (S1 spike).
 //!
 //! Validates the front-door seam: a prompt_hub `SwarmBundle` is converted into one or
@@ -220,6 +223,11 @@ impl WorkOrder {
     }
 
     pub fn to_json(&self) -> String {
+        // INFALLIBLE: `WorkOrder` derives `Serialize` over owned String/Vec/enum fields only —
+        // no non-string map keys and no custom serializer that can fail, so `to_string_pretty`
+        // cannot error here. Justified per-site (HFTASK-0080) rather than rippling a `Result`
+        // return through every packet/render call site.
+        #[allow(clippy::expect_used)]
         serde_json::to_string_pretty(self).expect("serialize WorkOrder")
     }
 }
@@ -232,6 +240,9 @@ impl WorkOrder {
 /// rejected loudly instead of being silently dropped.
 pub fn task_schema_json() -> String {
     let schema = schemars::schema_for!(WorkOrder);
+    // INFALLIBLE: a schemars `RootSchema` is a plain serializable JSON structure (no failing
+    // serializer), so pretty-printing it cannot error. Justified per-site (HFTASK-0080).
+    #[allow(clippy::expect_used)]
     serde_json::to_string_pretty(&schema).expect("serialize task schema")
 }
 

@@ -19,14 +19,29 @@ documentation = "https://docs.rs/handoff"
 # unsafe VISIBLE and audited at the call site (the right kernel policy) rather than hiding it
 # inside a syscall-wrapper dependency — any NEW unsafe elsewhere is a hard error. The clippy
 # `all` group is denied here so a plain local `cargo clippy` matches the CI gate
-# (`--all-targets -D warnings`) without the CLI flag. The `unwrap_used`/`expect_used`/`panic`
-# deny lints are landed by the kernel error-handling hardening pass (the next increment) as
-# those sites are eliminated/justified — NOT left as a standing TODO.
+# (`--all-targets -D warnings`) without the CLI flag.
+#
+# HFTASK-0080 (ADR-0019 D5 #3) landed the error-handling hardening: `unwrap_used`/`expect_used`/
+# `panic` are now `deny`, so a bare `.unwrap()`/`.expect()`/`panic!` in PRODUCTION code is a hard
+# error. The fail-open class (a guard that proceeds when it cannot confirm its precondition,
+# LESSONS L7–L10) is closed at the lint level. Two documented carve-outs keep this enforceable
+# without hiding anything: (1) each KERNEL crate root allows these ONLY under `#[cfg(test)]`
+# (tests assert; that is idiomatic); (2) the co-located rusty-idd toolkit
+# (`crates/{cli,core,runner,spec,tui}`, ADR-0019 D2 — a SEPARATE toolkit never on the kernel
+# trust path) carries a crate-root `#![allow(...)]` with a pointer to the tracked follow-up
+# HFTASK-0082, so the kernel hardening is not blocked on the toolkit's ~577 sites. Every
+# remaining production `.unwrap()`/`.expect()` in a KERNEL crate is justified at its call site.
 [workspace.lints.rust]
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+# Error-handling hardening (HFTASK-0080). `priority = -1` would put these BELOW the `all` group;
+# they need to be at/above it so an explicit `#[allow]` at a justified call site wins. Default
+# priority (0) is higher than `all`'s -1, which is what we want.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
 
 # We host syntect locally and upgrade its dead dependencies ourselves (owner directive,
 # 2026-06-26). `vendor/syntect` is a FlexNetOS fork of syntect master (rev 4aa78031, which had

@@ -226,7 +226,7 @@ pub fn cmd_hook_list(json: bool) {
             "unknown_events": unknown,
             "conformant": unknown.is_empty(),
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
         return;
     }
     println!(
@@ -291,7 +291,7 @@ pub fn cmd_hook_run(
             "pass": !blocked,
             "results": results,
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
     } else if results.is_empty() {
         println!("hf hook run: {event} — no hook bound (no-op)");
     } else {

@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `hf-mcp` — Model Context Protocol server exposing the `hf` continuity CLI as tools.
 //!
 //! Implements the T11 universal control seam for handoff: chat / rvAgent clients talk

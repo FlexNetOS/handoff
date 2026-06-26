@@ -46,6 +46,10 @@ fn evaluate_action_impl(
     };
     use std::collections::HashMap;
 
+    // A tokio runtime fails to build only under OS resource exhaustion — an exceptional,
+    // unrecoverable condition for an in-loop policy gate. Justified per-site (HFTASK-0080):
+    // the assumption (a runtime is constructible) is made visible rather than hidden.
+    #[allow(clippy::expect_used)]
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime for cognitum gate");
     let tilezero = TileZero::new(GateThresholds::default());
     let ctx = ActionContext {

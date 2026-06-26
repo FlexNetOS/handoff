@@ -387,7 +387,7 @@ pub fn cmd_fleet_status(json: bool) {
             })).collect::<Vec<_>>(),
             "warnings": warnings,
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
         return;
     }
 

@@ -617,7 +617,7 @@ pub fn cmd_drift(json: bool) {
             "drift": r.drift,
             "required_actions": r.required_actions,
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
     } else if clean {
         println!("hf drift: clean — no intent, scope, evidence, or dependency drift");
         if !r.undocumented_decisions.is_empty() {
@@ -772,7 +772,7 @@ pub fn cmd_policy_check(kind: &str, json: bool) {
             "pass": pass,
             "blocks": blocks,
         });
-        println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        println!("{}", crate::pretty_json(&out));
     } else if pass {
         println!("hf policy {kind}: PASS");
     } else {

@@ -247,10 +247,7 @@ fn build_dependency_map(tasks: &[WorkOrder], replay: &[(String, Status)]) -> Val
 fn write_map(name: &str, value: &Value) -> std::io::Result<()> {
     fs::create_dir_all(MAPS)?;
     let path = format!("{MAPS}/{name}");
-    fs::write(
-        &path,
-        format!("{}\n", serde_json::to_string_pretty(value).unwrap()),
-    )
+    fs::write(&path, format!("{}\n", crate::pretty_json(value)))
 }
 
 /// `hf index` — generate the navigation maps under `.handoff/maps/`. Fail-closed: a write error
@@ -341,7 +338,7 @@ pub fn cmd_plan(json_out: bool) {
     }
 
     if json_out {
-        println!("{}", serde_json::to_string_pretty(&value).unwrap());
+        println!("{}", crate::pretty_json(&value));
         return;
     }
     println!(

@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0082",
+  "title": "Extend error-handling deny lints to the rusty-idd toolkit (crates/{cli,core,runner,spec,tui})",
+  "status": "backlog",
+  "priority": "P3",
+  "objective": "Follow-up to HFTASK-0080. The kernel crates (work-order, ledger, handoff-core, hf) adopt clippy unwrap_used/expect_used/panic = deny; the co-located rusty-idd toolkit (crates/{cli,core,runner,spec,tui}, ADR-0019 D2: a SEPARATE Intent-Driven-Development toolkit, never invoked by hf) carries a documented crate-root `#![allow(...)]` opt-out so the kernel hardening is not blocked on the toolkit's ~577 sites. Harden the toolkit the same way (test-only allow + per-site propagate/justify) and REMOVE the root allows so the whole tree enforces the deny. Lower priority because the toolkit is not on the kernel's trust path.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Extend error-handling deny lints to the rusty-idd toolkit (crates/{cli,core,runner,spec,tui}): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [
+    "HFTASK-0080"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:b27a8b482cc632a89f6beab4ddf0812f839227bf0e70f39569a36621935d2398",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:f51ff1010f7b29d01fe525c29d67ed919daf3f2cf9ec5708cdb50a9f4dae8f9b",
+    "constraint_hash": "blake3:8974786047fcf71122a7702359049e2eb86d164652aace12d7f1c6848d6c4395",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): this whole crate is a test; unwrap/expect are idiomatic here.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! HFTASK-0080: CLI-contract integration tests that drive the REAL `hf` binary.
 //!
 //! Exit codes set via `std::process::exit` cannot be observed from a unit test in `main.rs`
