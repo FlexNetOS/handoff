@@ -1,4 +1,10 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! `hf index` (PRD §8/§9) and `hf plan` (PRD §9) — repo navigation maps + the task DAG.
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): peeled into the `handoff-index` crate after the card loader
+//! moved to handoff-core. `hf` aliases it as `index` so `index::cmd_index` / `index::cmd_plan`
+//! stay valid. Depends only on handoff-core + work-order + serde_json.
 //!
 //! HFTASK-0050 was marked Done before either verb existed (its acceptance only ran a generic
 //! `cargo test`, which never exercised the feature — a false-Done caught by the code-research run).
@@ -17,7 +23,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use work_order::{Status, WorkOrder};
 
-use crate::{current_statuses, load_tasks, status_of};
+use handoff_core::{current_statuses, load_tasks, status_of};
 
 const MAPS: &str = ".handoff/maps";
 
@@ -247,7 +253,7 @@ fn build_dependency_map(tasks: &[WorkOrder], replay: &[(String, Status)]) -> Val
 fn write_map(name: &str, value: &Value) -> std::io::Result<()> {
     fs::create_dir_all(MAPS)?;
     let path = format!("{MAPS}/{name}");
-    fs::write(&path, format!("{}\n", crate::pretty_json(value)))
+    fs::write(&path, format!("{}\n", handoff_core::pretty_json(value)))
 }
 
 /// `hf index` — generate the navigation maps under `.handoff/maps/`. Fail-closed: a write error
@@ -338,7 +344,7 @@ pub fn cmd_plan(json_out: bool) {
     }
 
     if json_out {
-        println!("{}", crate::pretty_json(&value));
+        println!("{}", handoff_core::pretty_json(&value));
         return;
     }
     println!(

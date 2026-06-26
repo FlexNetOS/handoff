@@ -1129,6 +1129,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-index"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "serde_json",
+ "work-order",
+]
+
+[[package]]
 name = "handoff-lease"
 version = "0.1.0"
 
@@ -1230,6 +1239,7 @@ dependencies = [
  "envctl-secrets-engine",
  "handoff-core",
  "handoff-hooks",
+ "handoff-index",
  "handoff-lease",
  "handoff-policy",
  "handoff-schema",

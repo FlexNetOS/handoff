@@ -27,6 +27,8 @@ handoff-lease = { path = "../handoff-lease" }
 # HFTASK-0083 (ADR-0019 D5 #4): the typed hook contract was peeled into `handoff-hooks`
 # (the first coupled module, after the shared helpers moved to handoff-core); hf aliases it as `hooks`.
 handoff-hooks = { path = "../handoff-hooks" }
+# HFTASK-0083 (ADR-0019 D5 #4): the index/plan maps were peeled into `handoff-index`; hf aliases as `index`.
+handoff-index = { path = "../handoff-index" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

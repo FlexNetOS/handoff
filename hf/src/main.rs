@@ -19,7 +19,6 @@ mod durability;
 mod fleet;
 mod gatekeeper;
 mod gates;
-mod index;
 mod intake;
 mod kb;
 mod prompt_hub;
@@ -48,6 +47,8 @@ use handoff_lease as lease;
 // HFTASK-0083: the typed hook contract was peeled into `handoff-hooks`; alias it as `hooks` so
 // `hooks::cmd_hook_list` / `hooks::cmd_hook_run` call sites stay valid unchanged.
 use handoff_hooks as hooks;
+// HFTASK-0083: index/plan maps peeled into `handoff-index`; alias as `index`.
+use handoff_index as index;
 
 use lease::Leaser;
 use ledger::Ledger;
