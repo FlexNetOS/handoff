@@ -1,8 +1,8 @@
-// HFTASK-0082 (ADR-0019 D2): the rusty-idd toolkit is a SEPARATE co-located project, never on
-// the kernel trust path. Its error-handling hardening (unwrap/expect/panic = deny) is the
-// tracked follow-up HFTASK-0082; until then it opts out of the workspace deny lints so the
-// kernel hardening (HFTASK-0080) is not blocked on the toolkit's ~577 sites.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// HFTASK-0082 (ADR-0019 D5 #3): the rusty-idd toolkit now enforces the same error-handling deny
+// lints (unwrap/expect/panic) in PRODUCTION as the kernel; they are allowed only under test
+// (tests assert). The toolkit's production code already propagated errors, so the hardening was
+// a clean flip — no bare production unwrap remained.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! Thin binary shim for the unified `rusty-idd` executable. All logic lives in
 //! the `rusty_idd_cli` library (so it is reusable and testable).
 

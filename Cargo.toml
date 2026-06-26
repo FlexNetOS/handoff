@@ -25,12 +25,11 @@ documentation = "https://docs.rs/handoff"
 # `panic` are now `deny`, so a bare `.unwrap()`/`.expect()`/`panic!` in PRODUCTION code is a hard
 # error. The fail-open class (a guard that proceeds when it cannot confirm its precondition,
 # LESSONS L7–L10) is closed at the lint level. Two documented carve-outs keep this enforceable
-# without hiding anything: (1) each KERNEL crate root allows these ONLY under `#[cfg(test)]`
-# (tests assert; that is idiomatic); (2) the co-located rusty-idd toolkit
-# (`crates/{cli,core,runner,spec,tui}`, ADR-0019 D2 — a SEPARATE toolkit never on the kernel
-# trust path) carries a crate-root `#![allow(...)]` with a pointer to the tracked follow-up
-# HFTASK-0082, so the kernel hardening is not blocked on the toolkit's ~577 sites. Every
-# remaining production `.unwrap()`/`.expect()` in a KERNEL crate is justified at its call site.
+# without hiding anything: EVERY crate root (kernel AND the co-located rusty-idd toolkit
+# `crates/{cli,core,runner,spec,tui}`) allows these ONLY under `#[cfg(test)]` (tests assert; that
+# is idiomatic), and integration-test crates allow them crate-wide. Every remaining production
+# `.unwrap()`/`.expect()` anywhere in the workspace is justified at its call site. HFTASK-0082
+# extended the deny to the toolkit's production code (a clean flip — it already propagated errors).
 [workspace.lints.rust]
 unsafe_code = "deny"
 
