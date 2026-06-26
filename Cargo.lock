@@ -1112,6 +1112,8 @@ name = "handoff-core"
 version = "0.1.0"
 dependencies = [
  "ledger",
+ "serde",
+ "serde_json",
  "work-order",
 ]
 
