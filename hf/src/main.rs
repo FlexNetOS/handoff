@@ -1929,6 +1929,12 @@ fn cmd_ship(id: &str, base: &str) {
         eprintln!("usage: hf ship <task-id> [--base BRANCH]");
         std::process::exit(2); // HFTASK-0036: usage error (matches the dispatch convention)
     }
+    // HFTASK-0081 (ADR-0017 / R13): govern the ship action through the cognitum gate before any
+    // outward effect (push/PR). Ship is the loop's least-reversible action; the governor witnesses
+    // a `cognitum_decision` and BLOCKS (exit 1) on defer/deny. Default thresholds permit benign
+    // actions, so the live pipeline is unaffected; a `--no-default-features` build returns
+    // `unavailable` and proceeds. This is the in-loop wiring the governor verb previously lacked.
+    cognitum::gate_action_or_block(&format!("ship-{id}"), "ship", Some(id));
     // HFTASK-0008: resolve the branch/remote policy (clone/fork model + base/trunk) once,
     // so ship decides the same way everything else does instead of hardcoding "master".
     let policy = policy::Policy::load(Path::new(HF));

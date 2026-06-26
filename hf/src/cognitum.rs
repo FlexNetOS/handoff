@@ -98,6 +98,59 @@ pub fn evaluate_action(
     evaluate_action_impl(action_id, action_type, agent_id, path)
 }
 
+/// Pure decision→action mapping (unit-testable, no I/O). `true` = the action may proceed.
+///
+/// Fail-closed by default: only an explicit `permit`, or `unavailable` (the cognitum feature was
+/// not compiled — the documented `--no-default-features` opt-out, where there IS no governor to
+/// honor), proceeds. `defer`/`deny`/any unrecognized verdict blocks. An unknown string is treated
+/// as a block, never a silent pass (LESSONS L7–L10: never proceed on an unrecognized signal).
+pub fn decision_permits(decision: &str) -> bool {
+    matches!(decision, "permit" | "unavailable")
+}
+
+/// HFTASK-0081 (ADR-0017 / R13): govern an in-loop kernel action through the cognitum gate.
+///
+/// Closes the gap that the governor verb existed but was wired into no hook/loop: now a real
+/// loop action (e.g. `hf ship`) routes through it. The verdict is **witnessed** (fail-closed —
+/// an audit-write failure aborts the action, mirroring `cmd_policy_gate`), and the action is
+/// **blocked** (`exit(1)`) on `defer`/`deny`. Default TileZero thresholds permit benign actions,
+/// so the normal loop is unaffected; only genuine incoherence blocks.
+pub fn gate_action_or_block(action_id: &str, action_type: &str, task_id: Option<&str>) {
+    let record = evaluate_action(action_id, action_type, "hf", None);
+
+    // Witness the decision to the task's ledger (fail-closed, like `cmd_policy_gate`).
+    let ledger = match task_id {
+        Some(id) => match route_for_task(id) {
+            Ok((ledger, _tasks)) => ledger,
+            Err(_) => PathBuf::from(ledger_path()),
+        },
+        None => PathBuf::from(ledger_path()),
+    };
+    let mut led = Ledger::open(&ledger.to_string_lossy()).unwrap_or_else(|e| {
+        eprintln!("hf: cognitum gate cannot open ledger to witness {action_id}: {e}");
+        std::process::exit(1);
+    });
+    led.append(
+        "cognitum_decision",
+        task_id.unwrap_or("policy"),
+        &record.to_payload(task_id),
+        now_ns(),
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("hf: cognitum gate cannot witness decision for {action_id}: {e}");
+        std::process::exit(1);
+    });
+
+    if !decision_permits(&record.decision) {
+        eprintln!(
+            "hf: cognitum gate {} on {action_id} (seq {}) — action withheld (fail-closed)",
+            record.decision.to_uppercase(),
+            record.sequence
+        );
+        std::process::exit(1);
+    }
+}
+
 /// `hf policy gate <action> [--task <id>]` — ask the cognitum gate for a permit and witness it.
 pub fn cmd_policy_gate(action: &str, task_id: Option<&str>) {
     if action.is_empty() {
@@ -183,6 +236,19 @@ mod tests {
         assert_eq!(v["sequence"], 7);
         assert_eq!(v["task_id"], "HFTASK-0017");
         assert!(v["token_b64"].as_str().is_some());
+    }
+
+    #[test]
+    fn decision_permits_is_fail_closed() {
+        // Only an explicit permit, or the not-compiled `unavailable` opt-out, proceeds.
+        assert!(decision_permits("permit"));
+        assert!(decision_permits("unavailable"));
+        // Everything else — including any unrecognized verdict — blocks.
+        assert!(!decision_permits("defer"));
+        assert!(!decision_permits("deny"));
+        assert!(!decision_permits(""));
+        assert!(!decision_permits("yes"));
+        assert!(!decision_permits("PERMIT")); // exact match only; no case-folding fail-open
     }
 
     #[cfg(feature = "cognitum")]
