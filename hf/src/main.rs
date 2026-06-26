@@ -20,14 +20,11 @@ mod gatekeeper;
 mod intake;
 mod kb;
 mod prompt_hub;
-mod route;
 mod routing;
 #[cfg(feature = "secrets")]
 mod secrets;
 mod session;
 mod sync;
-#[cfg(test)]
-mod test_support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,6 +48,8 @@ use handoff_index as index;
 use handoff_fleet as fleet;
 // HFTASK-0083: drift-audit + policy-check engine peeled into `handoff-drift`; alias as `gates`.
 use handoff_drift as gates;
+// HFTASK-0083: the ledger-routing module peeled into `handoff-route`; alias as `route`.
+use handoff_route as route;
 
 use lease::Leaser;
 use ledger::Ledger;
@@ -4404,7 +4403,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
 
     // --- HFTASK-0029 hygiene bundle ---------------------------------------------------
 
-    use crate::test_support::cwd_lock;
+    use handoff_test_support::cwd_lock;
 
     /// Build a minimal valid card for a given id/status (test fixture).
     fn card(id: &str, status: Status) -> WorkOrder {

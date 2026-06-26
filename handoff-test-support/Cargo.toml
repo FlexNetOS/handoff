@@ -1,0 +1,11 @@
+[package]
+name = "handoff-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-test-support — shared test-only helpers (cwd serialization) for the handoff kernel crates"
+
+[dependencies]
+
+[lints]
+workspace = true

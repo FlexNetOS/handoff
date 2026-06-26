@@ -187,7 +187,7 @@ pub fn cmd_delivery_list(json: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::cwd_lock;
+    use handoff_test_support::cwd_lock;
 
     fn sample_wo() -> WorkOrder {
         WorkOrder {

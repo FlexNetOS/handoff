@@ -1,4 +1,10 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! Ledger/tasks routing (ADR-0004 §3 two-ledger residency).
+//!
+//! HFTASK-0083 (ADR-0019 D5 #4): peeled into the `handoff-route` crate. `hf` aliases it as `route`
+//! so `route::route_for_task` (called from main/gatekeeper/cognitum) stays valid. Deps:
+//! handoff-core + handoff-fleet; tests use the shared handoff-test-support.
 //!
 //! `hf` historically resolved `.handoff/ledger.db` + `.handoff/tasks/` CWD-relative
 //! with no anchoring. Running a per-task op from `meta/handoff/` therefore wrote
@@ -18,8 +24,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::HF;
-use crate::fleet;
+use handoff_core::HF;
+use handoff_fleet as fleet;
 
 /// `(ledger_db, tasks_dir)` for a given `.handoff` base directory.
 fn homes_for(base: &Path) -> (PathBuf, PathBuf) {
@@ -94,7 +100,7 @@ mod tests {
             "hf-route-{}-{}-{}",
             tag,
             std::process::id(),
-            crate::now_ns()
+            handoff_core::now_ns()
         ));
         let root = tmp.clone();
         fs::create_dir_all(&root).unwrap();
@@ -119,7 +125,7 @@ mod tests {
         }
     }
 
-    use crate::test_support::cwd_lock;
+    use handoff_test_support::cwd_lock;
 
     #[test]
     fn local_card_routes_to_kernel_home() {

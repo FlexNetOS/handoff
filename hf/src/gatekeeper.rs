@@ -395,7 +395,7 @@ mod tests {
     fn impact_scan_reports_grounding() {
         // grounding is always one of the three known values and never empty — the verdict relies
         // on it to know whether the AST index was actually consulted.
-        let _g = crate::test_support::cwd_lock();
+        let _g = handoff_test_support::cwd_lock();
         let impact = impact_scan(&["src/route.rs".into()]);
         assert!(
             matches!(impact.grounding.as_str(), "ast" | "grep" | "ast+grep"),
@@ -415,7 +415,7 @@ mod tests {
     fn impact_scan_detects_reference() {
         // `impact_scan` runs `git grep` relative to the process cwd, so it must not race
         // the cwd-mutating tests (route/delivery) — hold the shared cwd lock.
-        let _g = crate::test_support::cwd_lock();
+        let _g = handoff_test_support::cwd_lock();
         // main.rs declares `mod route;`, so changing route.rs should show main.rs in the
         // impacted set when we grep for the module name.
         let impact = impact_scan(&["src/route.rs".into()]);
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn impact_scan_empty_for_unreferenced() {
-        let _g = crate::test_support::cwd_lock();
+        let _g = handoff_test_support::cwd_lock();
         // Construct the path at runtime so the full token never appears as a literal
         // in any tracked file, guaranteeing an empty impacted set.
         let name = format!("zzzz{}nonexistent{}9999.rs", "_", "_");
