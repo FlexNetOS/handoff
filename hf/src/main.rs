@@ -27,7 +27,6 @@ mod lease;
 mod prompt_hub;
 mod route;
 mod routing;
-mod schema;
 #[cfg(feature = "secrets")]
 mod secrets;
 mod session;
@@ -42,6 +41,9 @@ use std::path::{Path, PathBuf};
 // `handoff-policy` crate. Re-export its modules so existing `crate::policy::…` / `crate::branch::…`
 // / `policy::…` / `branch::…` paths across hf (main, gatekeeper, session) stay valid unchanged.
 pub(crate) use handoff_policy::{branch, policy};
+// HFTASK-0081: the card validator was peeled into `handoff-schema`; alias it as `schema` so
+// existing `schema::validate_card` / `schema::cmd_schema` call sites stay valid unchanged.
+use handoff_schema as schema;
 
 use lease::Leaser;
 use ledger::Ledger;

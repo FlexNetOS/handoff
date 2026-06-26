@@ -1,4 +1,10 @@
+// HFTASK-0080 (ADR-0019 D5 #3): error-handling deny lints allowed under test only (tests assert).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //! HFTASK-0057 (PRD §7.3/§23): JSON Schema runtime validation + the `hf schema` verb.
+//!
+//! HFTASK-0081 (ADR-0019 D5 #4): peeled out of the `hf` monolith into the `handoff-schema` crate.
+//! `hf` aliases it as `schema` so existing `schema::validate_card` / `schema::cmd_schema` paths
+//! stay valid (behavior-preserving). Depends only on `work-order` (the generated schema source).
 //!
 //! The fail-closed half of card loading. The schema is *generated* from the live
 //! `work_order::WorkOrder` types (schemars, see `work_order::task_schema_json`) so it can never

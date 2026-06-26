@@ -1,0 +1,17 @@
+[package]
+name = "handoff-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-schema — runtime JSON-Schema validation of handoff.task.v1 cards (PRD §7.3/§23), peeled from hf"
+
+[dependencies]
+work-order = { path = "../work-order" }
+serde_json = "1"
+# default-features off drops the reqwest/TLS resolvers — we validate against an in-memory schema
+# with no remote `$ref` resolution, so no HTTP machinery is needed (lean, offline). Mirrors the
+# dependency hf declared before the peel.
+jsonschema = { version = "0.46", default-features = false }
+
+[lints]
+workspace = true
