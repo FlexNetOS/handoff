@@ -54,6 +54,12 @@ envctl-secrets-engine = { path = "../../envctl/crates/secrets-engine", default-f
 # in-loop action decisions (Permit/Defer/Deny) witnessed into the ledger.
 cognitum-gate-tilezero = { path = "../../RuVector/crates/cognitum-gate-tilezero", default-features = false, optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
+# HFTASK-0083 (ADR-0019 D5 #4): routing/ledger ops resolved into `handoff-route`; hf aliases as `route`.
+handoff-route = { path = "../handoff-route" }
+
+[dev-dependencies]
+# HFTASK-0083: the cwd-serialization test mutex is shared across the kernel crates.
+handoff-test-support = { path = "../handoff-test-support" }
 
 [features]
 default = ["cognitum"]

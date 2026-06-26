@@ -1,0 +1,16 @@
+[package]
+name = "handoff-route"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "handoff-route — two-ledger residency routing (ADR-0004 §3): kernel/fleet ledger + tasks-dir resolution, peeled from hf"
+
+[dependencies]
+handoff-core = { path = "../handoff-core" }
+handoff-fleet = { path = "../handoff-fleet" }
+
+[dev-dependencies]
+handoff-test-support = { path = "../handoff-test-support" }
+
+[lints]
+workspace = true

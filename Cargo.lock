@@ -1171,6 +1171,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "handoff-route"
+version = "0.1.0"
+dependencies = [
+ "handoff-core",
+ "handoff-fleet",
+ "handoff-test-support",
+]
+
+[[package]]
 name = "handoff-schema"
 version = "0.1.0"
 dependencies = [
@@ -1178,6 +1187,10 @@ dependencies = [
  "serde_json",
  "work-order",
 ]
+
+[[package]]
+name = "handoff-test-support"
+version = "0.1.0"
 
 [[package]]
 name = "hashbrown"
@@ -1265,7 +1278,9 @@ dependencies = [
  "handoff-index",
  "handoff-lease",
  "handoff-policy",
+ "handoff-route",
  "handoff-schema",
+ "handoff-test-support",
  "ledger",
  "rand",
  "ruvector-domain-expansion",
