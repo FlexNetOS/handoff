@@ -10,7 +10,10 @@
     "handoff-schema/**",
     "schemas/**",
     "scripts/handoff-loop-init.sh",
-    ".handoff/tasks/HFTASK-0093.task.json"
+    ".handoff/tasks/HFTASK-0093.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
   ],
   "acceptance_criteria": [
     "From `meta/handoff`, `hf schema --check` still validates the canonical schemas.",
@@ -32,7 +35,7 @@
   "role": "kernel-upgrade-planner",
   "intent_lock": {
     "objective_hash": "blake3:5eb4a353a916f86f8c898599bea39974ec27574fe10ef77b44698eb63f5626a7",
-    "path_scope_hash": "blake3:63729e1eb49c0857e605eb15b9d62d1eaa32460d3b354523491a0189c2e3b7b8",
+    "path_scope_hash": "blake3:8933977960804bf1e39a7a30c03f998d2f02b7a95e31dbdffab2dfeae70af1d6",
     "acceptance_hash": "blake3:4bbd4bacd68260d323212c7232989d90bf05594471282549fe02836f3645886c"
   }
 }

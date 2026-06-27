@@ -4088,6 +4088,40 @@ mod tests {
     }
 
     #[test]
+    fn schema_check_from_member_cwd_resolves_kernel_home_without_local_schemas() {
+        // HFTASK-0093: the real `hf schema --check` dispatcher must not be CWD-sensitive.
+        // A fleet member (e.g. meta/Weave) may have no local `schemas/` directory; the command
+        // resolves the canonical sibling `meta/handoff/schemas/task.schema.json` instead.
+        let _g = cwd_lock();
+        let meta = std::env::temp_dir().join(format!(
+            "hf-schema-meta-{}-{}",
+            std::process::id(),
+            now_ns()
+        ));
+        let member = meta.join("Weave");
+        let kernel_schema = meta
+            .join("handoff")
+            .join("schemas")
+            .join("task.schema.json");
+        fs::create_dir_all(&member).unwrap();
+        fs::create_dir_all(kernel_schema.parent().unwrap()).unwrap();
+        fs::write(meta.join(".meta.yaml"), "repos: []\n").unwrap();
+        fs::write(
+            &kernel_schema,
+            format!("{}\n", work_order::task_schema_json()),
+        )
+        .unwrap();
+
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&member).unwrap();
+        let code = schema::cmd_schema(&["--check".to_string()]);
+        std::env::set_current_dir(prev).unwrap();
+        fs::remove_dir_all(&meta).ok();
+
+        assert_eq!(code, 0, "member cwd with no local schemas/ must pass");
+    }
+
+    #[test]
     fn release_unclaims_only_in_progress() {
         // HFTASK-0038: release reverts an active claim to Backlog, but must never un-finish
         // post-work/terminal states or touch an already-Backlog task.
