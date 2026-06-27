@@ -54,33 +54,34 @@ assert!(!order.intent_unchanged()); // DETECTED
 ```
 
 ### Scope Drift  
-```rust
-// Edit outside path scope → hard fail before write
-hf drift --path "src/outside_scope.rs"
-// Rejected: out_of_scope_files detected
+```bash
+# Edit outside path scope, then run the drift gate
+# e.g. modify src/outside_scope.rs without claiming it
+hf drift
+# Rejected: out_of_scope_files detected
 ```
 
 ### Completion Drift
-```rust
-// Task marked done without tests → hard fail before handoff
+```bash
+# Task marked done without tests → hard fail before handoff
 hf handoff
-// Blocked: missing_evidence = ["test_commands_executed"]
+# Blocked: missing_evidence = ["test_commands_executed"]
 ```
 
 ### Context Drift
-```rust
-// Packet stale vs Git state → reconcile required
-git commit --amend  //改变了Git HEAD
+```bash
+# Packet stale vs Git state → reconcile required
+git commit --amend  # changed Git HEAD
 hf handoff
-// Soft fail: stale_packet_detected = true
-// Required action: hf reconcile
+# Soft fail: stale_packet_detected = true
+# Required action: hf reconcile
 ```
 
 ### Policy Drift
-```rust
-// Ignoring no-Docker/offline constraint → hard fail before command
-hf policy check --command "docker run ..."
-// Rejected: policy_violation = ["no_docker"]
+```bash
+# Run the live edit policy gate before mutating files
+hf policy check-edit --json
+# Rejected when active policy blocks the edit surface
 ```
 
 ## Crash Tests

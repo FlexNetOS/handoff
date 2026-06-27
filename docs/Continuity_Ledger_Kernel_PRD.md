@@ -351,7 +351,7 @@ repo/
 | `hf release` | Release claim safely | No, transactional |
 | `hf reconcile` | Fix inconsistent lower-precedence state | Yes |
 | `hf doctor` | Diagnose repo/handoff health | Yes |
-| `hf mcp serve` | Expose MCP tools/resources | Long-running |
+| `hf-mcp` | Expose MCP tools/resources over stdio | Long-running |
 
 ## 10. Session State Machine
 
