@@ -699,6 +699,35 @@ fn high_impact_commands_reject_unknown_flags_before_work() {
 }
 
 #[test]
+fn fleet_status_dry_run_requires_fix_before_work() {
+    let repo = temp_empty("fleet-status-dry-run-without-fix");
+    let before = snapshot_files(&repo);
+    let out = hf()
+        .current_dir(&repo)
+        .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+        .args(["fleet", "status", "--dry-run", "--json"])
+        .output()
+        .expect("spawn hf");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "hf fleet status --dry-run should fail closed without --fix, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--dry-run is only valid with --fix"),
+        "stderr should explain the valid dry-run route, got: {stderr}"
+    );
+    assert_eq!(
+        snapshot_files(&repo),
+        before,
+        "hf fleet status --dry-run must not create files before rejecting the no-op dry-run"
+    );
+}
+
+#[test]
 fn remaining_stateful_commands_reject_unknown_args_before_work() {
     for (command, args) in [
         (
