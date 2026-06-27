@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-24F664-0001",
   "title": "[bundle] Reconcile the local prompt_hub checkout with origin/main aft",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Reconcile the local prompt_hub checkout with origin/main after the merged fleet sync without discarding unrelated user dirt. Preserve prompt_hub .idea local changes. Remove the false local deletion/dirty signal for fleet deployment artifacts so prompt_hub no longer appears to delete origin/main .gitignore .handoff .claude .github or scripts artifacts. Prove git diff --name-status origin/main -- .gitignore .handoff .claude .github scripts is clean, prompt_hub is fast-forwarded to origin/main, and handoff fleet sync/status remain clean.",
   "path_scope": [

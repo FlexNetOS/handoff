@@ -348,6 +348,53 @@ fn index_unknown_flag_fails_closed_without_writing_maps() {
 }
 
 #[test]
+fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
+    for (command, args) in [
+        ("plan", vec!["plan", "--definitely-unsupported-flag"]),
+        ("handoff", vec!["handoff", "--definitely-unsupported-flag"]),
+        (
+            "reconcile",
+            vec!["reconcile", "--definitely-unsupported-flag"],
+        ),
+        (
+            "sync-cards",
+            vec!["sync-cards", "--definitely-unsupported-flag"],
+        ),
+    ] {
+        let repo = temp_empty(&format!("{command}-unknown-arg"));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported arguments before side effects, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "hf {command}: unknown flag '--definitely-unsupported-flag'"
+            )),
+            "`hf {}` stderr should name the unsupported flag and command, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create or mutate files before rejecting unsupported args",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
 fn unknown_command_still_exits_2_after_help_expansion() {
     for args in [
         ["definitely-not-a-verb"].as_slice(),

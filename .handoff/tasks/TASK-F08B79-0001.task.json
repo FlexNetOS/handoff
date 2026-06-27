@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-F08B79-0001",
   "title": "[bundle] Fix remaining executable doc-sync contradictions in test/PRD",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix remaining executable doc-sync contradictions in test/PRD docs: docs still show non-live hf policy check --command, hf drift --path, and hf mcp serve examples even though current hf either rejects them or ignores the argument. Update those docs to current implemented policy/drift/MCP surfaces, and prove the stale examples no longer appear while live replacement help commands work.",
   "path_scope": [

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-065DD9-0001",
   "title": "[bundle] Fix the remaining hf focused-help navigation gap where hf <c",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix the remaining hf focused-help navigation gap where hf <command> --help still executes real command behavior or returns unknown for documented commands such as init seed index plan reconcile sync-cards export import migrate doctor gitignore schema session intake dispatch delivery promote gatekeeper hook. Help must be side-effect free, exit 0 for documented command topics, and print guidance for every documented top-level command while preserving fail-closed nonzero behavior for truly unknown commands/topics.",
   "path_scope": [

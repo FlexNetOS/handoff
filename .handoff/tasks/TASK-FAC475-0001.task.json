@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-FAC475-0001",
   "title": "[bundle] Fix the hf index intent-aware drift: docs describe hf index ",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix the hf index intent-aware drift: docs describe hf index --intent-aware as a live command, but live hf silently ignores the unsupported flag and runs normal index. Make unsupported hf index flags fail closed with a clear diagnostic instead of silently doing work, update rusty-idd docs to mark intent-aware indexing as future/proposed rather than live, and prove stale docs are gone plus hf index --intent-aware exits nonzero.",
   "path_scope": [

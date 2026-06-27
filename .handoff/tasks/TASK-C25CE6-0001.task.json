@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-C25CE6-0001",
   "title": "[bundle] Fix doc-sync gap where agent guides and PRD/test docs still ",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix doc-sync gap where agent guides and PRD/test docs still instruct the removed/unimplemented hf start command even though live hf start fails with unknown command. Replace hf start guidance with the current implemented session/worktree/navigation flow (hf session start where worktree session is intended, or claim/edit/checkpoint/test/drift/handoff where no separate start verb exists). Prove docs no longer tell agents to run hf start and live help remains clean.",
   "path_scope": [
