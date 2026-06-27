@@ -4077,6 +4077,7 @@ fn validate_gatekeeper_args(args: &[String]) {
     }
 }
 
+#[cfg(feature = "cognitum")]
 fn validate_policy_gate_args(args: &[String]) {
     validate_flags_and_positionals("policy gate", args, 2, &[], &["--task"], 1);
 }

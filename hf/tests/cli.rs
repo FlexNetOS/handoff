@@ -576,7 +576,7 @@ fn nested_readonly_commands_reject_unknown_flags_without_writes() {
 
 #[test]
 fn high_impact_commands_reject_unknown_flags_before_work() {
-    for (command, args) in [
+    let rejected_cases = vec![
         (
             "fleet status",
             vec!["fleet", "status", "--definitely-unsupported-flag"],
@@ -626,11 +626,14 @@ fn high_impact_commands_reject_unknown_flags_before_work() {
                 "--definitely-unsupported-flag",
             ],
         ),
+        #[cfg(feature = "cognitum")]
         (
             "policy gate",
             vec!["policy", "gate", "Claim", "--definitely-unsupported-flag"],
         ),
-    ] {
+    ];
+
+    for (command, args) in rejected_cases {
         let repo = temp_empty(&format!("high-impact-{}", command.replace(' ', "-")));
         let before = snapshot_files(&repo);
         let out = hf()
@@ -663,7 +666,7 @@ fn high_impact_commands_reject_unknown_flags_before_work() {
         );
     }
 
-    for args in [
+    let supported_shapes = vec![
         ["fleet", "status", "--json"].as_slice(),
         ["fleet", "sync", "--dry-run", "--json"].as_slice(),
         ["sync", "--dry-run", "--json"].as_slice(),
@@ -672,8 +675,11 @@ fn high_impact_commands_reject_unknown_flags_before_work() {
         ["task", "mint", "--from-kb", "missing-slug"].as_slice(),
         ["review", "request", "123", "--task", "TASK-123"].as_slice(),
         ["gatekeeper", "check", "123", "--task", "TASK-123"].as_slice(),
+        #[cfg(feature = "cognitum")]
         ["policy", "gate", "Claim", "--task", "TASK-123"].as_slice(),
-    ] {
+    ];
+
+    for args in supported_shapes {
         let repo = temp_empty(&format!("high-impact-supported-{}", args.join("-")));
         let out = hf()
             .current_dir(&repo)
