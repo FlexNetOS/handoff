@@ -130,6 +130,17 @@ if command -v ldd >/dev/null 2>&1; then
   fi
 fi
 
+# ── Phase 0b: reconcile stale shadow `hf` copies on PATH (HFTASK-0096, ADR-0006) ──────
+# `cargo install` lands the fresh binary in the cargo bin, but a COPY of `hf` earlier on PATH
+# (e.g. ~/.local/bin/hf) keeps shadowing it — so `hf` serves the OLD binary and new verbs read
+# as "unknown command" until a manual cp. Converge such shadows to a symlink into the build.
+canonical_hf="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin/hf"
+[ -x "$canonical_hf" ] || canonical_hf="$KERNEL_HOME/target/release/hf"
+[ -x "$canonical_hf" ] || canonical_hf="$(command -v hf 2>/dev/null || echo "")"
+if [ -n "$canonical_hf" ] && [ -e "$canonical_hf" ]; then
+  reconcile_hf_path "$canonical_hf" "$DRY"
+fi
+
 # ── Resolve targets ─────────────────────────────────────────────────────────────────
 fleet_members() {
   [ -f "$META_ROOT/.meta.yaml" ] || return 0
