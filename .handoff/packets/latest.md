@@ -7,24 +7,27 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 99/99.  Tamper-evident events verified: 556.
+Done: 99/100.  Tamper-evident events verified: 561.
 
 ## 0. Next Action / Direction
-- **Next safe task:** none — backlog is exhausted (all cards Done).
-- **Next command:** `hf handoff` (render the closing packet).
-- **Why it is next:** no Backlog/in-progress card remains.
+- **Next safe task:** TASK-F57ABB-0001 — [bundle] Fix prompt_hub/intake bundle artifact residency: non-task Sw
+- **Next command:** `hf checkpoint TASK-F57ABB-0001`
+- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
+- [P1] **TASK-F57ABB-0001** — [bundle] Fix prompt_hub/intake bundle artifact residency: non-task Sw
 
 ## 5. Next Best Task
+**TASK-F57ABB-0001** — [bundle] Fix prompt_hub/intake bundle artifact residency: non-task Sw
+  objective: Fix prompt_hub/intake bundle artifact residency: non-task SwarmBundle JSON files must not be written under .handoff/tasks because card loading treats every JSON there as a task card and emits schema warnings. Move bundles to a non-card inbox path, update intake default path/docs/tests, and ensure prompt_hub still mints tasks without polluting the task-card directory.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-done
+hf claim TASK-F57ABB-0001
 ```
 
 ## 7. Machine Summary
@@ -131,12 +134,21 @@ done
     "TASK-0004",
     "TASK-7870BF-0001"
   ],
-  "next_command": "done",
-  "next_task_id": null,
+  "next_command": "hf claim TASK-F57ABB-0001",
+  "next_task_id": "TASK-F57ABB-0001",
   "project": "handoff (Continuity Ledger Kernel)",
-  "remaining": [],
+  "remaining": [
+    "TASK-F57ABB-0001"
+  ],
   "schema": "handoff.packet.v2",
-  "tasks_total": 99,
-  "witnessed_events_verified": 556
+  "tasks_total": 100,
+  "witnessed_events_verified": 561
 }
 ```
+
+## Contract Proof (ADR-0011 — ruvector-verified/Lean)
+Active task **TASK-F57ABB-0001** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
+- ✓ `intent:objective` (Eq.refl proof-term #0)
+- ✓ `intent:path_scope` (Eq.refl proof-term #1)
+- ✓ `intent:acceptance` (Eq.refl proof-term #2)
+3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0x4b9222b9943817d1` · verifier `0x00010000` (lean-agentic 0.1.0).
