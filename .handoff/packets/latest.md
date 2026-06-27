@@ -7,27 +7,24 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 101/102.  Tamper-evident events verified: 584.
+Done: 102/102.  Tamper-evident events verified: 591.
 
 ## 0. Next Action / Direction
-- **Next safe task:** TASK-D633AC-0001 — [bundle] Apply and audit fleet deployment remediation: run hf fleet s
-- **Next command:** `hf checkpoint TASK-D633AC-0001`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** none — backlog is exhausted (all cards Done).
+- **Next command:** `hf handoff` (render the closing packet).
+- **Why it is next:** no Backlog/in-progress card remains.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P1] **TASK-D633AC-0001** — [bundle] Apply and audit fleet deployment remediation: run hf fleet s
 
 ## 5. Next Best Task
-**TASK-D633AC-0001** — [bundle] Apply and audit fleet deployment remediation: run hf fleet s
-  objective: Apply and audit fleet deployment remediation: run hf fleet sync for the current meta fleet, fix/remediate remaining ledger guard, WAL/SHM guard, JSONL export, legacy SQLite ledger, and tracked ledger violations where safely automatable; produce before/after fleet status evidence and clear next gaps for any residual manual/multi-repo work.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim TASK-D633AC-0001
+done
 ```
 
 ## 7. Machine Summary
@@ -134,23 +131,15 @@ hf claim TASK-D633AC-0001
     "TASK-0004",
     "TASK-2DECCC-0001",
     "TASK-7870BF-0001",
+    "TASK-D633AC-0001",
     "TASK-F57ABB-0001"
   ],
-  "next_command": "hf claim TASK-D633AC-0001",
-  "next_task_id": "TASK-D633AC-0001",
+  "next_command": "done",
+  "next_task_id": null,
   "project": "handoff (Continuity Ledger Kernel)",
-  "remaining": [
-    "TASK-D633AC-0001"
-  ],
+  "remaining": [],
   "schema": "handoff.packet.v2",
   "tasks_total": 102,
-  "witnessed_events_verified": 584
+  "witnessed_events_verified": 591
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **TASK-D633AC-0001** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0x5420bab04474c8f9` · verifier `0x00010000` (lean-agentic 0.1.0).
