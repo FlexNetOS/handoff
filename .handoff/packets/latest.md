@@ -7,29 +7,28 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 95/98.  Tamper-evident events verified: 521.
+Done: 96/98.  Tamper-evident events verified: 526.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0092 — hf sync KB mirror is isolated from ambient dirty meta worktrees
-- **Next command:** `hf checkpoint HFTASK-0092`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** HFTASK-0093 — Fleet-member schema checks resolve canonical kernel schemas without local schema files
+- **Next command:** `hf claim HFTASK-0093`
+- **Why it is next:** first backlog card that is unblocked — no dependencies, priority P2.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P1] **HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
 - [P2] **HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
 - [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
-  objective: The Weave /review run exposed `hf sync --auto` failing the ledger-to-KB mirror step with `git-kb checkout ... Uncommitted changes exist in workspace` because the broader meta workspace was dirty. That makes a fleet maintenance operation depend on unrelated ambient worktree state. Upgrade the kernel so KB mirror/write-back is isolated, deterministic, and non-destructive: use a dedicated temporary worktree/index, a git-kb non-checkout API, or a staged writer that never requires discarding unrelated user changes. Ledger rollup and health remediation must remain independent from KB mirror failure, with structured per-phase results.
+**HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
+  objective: The Weave /review run exposed that `hf schema --check` from a member repo can fail with `cannot read schemas/task.schema.json` when the member does not carry local schema files. Schema validation should be a kernel capability available from every fleet member, not a cwd-sensitive file lookup. Upgrade `hf schema --check` to resolve schemas from the kernel home, embedded generated schemas, or a deployed fleet schema cache, and make member-mode behavior explicit and fail-closed only on real schema violations.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0092
+hf claim HFTASK-0093
 ```
 
 ## 7. Machine Summary
@@ -124,6 +123,7 @@ hf claim HFTASK-0092
     "HFTASK-0089",
     "HFTASK-0090",
     "HFTASK-0091",
+    "HFTASK-0092",
     "HFTASK-0095",
     "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
@@ -132,23 +132,15 @@ hf claim HFTASK-0092
     "TASK-0003",
     "TASK-0004"
   ],
-  "next_command": "hf claim HFTASK-0092",
-  "next_task_id": "HFTASK-0092",
+  "next_command": "hf claim HFTASK-0093",
+  "next_task_id": "HFTASK-0093",
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [
-    "HFTASK-0092",
     "HFTASK-0093",
     "HFTASK-0094"
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 521
+  "witnessed_events_verified": 526
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **HFTASK-0092** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0x7f6241d8d570d918` · verifier `0x00010000` (lean-agentic 0.1.0).
