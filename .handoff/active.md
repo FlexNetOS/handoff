@@ -1,4 +1,4 @@
 # Active
 
-Next: TASK-F57ABB-0001
-Done 99/100 · witness-verified 561 events
+Next: —
+Done 100/100 · witness-verified 566 events
