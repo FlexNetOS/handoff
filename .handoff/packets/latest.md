@@ -7,7 +7,7 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 101/102.  Tamper-evident events verified: 582.
+Done: 101/102.  Tamper-evident events verified: 583.
 
 ## 0. Next Action / Direction
 - **Next safe task:** TASK-D633AC-0001 — [bundle] Apply and audit fleet deployment remediation: run hf fleet s
@@ -144,7 +144,7 @@ hf claim TASK-D633AC-0001
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 102,
-  "witnessed_events_verified": 582
+  "witnessed_events_verified": 583
 }
 ```
 
