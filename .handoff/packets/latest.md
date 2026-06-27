@@ -7,28 +7,27 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 96/98.  Tamper-evident events verified: 531.
+Done: 97/98.  Tamper-evident events verified: 536.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0093 — Fleet-member schema checks resolve canonical kernel schemas without local schema files
-- **Next command:** `hf checkpoint HFTASK-0093`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** HFTASK-0094 — hf test zero-test failures include actionable runner/filter diagnostics
+- **Next command:** `hf claim HFTASK-0094`
+- **Why it is next:** first backlog card that is unblocked — no dependencies, priority P3.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P2] **HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
 - [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
-  objective: The Weave /review run exposed that `hf schema --check` from a member repo can fail with `cannot read schemas/task.schema.json` when the member does not carry local schema files. Schema validation should be a kernel capability available from every fleet member, not a cwd-sensitive file lookup. Upgrade `hf schema --check` to resolve schemas from the kernel home, embedded generated schemas, or a deployed fleet schema cache, and make member-mode behavior explicit and fail-closed only on real schema violations.
+**HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
+  objective: The Weave /review run correctly failed closed when several `cargo test` filters executed zero tests, but the recovery required manual test-name/feature investigation. The fail-closed behavior is correct and must remain; upgrade the diagnostics so a zero-test result gives actionable next steps, especially for Cargo filters hidden behind features. For Cargo, suggest `cargo test -p <pkg> --features <needed> -- --list` or show nearby matching test names when practical. This is a fleet UX hardening task, not a weakening of the completion gate.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0093
+hf claim HFTASK-0094
 ```
 
 ## 7. Machine Summary
@@ -124,6 +123,7 @@ hf claim HFTASK-0093
     "HFTASK-0090",
     "HFTASK-0091",
     "HFTASK-0092",
+    "HFTASK-0093",
     "HFTASK-0095",
     "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
@@ -132,22 +132,14 @@ hf claim HFTASK-0093
     "TASK-0003",
     "TASK-0004"
   ],
-  "next_command": "hf claim HFTASK-0093",
-  "next_task_id": "HFTASK-0093",
+  "next_command": "hf claim HFTASK-0094",
+  "next_task_id": "HFTASK-0094",
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [
-    "HFTASK-0093",
     "HFTASK-0094"
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 531
+  "witnessed_events_verified": 536
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **HFTASK-0093** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0x20779aa9e6464dbe` · verifier `0x00010000` (lean-agentic 0.1.0).
