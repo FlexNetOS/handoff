@@ -3909,6 +3909,35 @@ fn reject_unsupported_flags(command: &str, args: &[String], allowed: &[&str]) {
     }
 }
 
+fn validate_init_args(args: &[String]) {
+    let flags_with_values = ["--name", "--northstar", "--role", "--plane"];
+    let mut i = 1usize;
+    while i < args.len() {
+        let arg = &args[i];
+        if flags_with_values.contains(&arg.as_str()) {
+            match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    i += 2;
+                    continue;
+                }
+                _ => {
+                    eprintln!("hf init: option '{arg}' requires a value");
+                    std::process::exit(2);
+                }
+            }
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        eprintln!(
+            "hf init: unknown {kind} '{arg}' (supported: --name VALUE, --northstar VALUE, --role VALUE, --plane VALUE)"
+        );
+        std::process::exit(2);
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
@@ -3927,8 +3956,14 @@ fn main() {
             );
             cmd_version(args.iter().any(|a| a == "--json"))
         }
-        Some("init") => cmd_init(&args),
-        Some("seed") => cmd_seed(),
+        Some("init") => {
+            validate_init_args(&args);
+            cmd_init(&args)
+        }
+        Some("seed") => {
+            reject_unsupported_args("seed", &args, &[]);
+            cmd_seed()
+        }
         Some("status") => {
             reject_unsupported_args("status", &args, &["--json"]);
             cmd_status(args.iter().any(|a| a == "--json"))
