@@ -3124,6 +3124,20 @@ fn cmd_seed() {
             "Surfaced by the climbing-the-ladder /verify drive: `cargo test -p hf --bin hf` aborted abnormally ~50% of runs under default parallelism (serial + --no-capture always passed) — undermining the COUNT-verified `hf test` gate that is the kernel's core integrity mechanism. Root-caused via marker-file backtrace instrumentation to `hf::tests::claim_returns_false_when_blocked_true_when_acquired → cmd_claim_with → open_ledger_or_exit → process::exit(1)`, with captured error `Database(DatabaseAlreadyOpen)` on `./.handoff/ledger.db`. Mechanism: redb refuses a second SAME-PROCESS open of one file; under the libtest harness's shared process cwd, a test that chdir's into its temp `.handoff` (holding cwd_lock) and a concurrent test that opens the cwd-relative default `ledger_path()` both resolve to the SAME file → two live handles → `DatabaseAlreadyOpen` → `open_ledger_or_exit` aborts the WHOLE binary (killing sibling tests; exit 1; no `test result: FAILED`). Pre-existing (reproduced with `hf/build.rs` removed: 6/12), exposed by the 16-crate decomposition spreading ledger-opening tests. Fix at the chokepoint: `ledger::v1::Ledger::open` now wraps `Database::create` in the EXISTING `with_busy_retry` (HFTASK-0059/0060), which already treats `DatabaseAlreadyOpen` as transient (`is_busy`) and is documented safe to retry — previously only WRITES retried, the OPEN failed closed. Bounded (100×≤10ms) so a genuinely stuck handle still surfaces an error. Production-safe (helps concurrent hf processes too). Verified: 0/25 parallel runs fail (was ~50%); ledger 34 tests green; clippy/fmt green.",
             &["HFTASK-0083"],
         ),
+        mk(
+            "HFTASK-0095",
+            "Automation rung 0 fix: build.rs re-stamps HF_BUILD_COMMIT on every commit (kill the SessionStart staleness false-positive)",
+            Priority::P2,
+            "The HFTASK-0085 build stamp lags HEAD because `hf/build.rs` only emits `cargo:rerun-if-changed=.git/HEAD`, but a normal `git commit` moves the branch ref (`.git/refs/heads/<branch>`) — NOT `.git/HEAD` — so cargo never re-runs build.rs after a commit, `HF_BUILD_COMMIT` keeps the prior short-sha, and the SessionStart staleness check (`.handoff/hooks/loop-entry.sh` + `scripts/handoff-loop-init.sh` Phase 0) compares the stale stamp against fresh `git rev-parse --short HEAD` and loudly (FALSE-positive) warns 'hf binary BEHIND kernel HEAD' on a source-clean tree — eroding trust in the very staleness signal rung 0 exists to provide. It also never fires in a git WORKTREE, where `.git` is a FILE gitlink (`gitdir: <path>`), not a directory. Fix `build.rs` to resolve the real gitdir worktree-aware, parse `HEAD`'s `ref: <path>` and emit `rerun-if-changed` for that ref file, plus `.git/logs/HEAD` as a robust catch-all (it changes on every commit/checkout/reset). Fail-soft at every step (a .git-less release tarball still builds and stamps 'unknown'; no unwrap/expect/panic — workspace deny lints). Verify by differential drive: record the stamp, commit, rebuild, assert `hf version --json`.commit == `git rev-parse --short HEAD`.",
+            &["HFTASK-0085"],
+        ),
+        mk(
+            "HFTASK-0096",
+            "Install hygiene: reconcile stale shadow `hf` copies on PATH to a symlink into the meta build (ADR-0006)",
+            Priority::P2,
+            "After `cargo install --path hf` (handoff-loop-init.sh Phase 0 rebuild) the canonical binary lands in `~/.cargo/bin/hf`, but a real COPY of `hf` earlier on PATH (e.g. `~/.local/bin/hf`) shadows it — so `hf` keeps serving the OLD binary and freshly-added verbs report 'unknown command' until someone manually re-copies. This is the recurring 'cp after every cargo install' gotcha and it silently defeats rung-0 staleness automation (the rebuild SUCCEEDS but the running `hf` is still stale). Add a post-install PATH-reconciliation step: a `reconcile_hf_path()` helper in `scripts/handoff-lib.sh`, called from `scripts/handoff-loop-init.sh` right after the build/install, that resolves the canonical freshly-built binary and converges every shadowing `hf` that resolves before it on PATH — per ADR-0006 doctrine, replacing each writable shadow COPY with a SYMLINK into the meta build (never a churning copy). Idempotent, `--dry-run`-aware, fail-soft + loud (warn, never abort the run) when a path isn't writable or a shadow is a foreign/non-hf binary. Verify: `bash -n` both scripts; a functional drive that seeds a stale copy on a synthetic PATH and asserts the helper turns it into a symlink to the canonical binary; idempotent re-run is a no-op.",
+            &["HFTASK-0085"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -3440,6 +3454,17 @@ fn cmd_seed() {
                 "test -f .kb/store/documents/context/immutable/project-brief.md",
                 "git check-ignore .kb/.cache/gitkb.db",
                 "./target/debug/hf 2>&1 | grep -q 'task mint'",
+            ],
+            // HFTASK-0095: the build.rs ref-watch fix. The version surface (count-positive) proves
+            // the stamp plumbing is intact; the ref-watch correctness itself is proven by the
+            // differential drive at verify time (commit → rebuild → stamp == git HEAD), since
+            // build.rs's cargo:rerun-if-changed directives are not unit-testable from the crate.
+            "HFTASK-0095" => &["cargo test -p hf version"],
+            // HFTASK-0096: shell-only PATH reconcile — syntax-check both scripts (the functional
+            // stale-copy→symlink drive runs at verify time on a synthetic PATH).
+            "HFTASK-0096" => &[
+                "bash -n scripts/handoff-loop-init.sh",
+                "bash -n scripts/handoff-lib.sh",
             ],
             _ => continue,
         };
