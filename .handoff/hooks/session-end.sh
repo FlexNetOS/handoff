@@ -5,7 +5,9 @@
 # witness the current state and re-render the packet so the next session resumes
 # from truth, not from a half-finished turn. Mirrors the kernel contract
 # (.handoff/hooks/hooks.toml SessionEnd: hf checkpoint --auto && hf handoff && hf export
-# && hf sync --auto — the canonical event, renamed from SessionStop in HFTASK-0069).
+# && hf sync --auto && hf session reap — the canonical event, renamed from SessionStop in
+# HFTASK-0069). HFTASK-0089 adds deterministic worktree/branch reap here so cleanup is
+# lifecycle-bound instead of agent-memory-bound.
 #
 # Idempotent and best-effort: never block session teardown.
 set -uo pipefail
@@ -28,4 +30,33 @@ fi
 # HFTASK-0052 / fleet auto-sync: roll every member's per-repo ledger into the central
 # FLEET ledger. Best-effort and idempotent; degrades gracefully when no meta root exists.
 "$HF" sync --auto 2>/dev/null || true
+# HFTASK-0089: deterministically reap retained hf session worktrees after a verified merge.
+"$HF" session reap || true
+
+find_meta_root_for_reap() {
+  local dir
+  dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/envctl/scripts/reap-worktrees.sh" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+# HFTASK-0089: the meta/envctl worktree+branch reap is the already-built fleet hygiene tool.
+# Run it in apply mode but preserve the script's rails: local-only, protect master/develop/current,
+# skip dirty, no force. Do not redirect output; the session-end transcript must surface what it
+# reaped (or that it reaped nothing).
+if META_ROOT="$(find_meta_root_for_reap)"; then
+  REAP_SCRIPT="$META_ROOT/envctl/scripts/reap-worktrees.sh"
+  echo "[session-end] worktree/branch reap: bash \"$REAP_SCRIPT\" --apply"
+  if ! bash "$REAP_SCRIPT" --apply; then
+    echo "[session-end] worktree/branch reap failed (non-blocking)" >&2
+  fi
+else
+  echo "[session-end] worktree/branch reap skipped: envctl/scripts/reap-worktrees.sh not found" >&2
+fi
 exit 0
