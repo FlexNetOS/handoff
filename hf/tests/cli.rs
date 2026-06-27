@@ -501,6 +501,80 @@ fn prompt_hub_rejects_malformed_args_without_writes() {
 }
 
 #[test]
+fn nested_readonly_commands_reject_unknown_flags_without_writes() {
+    for (command, args) in [
+        (
+            "hook list",
+            vec!["hook", "list", "--definitely-unsupported-flag"],
+        ),
+        (
+            "delivery list",
+            vec!["delivery", "list", "--definitely-unsupported-flag"],
+        ),
+        (
+            "policy check-edit",
+            vec!["policy", "check-edit", "--definitely-unsupported-flag"],
+        ),
+    ] {
+        let repo = temp_empty(&format!("nested-{}", command.replace(' ', "-")));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported nested flags, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "hf {command}: unknown flag '--definitely-unsupported-flag'"
+            )),
+            "`hf {}` stderr should name the nested command and unsupported flag, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create files before rejecting unsupported nested flags",
+            args.join(" ")
+        );
+    }
+
+    for args in [
+        ["hook", "list", "--json"].as_slice(),
+        ["hook", "run", "PreEdit", "--payload", "{}", "--json"].as_slice(),
+        ["delivery", "list", "--json"].as_slice(),
+        ["delivery", "get", "missing-correlation", "--json"].as_slice(),
+        ["policy", "check-edit", "--json"].as_slice(),
+        ["policy", "check-handoff", "--json"].as_slice(),
+    ] {
+        let repo = temp_empty(&format!("nested-supported-{}", args.join("-")));
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(args)
+            .output()
+            .expect("spawn hf");
+        assert_ne!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` is a supported nested command shape and should not be rejected as unsupported args, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
     for (command, args) in [
         ("plan", vec!["plan", "--definitely-unsupported-flag"]),

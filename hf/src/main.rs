@@ -3909,6 +3909,85 @@ fn reject_unsupported_flags(command: &str, args: &[String], allowed: &[&str]) {
     }
 }
 
+fn reject_unsupported_args_after(command: &str, args: &[String], start: usize, allowed: &[&str]) {
+    for arg in args.iter().skip(start) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn validate_hook_args(args: &[String]) {
+    match args.get(1).map(|s| s.as_str()) {
+        Some("list") => reject_unsupported_args_after("hook list", args, 2, &["--json"]),
+        Some("run") => {
+            if args.get(2).is_none_or(|event| event.starts_with('-')) {
+                eprintln!("hf hook run: event is required");
+                std::process::exit(2);
+            }
+            let mut i = 3usize;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--json" => i += 1,
+                    "--payload" => match args.get(i + 1) {
+                        Some(value) if !value.starts_with('-') => i += 2,
+                        _ => {
+                            eprintln!("hf hook run: option '--payload' requires a value");
+                            std::process::exit(2);
+                        }
+                    },
+                    other => {
+                        let kind = if other.starts_with('-') {
+                            "flag"
+                        } else {
+                            "argument"
+                        };
+                        eprintln!(
+                            "hf hook run: unknown {kind} '{other}' (supported: --payload VALUE, --json)"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_delivery_args(args: &[String]) {
+    match args.get(1).map(|s| s.as_str()) {
+        Some("list") => reject_unsupported_args_after("delivery list", args, 2, &["--json"]),
+        Some("get") => {
+            if args.get(2).is_none_or(|cid| cid.starts_with('-')) {
+                eprintln!("hf delivery get: correlation_id is required");
+                std::process::exit(2);
+            }
+            reject_unsupported_args_after("delivery get", args, 3, &["--json"]);
+        }
+        _ => {}
+    }
+}
+
+fn validate_policy_check_args(args: &[String]) {
+    let command = args
+        .get(1)
+        .map(|sub| format!("policy {sub}"))
+        .unwrap_or_else(|| "policy check".to_string());
+    reject_unsupported_args_after(&command, args, 2, &["--json"]);
+}
+
 fn validate_init_args(args: &[String]) {
     let flags_with_values = ["--name", "--northstar", "--role", "--plane"];
     let mut i = 1usize;
@@ -4271,6 +4350,7 @@ fn main() {
             gates::cmd_drift(args.iter().any(|a| a == "--json"))
         }
         Some("hook") => {
+            validate_hook_args(&args);
             let json = args.iter().any(|a| a == "--json");
             match args.get(1).map(|s| s.as_str()) {
                 Some("list") => hooks::cmd_hook_list(json),
@@ -4319,6 +4399,7 @@ fn main() {
                 .is_some_and(|s| s.starts_with("check-")) =>
         {
             let kind = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            validate_policy_check_args(&args);
             gates::cmd_policy_check(kind, args.iter().any(|a| a == "--json"));
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
@@ -4364,6 +4445,7 @@ fn main() {
             }
         }
         Some("delivery") => {
+            validate_delivery_args(&args);
             let json = args.iter().any(|a| a == "--json");
             match args.get(1).map(|s| s.as_str()) {
                 Some("get") => {
