@@ -38,7 +38,7 @@ This document describes the comprehensive test coverage for the Continuity Ledge
 | `hf claim --next` claims safe task | Highest priority backlog claim |
 | Overlapping claim is rejected | Lease conflict detection |
 | Disjoint claim is allowed | No false positives |
-| `hf start` creates worktree | Isolated session branch+worktree |
+| `hf session start` creates worktree | Isolated session branch+worktree |
 | `hf checkpoint` records diff | Files changed + command evidence |
 | `hf drift` blocks out-of-scope edit | Scope boundary enforcement |
 

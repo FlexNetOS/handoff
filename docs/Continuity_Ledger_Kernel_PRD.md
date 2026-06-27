@@ -343,7 +343,7 @@ repo/
 | `hf plan` | Create or refresh task DAG | Yes, with reconciliation |
 | `hf claim --next` | Atomically claim highest safe task | No, transactional |
 | `hf claim TASK-ID` | Claim specific task | No, transactional |
-| `hf start` | Create branch and worktree for active claim | Yes, if already created |
+| `hf session start` | Create branch and worktree for an isolated session | Yes, if already created |
 | `hf checkpoint` | Append session event and diff summary | Yes, creates new checkpoint event |
 | `hf test` | Run task test matrix | Yes, records each run |
 | `hf drift` | Run drift audit | Yes |
@@ -362,7 +362,7 @@ stateDiagram-v2
     Resumed --> Planned: hf plan
     Resumed --> Claimed: hf claim
     Planned --> Claimed: hf claim
-    Claimed --> Started: hf start
+    Claimed --> Started: hf session start
     Started --> Editing: file edits in leased scope
     Editing --> Checkpointed: hf checkpoint
     Checkpointed --> Tested: hf test
@@ -631,7 +631,7 @@ The packet must be concise, evidence-backed, and replayable.
     "missing_evidence": []
   },
   "next_task_id": "TASK-0002",
-  "next_command": "hf resume && hf claim TASK-0002 && hf start"
+  "next_command": "hf resume && hf claim TASK-0002"
 }
 ```
 
@@ -812,7 +812,7 @@ Hooks are deterministic lifecycle gates.
 - `hf claim --next` claims safe task
 - overlapping claim is rejected
 - disjoint claim is allowed
-- `hf start` creates worktree
+- `hf session start` creates a session worktree when isolation is needed
 - `hf checkpoint` records diff
 - `hf test` records command evidence
 - `hf drift` blocks out-of-scope edit
@@ -1130,8 +1130,8 @@ hf init
 hf index
 hf resume
 hf claim --next
-hf start
-hf checkpoint --note "first checkpoint"
+hf session start
+hf checkpoint TASK-0002 "first checkpoint"
 hf test
 hf drift
 hf handoff
