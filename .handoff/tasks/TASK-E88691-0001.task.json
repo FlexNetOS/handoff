@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-E88691-0001",
   "title": "[bundle] Remediate the residual prompt_hub fleet deployment drift rep",
-  "status": "claimed",
+  "status": "done",
   "priority": "P1",
   "objective": "Remediate the residual prompt_hub fleet deployment drift reported by hf fleet sync --dry-run: remove/neutralize tracked legacy .handoff/ledger.db, ensure .handoff/.gitignore guards ledger.db plus WAL/SHM, export ledger.events.jsonl, and prove hf fleet sync --dry-run reports zero remediations/failures afterward without disturbing unrelated prompt_hub dirty files.",
   "path_scope": [

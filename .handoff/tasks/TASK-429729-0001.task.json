@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-429729-0001",
+  "title": "[bundle] Fix audit-found agent navigation gap: hf has no successful h",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found agent navigation gap: hf has no successful help entry point. `hf --help`, `hf help`, `hf fleet --help`, and `hf task --help` currently exit nonzero or misroute, which makes simple agent navigation conflict-prone. Add first-class help handling so top-level help exits 0, nested help for grouped commands exits 0 with focused usage, and unknown commands still fail closed. Add tests for the help paths and keep docs/help usage in sync.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    "docs/**",
+    "README.md",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Top-level help paths `hf --help` and `hf help` exit 0 and print an agent-oriented usage surface.",
+    "Grouped help paths `hf fleet --help`, `hf help fleet`, `hf task --help`, `hf help task`, `hf prompt-hub --help`, and `hf help prompt-hub` exit 0 with focused usage.",
+    "Unknown commands continue to fail closed with exit code 2.",
+    "Regression coverage exists in hf/tests/cli.rs and the hf CLI test target is green."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli",
+    "cargo test -p hf grouped_help_paths_exit_0_and_stay_focused",
+    "cargo test -p hf top_level_help_paths_exit_0"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-66a42c85cc967af4-1782574136125367266",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:a020b216d1ce808b797b5ff6fe764a32e93101572486d5bf0179538dc784bdaf",
+    "path_scope_hash": "blake3:e9e35071f9c434d041caf9cf0912d49587aef0cdc54cb6062fdc6f352a73e5b8",
+    "acceptance_hash": "blake3:50aca9a699f83ca7f67432e158c7d26a489938108e28bfe786d1f27cd70c78da"
+  }
+}

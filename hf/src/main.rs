@@ -72,6 +72,10 @@ pub(crate) use handoff_core::{
 const CLAIM_TTL_SECS: u64 = 3600;
 
 const HF_USAGE: &str = "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run] [--json]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>";
+const HF_HELP: &str = "usage: hf [--ledger PATH] <command> [args]\n\nCommon commands:\n  resume [--json|--compact]      Render the current handoff packet\n  status [--json]                Show task/loop status\n  claim ID|--next|--batch        Claim work with a witnessed lease\n  checkpoint ID [note]           Witness progress\n  test [ID]                      Run the task's test_commands\n  done ID [--pr N]               Mark verified work done\n  drift [--json]                 Check policy/contract drift\n  fleet status|sync|render       Audit/remediate fleet handoff deployment\n  prompt-hub \"<vibe>\"            Mint verifiable tasks from intent\n  task mint --from-kb SLUG       Mint a task from a git-kb document\n\nRun `hf help <command>` or `hf <command> --help` for focused usage.\n";
+const HF_FLEET_HELP: &str = "usage: hf fleet <status|sync|render> [args]\n\n  hf fleet status [--json] [--fix]\n      Audit all meta members for handoff onboarding, ledger export, and residency guards.\n      --fix is an alias for `hf fleet sync`.\n\n  hf fleet sync [--dry-run] [--json]\n      Remediate detected fleet deployment drift and verify after-state flags.\n\n  hf fleet render MEMBER\n      Render one member packet from the FLEET ledger.\n";
+const HF_TASK_HELP: &str = "usage: hf task mint --from-kb SLUG\n\nMint a witnessed handoff.task.v1 card from a git-kb task/spec document. Task lifecycle commands are top-level: `hf claim`, `hf checkpoint`, `hf test`, `hf done`, `hf release`, and `hf reopen`.\n";
+const HF_PROMPT_HUB_HELP: &str = "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]\n\nMint one or more verifiable handoff.task.v1 cards from natural-language intent. Use --dispatch to immediately claim the next safe minted task.\n";
 
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
@@ -3691,9 +3695,52 @@ fn cmd_version(json: bool) {
     }
 }
 
+fn print_help(args: &[String]) -> bool {
+    let sub = |name: &str| args.get(1).is_some_and(|a| a == name);
+    let focused = args.iter().any(|a| a == "--help" || a == "-h");
+    match args.first().map(|s| s.as_str()) {
+        Some("--help") | Some("-h") => {
+            println!("{HF_HELP}");
+            true
+        }
+        Some("help") if sub("fleet") => {
+            println!("{HF_FLEET_HELP}");
+            true
+        }
+        Some("help") if sub("task") => {
+            println!("{HF_TASK_HELP}");
+            true
+        }
+        Some("help") if sub("prompt-hub") => {
+            println!("{HF_PROMPT_HUB_HELP}");
+            true
+        }
+        Some("help") if args.len() == 1 => {
+            println!("{HF_HELP}");
+            true
+        }
+        Some("fleet") if focused => {
+            println!("{HF_FLEET_HELP}");
+            true
+        }
+        Some("task") if focused => {
+            println!("{HF_TASK_HELP}");
+            true
+        }
+        Some("prompt-hub") if focused => {
+            println!("{HF_PROMPT_HUB_HELP}");
+            true
+        }
+        _ => false,
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
+    if print_help(&args) {
+        return;
+    }
     match args.first().map(|s| s.as_str()) {
         // HFTASK-0085 (automation rung 0): build-version stamp so any consumer can detect a
         // binary that is BEHIND the kernel source. `--json` form is machine-readable for the

@@ -51,3 +51,71 @@ fn bare_invocation_prints_usage_exit_0() {
         "bare `hf` should print the usage line, got: {stderr}"
     );
 }
+
+#[test]
+fn top_level_help_paths_exit_0() {
+    for args in [["--help"].as_slice(), ["help"].as_slice()] {
+        let out = hf().args(args).output().expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "`hf {}` should be a successful help path",
+            args.join(" ")
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("usage: hf [--ledger PATH] <command>"),
+            "top-level help should print agent navigation usage, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn grouped_help_paths_exit_0_and_stay_focused() {
+    let cases = [
+        (
+            ["fleet", "--help"].as_slice(),
+            "usage: hf fleet <status|sync|render>",
+        ),
+        (
+            ["help", "fleet"].as_slice(),
+            "usage: hf fleet <status|sync|render>",
+        ),
+        (
+            ["task", "--help"].as_slice(),
+            "usage: hf task mint --from-kb SLUG",
+        ),
+        (
+            ["help", "task"].as_slice(),
+            "usage: hf task mint --from-kb SLUG",
+        ),
+        (
+            ["prompt-hub", "--help"].as_slice(),
+            "usage: hf prompt-hub \"<vibe>\"",
+        ),
+        (
+            ["help", "prompt-hub"].as_slice(),
+            "usage: hf prompt-hub \"<vibe>\"",
+        ),
+    ];
+    for (args, expected) in cases {
+        let out = hf().args(args).output().expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "`hf {}` should be a successful focused help path",
+            args.join(" ")
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains(expected),
+            "`hf {}` should print focused usage `{expected}`, got: {stdout}",
+            args.join(" ")
+        );
+        assert!(
+            out.stderr.is_empty(),
+            "successful help should not look like an error, stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
