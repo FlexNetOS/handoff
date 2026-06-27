@@ -7,31 +7,30 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 93/98.  Tamper-evident events verified: 498.
+Done: 94/98.  Tamper-evident events verified: 503.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0089 — Automation rung 5: worktree/branch reap as a hook, not agent memory
-- **Next command:** `hf checkpoint HFTASK-0089`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** HFTASK-0091 — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
+- **Next command:** `hf claim HFTASK-0091`
+- **Why it is next:** first backlog card that is unblocked — no dependencies, priority P1.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P2] **HFTASK-0089** — Automation rung 5: worktree/branch reap as a hook, not agent memory
 - [P1] **HFTASK-0091** — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
 - [P1] **HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
 - [P2] **HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
 - [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0089** — Automation rung 5: worktree/branch reap as a hook, not agent memory
-  objective: Owner has hammered that worktree/branch reap is mandatory at session start yet 'skipping it is the recurring failure' — because it currently depends on an AGENT remembering to run scripts/reap-worktrees.sh. Automation that needs a human/agent to remember is not automation. Bind reap to a real lifecycle hook (the handoff hooks.toml SessionEnd / a PostMerge hook, mirroring how SessionEnd already runs checkpoint+handoff+export+sync) so merged-branch/worktree husks are reaped deterministically by the kernel, never by recall. Keep the existing safety rails (dry-run default in the script, protect master/develop/current, skip dirty, local-only, never --force). Surface what was reaped in the session-end output.
+**HFTASK-0091** — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
+  objective: The Weave /review run exposed that `hf sync --auto` still reports several fleet members (observed: network-control, prompt_hub, lane) as legacy C-SQLite `.handoff/ledger.db` sources and then skips their rollup. That is a remembered manual migration, not fleet automation. Upgrade the handoff kernel so fleet sync/fleet status can safely remediate or produce a first-class migration plan for legacy member ledgers without ever treating unreadable ledgers as empty. The default no-C hf binary must remain no-C; use an explicit legacy-sqlite helper path, controlled rebuild, or generated per-member remediation command, with out-of-tree backups and witness-chain verification before cursor advancement.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0089
+hf claim HFTASK-0091
 ```
 
 ## 7. Machine Summary
@@ -123,6 +122,7 @@ hf claim HFTASK-0089
     "HFTASK-0086",
     "HFTASK-0087",
     "HFTASK-0088",
+    "HFTASK-0089",
     "HFTASK-0090",
     "HFTASK-0095",
     "HFTASK-0096",
@@ -132,11 +132,10 @@ hf claim HFTASK-0089
     "TASK-0003",
     "TASK-0004"
   ],
-  "next_command": "hf claim HFTASK-0089",
-  "next_task_id": "HFTASK-0089",
+  "next_command": "hf claim HFTASK-0091",
+  "next_task_id": "HFTASK-0091",
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [
-    "HFTASK-0089",
     "HFTASK-0091",
     "HFTASK-0092",
     "HFTASK-0093",
@@ -144,15 +143,6 @@ hf claim HFTASK-0089
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 498
+  "witnessed_events_verified": 503
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **HFTASK-0089** — AgentContract PROVEN via ruvector-verified (5 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-- ✓ `intent:constraint` (Eq.refl proof-term #3)
-- ✓ `intent:northstar` (Eq.refl proof-term #4)
-5 proof-term(s) · proof-hash `81782f7e9e455c98` · binding `0xeef963aa94cdc747` · verifier `0x00010000` (lean-agentic 0.1.0).
