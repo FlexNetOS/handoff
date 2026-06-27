@@ -319,6 +319,35 @@ fn documented_command_help_is_side_effect_free() {
 }
 
 #[test]
+fn index_unknown_flag_fails_closed_without_writing_maps() {
+    let repo = temp_empty("index-unknown-flag");
+    let before = snapshot_files(&repo);
+    let out = hf()
+        .current_dir(&repo)
+        .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+        .args(["index", "--intent-aware"])
+        .output()
+        .expect("spawn hf");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "unsupported index flags must fail closed, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown flag '--intent-aware'"),
+        "stderr should name the unsupported flag, got: {stderr}"
+    );
+    assert_eq!(
+        snapshot_files(&repo),
+        before,
+        "unsupported `hf index` flags must not write .handoff/maps"
+    );
+}
+
+#[test]
 fn unknown_command_still_exits_2_after_help_expansion() {
     for args in [
         ["definitely-not-a-verb"].as_slice(),
