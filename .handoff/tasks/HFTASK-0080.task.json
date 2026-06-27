@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0080",
   "title": "ADR-0019 D5 #3: adopt unwrap_used/expect_used/panic = deny (error-handling hardening)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "ADR-0019 D5 #3 (the Cargo.toml workspace.lints comment calls this 'the next increment ... NOT left as a standing TODO'): the kernel claims a fail-closed continuity substrate yet the production tree carries hundreds of `.unwrap()`/`.expect()`/`panic!` sites — exactly the FAIL-OPEN class (LESSONS L7–L10) where a guard proceeds when it cannot confirm its precondition. Adopt clippy `unwrap_used`/`expect_used`/`panic` = deny in `[workspace.lints.clippy]`. Allow them crate-wide ONLY under `#[cfg(test)]` (idiomatic; tests assert). For every PRODUCTION site: propagate with `?` where genuinely fallible, or replace with `.expect(\"<invariant reason>\")` where the call is infallible by a documented invariant (mutex-poison, compile-time-constant parse, etc.) so the unsafe assumption is VISIBLE and audited at the call site rather than a bare `.unwrap()`. Verify `cargo clippy --workspace --all-targets -- -D warnings` green (the exact CI gate).",
   "path_scope": [

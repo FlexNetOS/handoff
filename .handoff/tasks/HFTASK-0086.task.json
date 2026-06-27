@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0086",
   "title": "Automation rung 2: auto-release hf artifacts on merge-to-trunk (dispatch release-tagged)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "`.github/workflows/release.yml` already builds hf for 5 platforms but only triggers on `push: tags/v*` / `repository_dispatch[release-tagged]` / manual — so a merged kernel change produces ZERO artifacts automatically. The build pipeline exists; the TRIGGER does not. Wire the develop→trunk promotion machinery (sync-master.yml / promote-verify.yml) to fire a `repository_dispatch{event_type: release-tagged}` (or auto-tag `v<pkgver>+<shortsha>`) when trunk advances with a kernel-source change, so every promoted change yields versioned platform binaries with no human action. Gate on an actual hf/ledger/work-order/handoff-* source change (skip docs-only). Depends on HFTASK-0085 (the version the release is stamped with).",
   "path_scope": [

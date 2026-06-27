@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-7870BF-0001",
   "title": "[bundle] Fix audit-found stale agent navigation docs/help: hf sync su",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix audit-found stale agent navigation docs/help: hf sync supports --json, but bare hf usage and FLEET_GUIDE still show hf sync [--auto] [--dry-run] without --json. Update help/docs and add/adjust tests so agents see the correct command surface.",
   "path_scope": [

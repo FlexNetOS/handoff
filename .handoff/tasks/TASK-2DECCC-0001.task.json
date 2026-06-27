@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-2DECCC-0001",
   "title": "[bundle] Fix audit-found fleet deployment remediation gap: hf fleet s",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix audit-found fleet deployment remediation gap: hf fleet sync dry-run reports 57 would-remediate members but flags_after stay unresolved; make agent navigation/fleet deployment audit clear and ensure dry-run/apply evidence shows what will be fixed, especially ledger guard, WAL/SHM guard, JSONL export, legacy SQLite migration, and tracked ledger violations.",
   "path_scope": [
