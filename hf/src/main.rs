@@ -3852,7 +3852,16 @@ fn main() {
         Some("seed") => cmd_seed(),
         Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
         // PRD §8/§9: generate navigation maps + the task DAG (HFTASK-0050, now actually built).
-        Some("index") => index::cmd_index(),
+        // Fail closed on unsupported flags: `hf index --intent-aware` was historically documented
+        // as a future idea, but silently running the normal index makes agents believe that
+        // intent-aware indexing happened. Help paths are handled before this match.
+        Some("index") => {
+            if let Some(flag) = args.get(1) {
+                eprintln!("hf index: unknown flag '{flag}' (supported: no flags)");
+                std::process::exit(2);
+            }
+            index::cmd_index()
+        }
         Some("plan") => index::cmd_plan(args.iter().any(|a| a == "--json")),
         Some("claim") => {
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
