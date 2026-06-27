@@ -3988,6 +3988,16 @@ fn validate_policy_check_args(args: &[String]) {
     reject_unsupported_args_after(&command, args, 2, &["--json"]);
 }
 
+fn reject_unknown_arg(command: &str, arg: &str, supported: &str) -> ! {
+    let kind = if arg.starts_with('-') {
+        "flag"
+    } else {
+        "argument"
+    };
+    eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+    std::process::exit(2);
+}
+
 fn validate_flags_and_positionals(
     command: &str,
     args: &[String],
@@ -4048,6 +4058,19 @@ fn validate_flags_and_positionals(
     }
 }
 
+fn validate_claim_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("--next" | "--batch") if args.len() == 2 => {}
+        Some(id) if !id.starts_with('-') && args.len() == 2 => {}
+        Some("--next" | "--batch") => {
+            let extra = args.get(2).map(String::as_str).unwrap_or("");
+            reject_unknown_arg("claim", extra, "ID | --next | --batch");
+        }
+        Some(other) => reject_unknown_arg("claim", other, "ID | --next | --batch"),
+        None => {}
+    }
+}
+
 fn validate_intake_args(args: &[String]) {
     validate_flags_and_positionals(
         "intake",
@@ -4057,6 +4080,39 @@ fn validate_intake_args(args: &[String]) {
         &["--bundle", "--vibe", "--intent", "--scope"],
         0,
     );
+}
+
+fn validate_session_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("start") => {
+            validate_flags_and_positionals("session start", args, 2, &[], &["--base"], 0)
+        }
+        Some("end") => validate_flags_and_positionals(
+            "session end",
+            args,
+            2,
+            &["--recycle", "--reap"],
+            &["--base"],
+            0,
+        ),
+        Some("reap") => {
+            validate_flags_and_positionals("session reap", args, 2, &["--force", "--reap"], &[], 0);
+        }
+        Some(other) => reject_unknown_arg("session", other, "start | end | reap"),
+        None => {}
+    }
+}
+
+fn validate_schema_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("--check" | "--write") if args.len() == 2 => {}
+        Some("--check" | "--write") => {
+            let extra = args.get(2).map(String::as_str).unwrap_or("");
+            reject_unknown_arg("schema", extra, "--check | --write");
+        }
+        Some(other) => reject_unknown_arg("schema", other, "--check | --write"),
+        None => {}
+    }
 }
 
 fn validate_review_args(args: &[String]) {
@@ -4228,6 +4284,7 @@ fn main() {
             index::cmd_plan(args.iter().any(|a| a == "--json"))
         }
         Some("claim") => {
+            validate_claim_args(&args);
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
                 cmd_claim_batch();
             } else if args.iter().any(|a| a == "--next") {
@@ -4258,6 +4315,7 @@ fn main() {
             cmd_import()
         }
         Some("migrate") => {
+            validate_flags_and_positionals("migrate", &args, 1, &[], &[], 1);
             let path = args
                 .get(1)
                 .filter(|a| !a.starts_with("--"))
@@ -4270,6 +4328,7 @@ fn main() {
             cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or(""))
         }
         Some("reopen") => {
+            reject_unsupported_flags("reopen", &args, &[]);
             let positional: Vec<&str> = args[1..]
                 .iter()
                 .map(|s| s.as_str())
@@ -4329,6 +4388,7 @@ fn main() {
             sync::cmd_sync(auto, dry, json);
         }
         Some("done") => {
+            validate_flags_and_positionals("done", &args, 1, &[], &["--pr"], 1);
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             let pr = args
                 .iter()
@@ -4338,6 +4398,7 @@ fn main() {
             cmd_done(id, pr);
         }
         Some("test") => {
+            validate_flags_and_positionals("test", &args, 1, &[], &[], 1);
             let id = args
                 .get(1)
                 .map(|s| s.as_str())
@@ -4388,6 +4449,7 @@ fn main() {
             intake::cmd_dispatch(cid, next_only, &|id| cmd_claim_with(id, &leaser));
         }
         Some("ship") => {
+            validate_flags_and_positionals("ship", &args, 1, &[], &["--base"], 1);
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             // HFTASK-0008: empty default → cmd_ship resolves the base from the branch
             // policy (trunk_branch), instead of hardcoding "master" at the call site.
@@ -4401,7 +4463,10 @@ fn main() {
         }
         // HFTASK-0076 (ADR-0018 D11): hands-off develop → trunk promotion (also auto-run at
         // `hf done --pr`). Replaces the manual `gh api PATCH .../master` ff.
-        Some("promote") => cmd_promote(),
+        Some("promote") => {
+            reject_unsupported_args("promote", &args, &[]);
+            cmd_promote()
+        }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("request") => {
             validate_review_args(&args);
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
@@ -4469,7 +4534,10 @@ fn main() {
                 }
             }
         }
-        Some("session") => session::cmd_session(&args[1..]),
+        Some("session") => {
+            validate_session_args(&args);
+            session::cmd_session(&args[1..]);
+        }
         Some("drift") => {
             reject_unsupported_args("drift", &args, &["--json"]);
             gates::cmd_drift(args.iter().any(|a| a == "--json"))
@@ -4594,6 +4662,7 @@ fn main() {
             prompt_hub::cmd_prompt_hub(&vibe, scope.as_deref(), dispatch, json);
         }
         Some("schema") => {
+            validate_schema_args(&args);
             let code = schema::cmd_schema(&args[1..]);
             if code != 0 {
                 std::process::exit(code);
