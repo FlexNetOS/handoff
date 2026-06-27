@@ -325,6 +325,18 @@ for dir in "${TARGETS[@]}"; do
     ensure_ledger_guard "$dir" && gl=1
   fi
   [ "$gl" = 1 ] && { GUARD=$((GUARD+1)); say "  guards updated (ledger=$gl)"; }
+  # If an older rollout committed binary ledger caches, remove them from the git index after
+  # the guard is present while leaving the local files on disk for migration/import. Without this
+  # `git check-ignore` keeps reporting the tracked path as unignored and fleet sync can never
+  # clear the tracked_ledger / ledger_guard flags (prompt_hub exposed this P7 wedge).
+  if [ "$DRY" = 1 ]; then
+    echo "    DRY: git rm --cached --ignore-unmatch .handoff ledger cache files"
+  else
+    git -C "$dir" rm --cached --ignore-unmatch \
+      .handoff/ledger.db .handoff/ledger.db-wal .handoff/ledger.db-shm \
+      .handoff/**/ledger.db .handoff/**/*.db-wal .handoff/**/*.db-shm \
+      >/dev/null 2>&1 || true
+  fi
 
   # (4) ledger migration (fail-closed on quiescence)
   if [ "$NO_MIGRATE" = 0 ]; then
@@ -337,7 +349,7 @@ for dir in "${TARGETS[@]}"; do
         say "  legacy SQLite ledger detected — migrating to redb"
         legacy_abs="$(cd "$(dirname "$legacy")" && pwd)/$(basename "$legacy")"
         if [ -n "$KERNEL_HOME" ] && _is_kernel_home "$KERNEL_HOME"; then
-          migrate_cmd="cd \"$KERNEL_HOME\" && cargo run -q -p hf --features legacy-sqlite -- migrate \"$legacy_abs\""
+          migrate_cmd="cd \"$KERNEL_HOME\" && cargo run -q -p hf --features legacy-sqlite --bin hf -- migrate \"$legacy_abs\""
         else
           migrate_cmd="cd \"$dir\" && \"$HF\" migrate \"$legacy_abs\""
         fi
@@ -369,6 +381,10 @@ for dir in "${TARGETS[@]}"; do
   # (6) verify + render
   if [ "$DRY" = 0 ]; then
     ( cd "$dir" && "$HF" resume >/dev/null 2>&1 ) || true
+    ( cd "$dir" && "$HF" export >/dev/null 2>&1 ) && {
+      git -C "$dir" add -f .handoff/ledger.events.jsonl >/dev/null 2>&1 || true
+      say "  ledger.events.jsonl exported + staged"
+    } || say "  hf export: see 'hf export'"
     ( cd "$dir" && "$HF" drift >/dev/null 2>&1 ) && say "  hf drift clean ✓" || say "  hf drift: see 'hf drift'"
   fi
 
