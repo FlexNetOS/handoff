@@ -26,6 +26,41 @@ fn temp_repo(name: &str) -> std::path::PathBuf {
     dir
 }
 
+fn temp_empty(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "hf-cli-empty-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("mkdir empty fixture");
+    dir
+}
+
+fn snapshot_files(root: &std::path::Path) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read fixture dir") {
+            let entry = entry.expect("dir entry");
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(root)
+                .expect("fixture-relative path")
+                .display()
+                .to_string();
+            files.push(rel);
+            if path.is_dir() {
+                stack.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
 fn write_minimal_task(repo: &std::path::Path, id: &str) {
     let card = serde_json::json!({
         "schema": "handoff.task.v1",
@@ -200,6 +235,84 @@ fn common_help_topics_exit_0_without_contradicting_top_level_guidance() {
                 out.stderr.is_empty(),
                 "successful help should not look like an error, stderr: {}",
                 String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
+#[test]
+fn documented_command_help_is_side_effect_free() {
+    let topics = [
+        "version",
+        "init",
+        "seed",
+        "status",
+        "index",
+        "plan",
+        "session",
+        "claim",
+        "doctor",
+        "gitignore",
+        "reconcile",
+        "export",
+        "import",
+        "migrate",
+        "release",
+        "reopen",
+        "checkpoint",
+        "sync-cards",
+        "sync",
+        "done",
+        "test",
+        "task",
+        "intake",
+        "prompt-hub",
+        "dispatch",
+        "delivery",
+        "ship",
+        "promote",
+        "review",
+        "drift",
+        "policy",
+        "gatekeeper",
+        "hook",
+        "lease",
+        "fleet",
+        "schema",
+        "handoff",
+        "resume",
+    ];
+
+    for topic in topics {
+        for args in [vec!["help", topic], vec![topic, "--help"]] {
+            let repo = temp_empty(topic);
+            let before = snapshot_files(&repo);
+            let ledger = repo.join(".handoff/ledger.db");
+            let out = hf()
+                .current_dir(&repo)
+                .env("HANDOFF_LEDGER", &ledger)
+                .args(&args)
+                .output()
+                .expect("spawn hf");
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "`hf {}` should be documented help, stdout: {}, stderr: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&out.stdout).contains("usage: hf"),
+                "`hf {}` should print focused usage, got: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stdout)
+            );
+            assert_eq!(
+                snapshot_files(&repo),
+                before,
+                "`hf {}` help must not create or mutate files",
+                args.join(" ")
             );
         }
     }

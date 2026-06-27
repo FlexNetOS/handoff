@@ -7,7 +7,7 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 107/107.  Tamper-evident events verified: 639.
+Done: 108/108.  Tamper-evident events verified: 647.
 
 ## 0. Next Action / Direction
 - **Next safe task:** none — backlog is exhausted (all cards Done).
@@ -129,6 +129,7 @@ done
     "TASK-0002",
     "TASK-0003",
     "TASK-0004",
+    "TASK-065DD9-0001",
     "TASK-241E7F-0001",
     "TASK-24F664-0001",
     "TASK-2DECCC-0001",
@@ -144,7 +145,7 @@ done
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [],
   "schema": "handoff.packet.v2",
-  "tasks_total": 107,
-  "witnessed_events_verified": 639
+  "tasks_total": 108,
+  "witnessed_events_verified": 647
 }
 ```
