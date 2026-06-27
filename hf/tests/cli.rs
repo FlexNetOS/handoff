@@ -164,6 +164,71 @@ fn grouped_help_paths_exit_0_and_stay_focused() {
 }
 
 #[test]
+fn common_help_topics_exit_0_without_contradicting_top_level_guidance() {
+    let cases = [
+        ("resume", "usage: hf resume"),
+        ("status", "usage: hf status"),
+        ("claim", "usage: hf claim"),
+        ("checkpoint", "usage: hf checkpoint"),
+        ("test", "usage: hf test"),
+        ("done", "usage: hf done"),
+        ("drift", "usage: hf drift"),
+        ("release", "usage: hf release"),
+        ("reopen", "usage: hf reopen"),
+        ("handoff", "usage: hf handoff"),
+        ("ship", "usage: hf ship"),
+        ("lease", "usage: hf lease"),
+        ("version", "usage: hf version"),
+        ("policy", "usage: hf policy"),
+    ];
+    for (topic, expected) in cases {
+        for args in [vec!["help", topic], vec![topic, "--help"]] {
+            let out = hf().args(&args).output().expect("spawn hf");
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "`hf {}` should be a successful focused help path",
+                args.join(" ")
+            );
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                stdout.contains(expected),
+                "`hf {}` should print focused usage `{expected}`, got: {stdout}",
+                args.join(" ")
+            );
+            assert!(
+                out.stderr.is_empty(),
+                "successful help should not look like an error, stderr: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
+#[test]
+fn unknown_command_still_exits_2_after_help_expansion() {
+    for args in [
+        ["definitely-not-a-verb"].as_slice(),
+        ["help", "definitely-not-a-verb"].as_slice(),
+        ["definitely-not-a-verb", "--help"].as_slice(),
+    ] {
+        let out = hf().args(args).output().expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` must fail closed with exit 2, got {:?}",
+            args.join(" "),
+            out.status.code()
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("unknown command") || stderr.contains("unknown help topic"),
+            "stderr should name the unknown command/topic, got: {stderr}"
+        );
+    }
+}
+
+#[test]
 fn done_releases_claim_lease_so_agents_see_no_false_holder() {
     let repo = temp_repo("done-release");
     let ledger = repo.join(".handoff/ledger.db");

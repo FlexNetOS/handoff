@@ -76,6 +76,21 @@ const HF_HELP: &str = "usage: hf [--ledger PATH] <command> [args]\n\nCommon comm
 const HF_FLEET_HELP: &str = "usage: hf fleet <status|sync|render> [args]\n\n  hf fleet status [--json] [--fix]\n      Audit all meta members for handoff onboarding, ledger export, and residency guards.\n      --fix is an alias for `hf fleet sync`.\n\n  hf fleet sync [--dry-run] [--json]\n      Remediate detected fleet deployment drift and verify after-state flags.\n\n  hf fleet render MEMBER\n      Render one member packet from the FLEET ledger.\n";
 const HF_TASK_HELP: &str = "usage: hf task mint --from-kb SLUG\n\nMint a witnessed handoff.task.v1 card from a git-kb task/spec document. Task lifecycle commands are top-level: `hf claim`, `hf checkpoint`, `hf test`, `hf done`, `hf release`, and `hf reopen`.\n";
 const HF_PROMPT_HUB_HELP: &str = "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]\n\nMint one or more verifiable handoff.task.v1 cards from natural-language intent. Use --dispatch to immediately claim the next safe minted task.\n";
+const HF_RESUME_HELP: &str = "usage: hf resume [--json|--compact]\n\nRender the latest handoff packet so an agent can resume from ledger-backed project state.\n";
+const HF_STATUS_HELP: &str = "usage: hf status [--json]\n\nShow task/loop status, including next safe task and witnessed-event count.\n";
+const HF_CLAIM_HELP: &str = "usage: hf claim ID|--next|--batch\n\nClaim work with a witnessed lease. Use --next for the next safe task, or --batch for a safe batch.\n";
+const HF_CHECKPOINT_HELP: &str = "usage: hf checkpoint ID [note] [--auto] [--quiet] [--sync-cards]\n\nWitness progress for an active task before stopping or after material work.\n";
+const HF_TEST_HELP: &str =
+    "usage: hf test [ID]\n\nRun a task card's test_commands and witness the result.\n";
+const HF_DONE_HELP: &str = "usage: hf done ID [--pr N]\n\nMark verified work done after tests/evidence pass, optionally linking a pull request.\n";
+const HF_DRIFT_HELP: &str = "usage: hf drift [--json]\n\nCheck policy, scope, intent-lock, and evidence drift before handoff or completion.\n";
+const HF_RELEASE_HELP: &str = "usage: hf release ID\n\nRelease an active task claim and its lease without marking the task done.\n";
+const HF_REOPEN_HELP: &str = "usage: hf reopen ID \"reason\"\n\nReopen a completed or released task with a witnessed reason.\n";
+const HF_HANDOFF_HELP: &str = "usage: hf handoff\n\nRender .handoff/packets/latest.md from authoritative git, ledger, and task state.\n";
+const HF_SHIP_HELP: &str = "usage: hf ship ID [--base BR]\n\nOpen the shipping flow for a verified task against the selected base branch.\n";
+const HF_LEASE_HELP: &str = "usage: hf lease [--json]\n\nInspect currently held coordination leases; terminal task leases are filtered from active holders.\n";
+const HF_VERSION_HELP: &str = "usage: hf version [--json]\n\nPrint the hf package version plus embedded build commit/date metadata.\n";
+const HF_POLICY_HELP: &str = "usage: hf policy <gate ACTION [--task ID]|check-claim|check-edit|check-handoff [--json]>\n\nRun continuity policy gates for claim, edit, and handoff preconditions.\n";
 
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
@@ -3714,40 +3729,56 @@ fn cmd_version(json: bool) {
     }
 }
 
+fn focused_help(topic: &str) -> Option<&'static str> {
+    match topic {
+        "resume" => Some(HF_RESUME_HELP),
+        "status" => Some(HF_STATUS_HELP),
+        "claim" => Some(HF_CLAIM_HELP),
+        "checkpoint" => Some(HF_CHECKPOINT_HELP),
+        "test" => Some(HF_TEST_HELP),
+        "done" => Some(HF_DONE_HELP),
+        "drift" => Some(HF_DRIFT_HELP),
+        "fleet" => Some(HF_FLEET_HELP),
+        "prompt-hub" => Some(HF_PROMPT_HUB_HELP),
+        "task" => Some(HF_TASK_HELP),
+        "release" => Some(HF_RELEASE_HELP),
+        "reopen" => Some(HF_REOPEN_HELP),
+        "handoff" => Some(HF_HANDOFF_HELP),
+        "ship" => Some(HF_SHIP_HELP),
+        "lease" => Some(HF_LEASE_HELP),
+        "version" => Some(HF_VERSION_HELP),
+        "policy" => Some(HF_POLICY_HELP),
+        _ => None,
+    }
+}
+
 fn print_help(args: &[String]) -> bool {
-    let sub = |name: &str| args.get(1).is_some_and(|a| a == name);
     let focused = args.iter().any(|a| a == "--help" || a == "-h");
     match args.first().map(|s| s.as_str()) {
         Some("--help") | Some("-h") => {
             println!("{HF_HELP}");
             true
         }
-        Some("help") if sub("fleet") => {
-            println!("{HF_FLEET_HELP}");
-            true
+        Some("help") if args.len() == 2 => {
+            if let Some(help) = focused_help(&args[1]) {
+                println!("{help}");
+                true
+            } else {
+                eprintln!("hf: unknown help topic '{}'", args[1]);
+                eprintln!("{HF_USAGE}");
+                std::process::exit(2);
+            }
         }
-        Some("help") if sub("task") => {
-            println!("{HF_TASK_HELP}");
-            true
-        }
-        Some("help") if sub("prompt-hub") => {
-            println!("{HF_PROMPT_HUB_HELP}");
-            true
+        Some(cmd) if focused => {
+            if let Some(help) = focused_help(cmd) {
+                println!("{help}");
+                true
+            } else {
+                false
+            }
         }
         Some("help") if args.len() == 1 => {
             println!("{HF_HELP}");
-            true
-        }
-        Some("fleet") if focused => {
-            println!("{HF_FLEET_HELP}");
-            true
-        }
-        Some("task") if focused => {
-            println!("{HF_TASK_HELP}");
-            true
-        }
-        Some("prompt-hub") if focused => {
-            println!("{HF_PROMPT_HUB_HELP}");
             true
         }
         _ => false,
