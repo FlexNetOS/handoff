@@ -13,6 +13,49 @@ fn hf() -> Command {
     Command::new(env!("CARGO_BIN_EXE_hf"))
 }
 
+fn temp_repo(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "hf-cli-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(dir.join(".handoff/tasks")).expect("mkdir fixture");
+    dir
+}
+
+fn write_minimal_task(repo: &std::path::Path, id: &str) {
+    let card = serde_json::json!({
+        "schema": "handoff.task.v1",
+        "id": id,
+        "title": "lease release fixture",
+        "status": "backlog",
+        "priority": "P1",
+        "objective": "prove done releases claim lease",
+        "path_scope": ["hf/tests/**"],
+        "acceptance_criteria": ["done releases claim lease"],
+        "test_commands": [],
+        "dependencies": [],
+        "blocked_by": [],
+        "allows_network": false,
+        "allows_dependency_addition": false,
+        "correlation_id": "lease-release-fixture",
+        "role": null,
+        "intent_lock": {
+            "objective_hash": "fixture-objective",
+            "path_scope_hash": "fixture-scope",
+            "acceptance_hash": "fixture-acceptance"
+        }
+    });
+    std::fs::write(
+        repo.join(".handoff/tasks").join(format!("{id}.task.json")),
+        serde_json::to_string_pretty(&card).expect("task json"),
+    )
+    .expect("write task");
+}
+
 /// An UNKNOWN verb (e.g. a typo like `hf promot`) MUST fail closed with exit 2, not the prior
 /// fail-OPEN exit 0 that made a typo look like it succeeded.
 #[test]
@@ -118,4 +161,88 @@ fn grouped_help_paths_exit_0_and_stay_focused() {
             String::from_utf8_lossy(&out.stderr)
         );
     }
+}
+
+#[test]
+fn done_releases_claim_lease_so_agents_see_no_false_holder() {
+    let repo = temp_repo("done-release");
+    let ledger = repo.join(".handoff/ledger.db");
+    let task_id = "TASK-LEASE-0001";
+    write_minimal_task(&repo, task_id);
+
+    let claim = hf()
+        .current_dir(&repo)
+        .args([
+            "--ledger",
+            ledger.to_str().expect("ledger path"),
+            "claim",
+            task_id,
+        ])
+        .output()
+        .expect("spawn hf claim");
+    assert_eq!(
+        claim.status.code(),
+        Some(0),
+        "claim should succeed, stderr: {}",
+        String::from_utf8_lossy(&claim.stderr)
+    );
+
+    let lease_before = hf()
+        .current_dir(&repo)
+        .args([
+            "--ledger",
+            ledger.to_str().expect("ledger path"),
+            "lease",
+            "--json",
+        ])
+        .output()
+        .expect("spawn hf lease before");
+    assert_eq!(lease_before.status.code(), Some(0));
+    let before: serde_json::Value =
+        serde_json::from_slice(&lease_before.stdout).expect("lease json before done");
+    let held_before = before["held"].as_array().expect("held array");
+    assert!(
+        held_before
+            .iter()
+            .any(|h| h["resource"] == format!("handoff:claim:{task_id}")),
+        "claimed task should be visible as held before done: {before}"
+    );
+
+    let done = hf()
+        .current_dir(&repo)
+        .args([
+            "--ledger",
+            ledger.to_str().expect("ledger path"),
+            "done",
+            task_id,
+        ])
+        .output()
+        .expect("spawn hf done");
+    assert_eq!(
+        done.status.code(),
+        Some(0),
+        "done should succeed, stderr: {}",
+        String::from_utf8_lossy(&done.stderr)
+    );
+
+    let lease_after = hf()
+        .current_dir(&repo)
+        .args([
+            "--ledger",
+            ledger.to_str().expect("ledger path"),
+            "lease",
+            "--json",
+        ])
+        .output()
+        .expect("spawn hf lease after");
+    assert_eq!(lease_after.status.code(), Some(0));
+    let after: serde_json::Value =
+        serde_json::from_slice(&lease_after.stdout).expect("lease json after done");
+    let held_after = after["held"].as_array().expect("held array");
+    assert!(
+        held_after
+            .iter()
+            .all(|h| h["resource"] != format!("handoff:claim:{task_id}")),
+        "done task must not remain visible as a held lease: {after}"
+    );
 }

@@ -964,6 +964,10 @@ fn should_reopen(status: Option<Status>) -> bool {
     matches!(status, Some(Status::Done) | Some(Status::Review))
 }
 
+fn terminal_task_status(status: Option<Status>) -> bool {
+    matches!(status, Some(Status::Done) | Some(Status::Review))
+}
+
 /// Release the claim on a task: free the weave lease AND **un-claim** it — revert an
 /// in-progress task's ledger status back to `Backlog` (HFTASK-0038). A lease-only release
 /// left the task stuck `Claimed`, so the claim was never truly relinquished and
@@ -1097,6 +1101,11 @@ fn cmd_reopen(id: &str, reason: &str) {
 /// holder), resolved live over the witnessed history with TTL/release applied. Read-only.
 fn cmd_lease(json: bool) {
     let ledger = ledger_path();
+    let terminal_claims: std::collections::HashSet<String> = current_statuses()
+        .into_iter()
+        .filter(|(_, s)| terminal_task_status(Some(*s)))
+        .map(|(id, _)| lease::claim_resource(&id))
+        .collect();
     let Ok(led) = Ledger::open(&ledger) else {
         eprintln!("hf lease: ledger unavailable at {ledger}");
         std::process::exit(1);
@@ -1114,6 +1123,7 @@ fn cmd_lease(json: bool) {
     }
     let held: Vec<(String, String)> = resources
         .into_iter()
+        .filter(|r| !terminal_claims.contains(r))
         .filter_map(|r| led.lease_holder(&r, now).ok().flatten().map(|h| (r, h)))
         .collect();
     if json {
@@ -1227,6 +1237,15 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         led.record_transition(&wo, Status::Done, now_ns()),
         "done transition",
     );
+    // A Done task must not leave a live claim lease behind. Otherwise `hf lease --json`
+    // advertises false active holders/conflicts after verified completion, and a reopened
+    // task can be blocked by its own stale completion-era lease until TTL expiry.
+    let resource = lease::claim_resource(id);
+    let holder = lease::local_holder();
+    match led.release_lease(&resource, &holder, now_ns()) {
+        Ok(_) => lease::remove_lockfile(&resource),
+        Err(e) => eprintln!("hf done: WARNING — failed to release in-ledger lease {resource}: {e}"),
+    }
     // HFTASK-0052 gap-hunt: auto-detect the merged PR from a prior `pr_opened` event if the
     // user did not pass `--pr N`. This gives every merged task a `pr_merged` ledger marker.
     let resolved_pr = pr.map(String::from).or_else(|| latest_pr_opened(&led, id));
