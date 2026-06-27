@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-429729-0001",
   "title": "[bundle] Fix audit-found agent navigation gap: hf has no successful h",
-  "status": "claimed",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix audit-found agent navigation gap: hf has no successful help entry point. `hf --help`, `hf help`, `hf fleet --help`, and `hf task --help` currently exit nonzero or misroute, which makes simple agent navigation conflict-prone. Add first-class help handling so top-level help exits 0, nested help for grouped commands exits 0 with focused usage, and unknown commands still fail closed. Add tests for the help paths and keep docs/help usage in sync.",
   "path_scope": [
