@@ -7,12 +7,12 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 97/98.  Tamper-evident events verified: 536.
+Done: 97/98.  Tamper-evident events verified: 541.
 
 ## 0. Next Action / Direction
 - **Next safe task:** HFTASK-0094 — hf test zero-test failures include actionable runner/filter diagnostics
-- **Next command:** `hf claim HFTASK-0094`
-- **Why it is next:** first backlog card that is unblocked — no dependencies, priority P3.
+- **Next command:** `hf checkpoint HFTASK-0094`
+- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
@@ -140,6 +140,13 @@ hf claim HFTASK-0094
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 536
+  "witnessed_events_verified": 541
 }
 ```
+
+## Contract Proof (ADR-0011 — ruvector-verified/Lean)
+Active task **HFTASK-0094** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
+- ✓ `intent:objective` (Eq.refl proof-term #0)
+- ✓ `intent:path_scope` (Eq.refl proof-term #1)
+- ✓ `intent:acceptance` (Eq.refl proof-term #2)
+3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0xe05db3b0d134be08` · verifier `0x00010000` (lean-agentic 0.1.0).
