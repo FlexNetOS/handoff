@@ -1629,6 +1629,153 @@ fn repo_toplevel() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn shell_words_simple(cmd: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in cmd.chars() {
+        if escaped {
+            cur.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        match quote {
+            Some(q) if ch == q => quote = None,
+            Some(_) => cur.push(ch),
+            None if ch == '\'' || ch == '"' => quote = Some(ch),
+            None if ch.is_whitespace() => {
+                if !cur.is_empty() {
+                    words.push(std::mem::take(&mut cur));
+                }
+            }
+            None => cur.push(ch),
+        }
+    }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    words
+}
+
+fn shell_quote_word(word: &str) -> String {
+    if word
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '='))
+    {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
+}
+
+fn shell_join_words(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|w| shell_quote_word(w))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn cargo_zero_test_diagnostic(cmd: &str) -> Option<String> {
+    let words = shell_words_simple(cmd);
+    if words.first().map(String::as_str) != Some("cargo")
+        || words.get(1).map(String::as_str) != Some("test")
+    {
+        return None;
+    }
+    let dashdash = words.iter().position(|w| w == "--");
+    let cargo_args_end = dashdash.unwrap_or(words.len());
+    let cargo_args = &words[..cargo_args_end];
+    let mut list_words = cargo_args.to_vec();
+    list_words.push("--".to_string());
+    list_words.push("--list".to_string());
+
+    let mut all_tests_words = Vec::new();
+    let mut package = None;
+    let mut features = Vec::new();
+    let mut filters = Vec::new();
+    let mut i = 2usize;
+    while i < cargo_args.len() {
+        let w = &cargo_args[i];
+        match w.as_str() {
+            "-p" | "--package" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    package = Some(v.clone());
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            "--features" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    features.push(format!("--features {v}"));
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            "--all-features" | "--no-default-features" => {
+                features.push(w.clone());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            "--bin" | "--test" | "--example" | "--manifest-path" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            _ if w.starts_with("--features=") => {
+                features.push(w.clone());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ if w.starts_with("--package=") => {
+                package = Some(w.trim_start_matches("--package=").to_string());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ if w.starts_with('-') => {
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ => filters.push(w.clone()),
+        }
+        i += 1;
+    }
+    let mut list_all = vec!["cargo".to_string(), "test".to_string()];
+    list_all.extend(all_tests_words);
+    list_all.push("--".to_string());
+    list_all.push("--list".to_string());
+
+    let pkg = package.unwrap_or_else(|| "(workspace/default package)".to_string());
+    let filter = if filters.is_empty() {
+        "(none)".to_string()
+    } else {
+        filters.join(" ")
+    };
+    let feature_hint = if features.is_empty() {
+        "no feature flags were present; if the expected tests are feature-gated, add the required `--features <feature>` (or `--all-features`) and rerun the list command".to_string()
+    } else {
+        format!("preserved feature flags: {}", features.join(", "))
+    };
+    Some(format!(
+        "hf test: cargo zero-test diagnostic:\n  package: {pkg}\n  filter: {filter}\n  list matching tests: {}\n  list all tests for the same target/features: {}\n  hint: {feature_hint}",
+        shell_join_words(&list_words),
+        shell_join_words(&list_all)
+    ))
+}
+
 /// `hf test [ID]` — PRD §4.7 evidence-backed completion. Execute the work order's
 /// `test_commands` and witness the outcome as a `test_result` ledger event so `hf done`
 /// can gate on green tests. With no id, targets the next safe task. Exits nonzero when any
@@ -1710,6 +1857,9 @@ fn cmd_test(id: Option<&str>) {
                 "hf test: '{cmd}' exited 0 but executed 0 tests — completion evidence requires \
                  >0 (failing closed; tighten the filter so it matches real tests)"
             );
+            if let Some(diag) = cargo_zero_test_diagnostic(cmd) {
+                eprintln!("{diag}");
+            }
         } else if ran.is_none() && code == 0 {
             eprintln!(
                 "hf test: note — '{cmd}' produced no libtest summary; gated on exit code only \
@@ -4253,6 +4403,59 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         let out = "===== a banner =====\n\
                    test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out";
         assert_eq!(parse_tests_ran(out), Some(3));
+    }
+
+    #[test]
+    fn cargo_zero_test_diagnostic_names_filter_and_list_command() {
+        let diag = cargo_zero_test_diagnostic("cargo test -p hf typo_filter")
+            .expect("cargo test command should get a diagnostic");
+        assert!(diag.contains("package: hf"), "{diag}");
+        assert!(diag.contains("filter: typo_filter"), "{diag}");
+        assert!(
+            diag.contains("cargo test -p hf typo_filter -- --list"),
+            "{diag}"
+        );
+        assert!(
+            diag.contains("cargo test -p hf -- --list"),
+            "must suggest listing all tests without the suspect filter: {diag}"
+        );
+        assert!(
+            diag.contains("completion evidence") || diag.contains("zero-test"),
+            "diagnostic context should remain clearly zero-test related: {diag}"
+        );
+    }
+
+    #[test]
+    fn cargo_zero_test_diagnostic_preserves_feature_flags() {
+        let diag = cargo_zero_test_diagnostic(
+            "cargo test -p hf --features legacy-sqlite schema_filter -- --nocapture",
+        )
+        .expect("cargo test command should get a diagnostic");
+        assert!(
+            diag.contains("cargo test -p hf --features legacy-sqlite schema_filter -- --list"),
+            "{diag}"
+        );
+        assert!(
+            diag.contains("cargo test -p hf --features legacy-sqlite -- --list"),
+            "{diag}"
+        );
+        assert!(diag.contains("preserved feature flags: --features legacy-sqlite"));
+    }
+
+    #[test]
+    fn zero_test_gate_remains_fail_closed() {
+        let ran = parse_tests_ran(
+            "running 0 tests\n\
+             test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 99 filtered out",
+        );
+        let code = 0;
+        let zero_tests = ran == Some(0);
+        let cmd_passed = code == 0 && !zero_tests;
+        assert!(zero_tests, "recognized zero-test runs must be detected");
+        assert!(
+            !cmd_passed,
+            "exit 0 plus zero executed tests must not mark the command passed"
+        );
     }
 
     #[test]

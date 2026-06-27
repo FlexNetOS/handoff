@@ -8,7 +8,10 @@
   "path_scope": [
     "hf/src/main.rs",
     "hf/tests/**",
-    ".handoff/tasks/HFTASK-0094.task.json"
+    ".handoff/tasks/HFTASK-0094.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
   ],
   "acceptance_criteria": [
     "`hf test` still fails closed when a recognized runner executes zero tests.",
@@ -29,7 +32,7 @@
   "role": "kernel-upgrade-planner",
   "intent_lock": {
     "objective_hash": "blake3:769dc1545d5e29935a7c265033c268d3a1a7e2b6f85f4738401eb2311320b406",
-    "path_scope_hash": "blake3:665cb1b10ffa6cda495a398bce5d35df39b7a32d9d1ff255c6b69648c18a05f9",
+    "path_scope_hash": "blake3:7555154ed39a120c888123d938f2498f2877deeade2d25ee7bc098ee6dc661ed",
     "acceptance_hash": "blake3:28d5a11a73356dec515bc7d9b76cd17b49bdb9bda84e202ed7cc672aad51fb1a"
   }
 }
