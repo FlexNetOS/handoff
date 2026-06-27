@@ -1197,6 +1197,24 @@ mod tests {
     }
 
     #[test]
+    fn prd_documents_current_mcp_front_door_surface() {
+        let prd = include_str!("../../../docs/Continuity_Ledger_Kernel_PRD.md");
+        for expected in [
+            "hf_fleet_sync",
+            "hf_session_reap",
+            "hf_schema",
+            "hf_lease",
+            "additionalProperties: false",
+            "unknown MCP tool arguments return an error",
+        ] {
+            assert!(
+                prd.contains(expected),
+                "PRD must document current MCP front-door surface item: {expected}"
+            );
+        }
+    }
+
+    #[test]
     fn build_prompt_hub_args_shapes_command() {
         let mut args = serde_json::Map::new();
         args.insert(
