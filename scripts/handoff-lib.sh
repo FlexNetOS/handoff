@@ -107,6 +107,21 @@ ensure_ledger_guard() {
   _add ".handoff/**/*.rvf.lock"
   _add ".handoff/**/*.sqlite.bak"   # redb-cutover migration backup (HFTASK-0053)
   _add ".handoff/**/*.redb.tmp"     # redb-cutover migration temp (HFTASK-0053)
+  # Older fleet rollouts also wrote a nested `.handoff/.gitignore` with `!ledger.db` to
+  # force-track the binary SQLite ledger. A parent `.gitignore` cannot override that nested
+  # negation, so append a later nested rule that restores the ADR-0018 D1 model: binary ledger
+  # caches are ignored, and `.handoff/ledger.events.jsonl` is the committed truth.
+  if [ -f "$dir/.handoff/.gitignore" ] && ! _gi_ignored "$dir" ".handoff/ledger.db"; then
+    {
+      echo ""
+      echo "# handoff continuity: binary ledger cache is gitignored"
+      echo "# (committed truth = ledger.events.jsonl — ADR-0018 D1 / HFTASK-0067)"
+      echo "ledger.db"
+      echo "ledger.db-wal"
+      echo "ledger.db-shm"
+    } >> "$dir/.handoff/.gitignore"
+    changed=1
+  fi
   return $((1 - changed))
 }
 
