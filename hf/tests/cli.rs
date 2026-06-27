@@ -395,6 +395,80 @@ fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
 }
 
 #[test]
+fn read_only_lifecycle_commands_reject_unknown_args_without_writes() {
+    for (command, args) in [
+        ("version", vec!["version", "--definitely-unsupported-flag"]),
+        ("status", vec!["status", "--definitely-unsupported-flag"]),
+        ("resume", vec!["resume", "--definitely-unsupported-flag"]),
+        ("drift", vec!["drift", "--definitely-unsupported-flag"]),
+        ("release", vec!["release", "--definitely-unsupported-flag"]),
+        (
+            "checkpoint",
+            vec!["checkpoint", "--definitely-unsupported-flag"],
+        ),
+    ] {
+        let repo = temp_empty(&format!("{command}-unknown-arg"));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported arguments before work, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "hf {command}: unknown flag '--definitely-unsupported-flag'"
+            )),
+            "`hf {}` stderr should name the unsupported flag and command, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create or mutate files before rejecting unsupported args",
+            args.join(" ")
+        );
+    }
+
+    for args in [
+        ["version", "--json"].as_slice(),
+        ["status", "--json"].as_slice(),
+        ["resume", "--json"].as_slice(),
+        ["resume", "--compact"].as_slice(),
+        ["drift", "--json"].as_slice(),
+        ["lease", "--json"].as_slice(),
+        ["doctor", "--json"].as_slice(),
+        ["checkpoint", "--auto", "--quiet"].as_slice(),
+        ["release", "NOT-A-HELD-TASK"].as_slice(),
+    ] {
+        let repo = temp_empty(&format!("supported-{}", args.join("-")));
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(args)
+            .output()
+            .expect("spawn hf");
+        assert_ne!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` is a supported lifecycle path and should not be rejected as an unsupported arg, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn unknown_command_still_exits_2_after_help_expansion() {
     for args in [
         ["definitely-not-a-verb"].as_slice(),
@@ -421,8 +495,15 @@ fn unknown_command_still_exits_2_after_help_expansion() {
 fn done_releases_claim_lease_so_agents_see_no_false_holder() {
     let repo = temp_repo("done-release");
     let ledger = repo.join(".handoff/ledger.db");
-    let task_id = "TASK-LEASE-0001";
-    write_minimal_task(&repo, task_id);
+    let task_id = format!(
+        "TASK-LEASE-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    );
+    write_minimal_task(&repo, &task_id);
 
     let claim = hf()
         .current_dir(&repo)
@@ -430,7 +511,7 @@ fn done_releases_claim_lease_so_agents_see_no_false_holder() {
             "--ledger",
             ledger.to_str().expect("ledger path"),
             "claim",
-            task_id,
+            &task_id,
         ])
         .output()
         .expect("spawn hf claim");
@@ -468,7 +549,7 @@ fn done_releases_claim_lease_so_agents_see_no_false_holder() {
             "--ledger",
             ledger.to_str().expect("ledger path"),
             "done",
-            task_id,
+            &task_id,
         ])
         .output()
         .expect("spawn hf done");

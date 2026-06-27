@@ -3855,6 +3855,60 @@ fn reject_unsupported_args(command: &str, args: &[String], allowed: &[&str]) {
     }
 }
 
+fn reject_unsupported_args_with_positionals(
+    command: &str,
+    args: &[String],
+    allowed: &[&str],
+    max_positionals: usize,
+) {
+    let mut positionals = 0usize;
+    for arg in args.iter().skip(1) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        if !arg.starts_with('-') && positionals < max_positionals {
+            positionals += 1;
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            if max_positionals == 0 {
+                "no flags".to_string()
+            } else {
+                format!("up to {max_positionals} positional argument(s)")
+            }
+        } else if max_positionals == 0 {
+            allowed.join(", ")
+        } else {
+            format!(
+                "{} plus up to {max_positionals} positional argument(s)",
+                allowed.join(", ")
+            )
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn reject_unsupported_flags(command: &str, args: &[String], allowed: &[&str]) {
+    for arg in args.iter().skip(1).filter(|arg| arg.starts_with('-')) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown flag '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
@@ -3866,11 +3920,19 @@ fn main() {
         // binary that is BEHIND the kernel source. `--json` form is machine-readable for the
         // loop-init Phase 0 / SessionStart staleness check.
         Some("--version") | Some("-V") | Some("version") => {
+            reject_unsupported_args(
+                args.first().map(String::as_str).unwrap_or("version"),
+                &args,
+                &["--json"],
+            );
             cmd_version(args.iter().any(|a| a == "--json"))
         }
         Some("init") => cmd_init(&args),
         Some("seed") => cmd_seed(),
-        Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
+        Some("status") => {
+            reject_unsupported_args("status", &args, &["--json"]);
+            cmd_status(args.iter().any(|a| a == "--json"))
+        }
         // PRD §8/§9: generate navigation maps + the task DAG (HFTASK-0050, now actually built).
         // Fail closed on unsupported flags: `hf index --intent-aware` was historically documented
         // as a future idea, but silently running the normal index makes agents believe that
@@ -3892,7 +3954,10 @@ fn main() {
                 cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or(""));
             }
         }
-        Some("doctor") => cmd_doctor(args.iter().any(|a| a == "--json")),
+        Some("doctor") => {
+            reject_unsupported_args("doctor", &args, &["--json"]);
+            cmd_doctor(args.iter().any(|a| a == "--json"))
+        }
         Some("gitignore") => cmd_gitignore(
             args.iter()
                 .find(|a| a.starts_with("--"))
@@ -3912,7 +3977,10 @@ fn main() {
                 .unwrap_or_else(ledger_path);
             cmd_migrate(&path);
         }
-        Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("release") => {
+            reject_unsupported_args_with_positionals("release", &args, &[], 1);
+            cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or(""))
+        }
         Some("reopen") => {
             let positional: Vec<&str> = args[1..]
                 .iter()
@@ -3923,8 +3991,12 @@ fn main() {
             let reason = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
             cmd_reopen(id, &reason);
         }
-        Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
+        Some("lease") => {
+            reject_unsupported_args("lease", &args, &["--json"]);
+            cmd_lease(args.iter().any(|a| a == "--json"))
+        }
         Some("checkpoint") => {
+            reject_unsupported_flags("checkpoint", &args, &["--auto", "--quiet", "--sync-cards"]);
             let auto = args.iter().any(|a| a == "--auto");
             let quiet = args.iter().any(|a| a == "--quiet");
             let positional: Vec<&str> = args[1..]
@@ -4103,7 +4175,10 @@ fn main() {
             }
         }
         Some("session") => session::cmd_session(&args[1..]),
-        Some("drift") => gates::cmd_drift(args.iter().any(|a| a == "--json")),
+        Some("drift") => {
+            reject_unsupported_args("drift", &args, &["--json"]);
+            gates::cmd_drift(args.iter().any(|a| a == "--json"))
+        }
         Some("hook") => {
             let json = args.iter().any(|a| a == "--json");
             match args.get(1).map(|s| s.as_str()) {
@@ -4251,6 +4326,7 @@ fn main() {
             cmd_handoff()
         }
         Some("resume") => {
+            reject_unsupported_args("resume", &args, &["--json", "--compact"]);
             let mode = if args.iter().any(|a| a == "--json") {
                 ResumeMode::Json
             } else if args.iter().any(|a| a == "--compact") {
