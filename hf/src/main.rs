@@ -71,6 +71,8 @@ pub(crate) use handoff_core::{
 /// (heartbeat) extends it; `hf release` or expiry frees it.
 const CLAIM_TTL_SECS: u64 = 3600;
 
+const HF_USAGE: &str = "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run] [--json]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>";
+
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
 }
@@ -4082,9 +4084,7 @@ fn main() {
             if let Some(verb) = other {
                 eprintln!("hf: unknown command '{verb}'");
             }
-            eprintln!(
-                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
-            );
+            eprintln!("{HF_USAGE}");
             if other.is_some() {
                 std::process::exit(2);
             }
@@ -4118,6 +4118,16 @@ mod tests {
         assert_eq!(out["schema"], "handoff.version.v1");
         assert_eq!(out["commit"], commit);
         assert!(out["version"].as_str().is_some_and(|v| !v.is_empty()));
+    }
+
+    #[test]
+    fn sync_usage_includes_json() {
+        // Audit-found navigation gap: `hf sync --json` existed, but the bare usage string
+        // omitted it, so fresh agents could not discover structured sync output.
+        assert!(
+            HF_USAGE.contains("sync [--auto] [--dry-run] [--json]"),
+            "usage must advertise hf sync --json: {HF_USAGE}"
+        );
     }
 
     /// HFTASK-0058: the two tests that mutate the process-global `HANDOFF_LEDGER` env var
