@@ -46,7 +46,10 @@ Two query verbs are added:
 - `hf delivery list [--json]` — list all deliveries, newest first.
 
 The MCP server (`hf-mcp`) exposes these as `hf_delivery_get` and `hf_delivery_list`
-tools, so chat / rvAgent clients can query outcomes without shell access.
+tools, so chat / rvAgent clients can query outcomes without shell access. The MCP
+surface is a strict bridge over `hf`: tool schemas reject additional properties and
+the server validates allowed argument names before dispatch, preventing a misspelled
+delivery query from silently running a narrower command.
 
 ## Consequences
 

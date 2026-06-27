@@ -1,0 +1,35 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-412D56-0001",
+  "title": "[bundle] Audit doc sync and agent guides after PR 229. Compare curren",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Audit doc sync and agent guides after PR 229. Compare current hf CLI and hf-mcp command/tool surfaces against AGENTS.md, docs/Continuity_Ledger_Kernel_PRD.md, ADRs, and executable help tests. Fix stale or missing agent-navigation guidance so agents can discover current flow without conflicts. Scope: AGENTS.md, docs/**, hf/tests/**, hf/src/main.rs, hf/src/bin/hf-mcp.rs, .handoff/**",
+  "path_scope": [
+    "AGENTS.md",
+    "docs/**",
+    "hf/tests/**",
+    "hf/src/main.rs",
+    "hf/src/bin/hf-mcp.rs",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-45710bc0c01cfb13-1782591303020075359",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:7c15a52f00f18206f8e94452874c19d396b6700c30fd4899e52d0f39caebc05b",
+    "path_scope_hash": "blake3:c865928e1d4a109a09f7bb6cf2b8febfd97637e1096a46fb1b48c0f3ad717035",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

@@ -343,7 +343,9 @@ repo/
 | `hf plan` | Create or refresh task DAG | Yes, with reconciliation |
 | `hf claim --next` | Atomically claim highest safe task | No, transactional |
 | `hf claim TASK-ID` | Claim specific task | No, transactional |
-| `hf session start` | Create branch and worktree for an isolated session | Yes, if already created |
+| `hf session start [--base BRANCH]` | Create branch and worktree for an isolated session | Yes, if already created |
+| `hf session end [--recycle] [--reap] [--base BRANCH]` | Close the session, optionally recycle or force-reap retained worktrees | Yes |
+| `hf session reap [--force]` | Reap retained worktrees after verified merge, or force when explicitly requested | Yes |
 | `hf checkpoint` | Append session event and diff summary | Yes, creates new checkpoint event |
 | `hf test` | Run task test matrix | Yes, records each run |
 | `hf drift` | Run drift audit | Yes |
@@ -351,7 +353,12 @@ repo/
 | `hf release` | Release claim safely | No, transactional |
 | `hf reconcile` | Fix inconsistent lower-precedence state | Yes |
 | `hf doctor` | Diagnose repo/handoff health | Yes |
-| `hf-mcp` | Expose MCP tools/resources over stdio | Long-running |
+| `hf lease [--json]` | Show held leases for no-conflict agent navigation | Yes |
+| `hf schema [--check\|--write]` | Print/check/write the generated task schema | Yes; `--write` mutates intentionally |
+| `hf fleet status [--json] [--fix]` | Verify fleet handoff deployment and optionally remediate via sync | Yes |
+| `hf fleet sync [--dry-run] [--json]` | Remediate fleet handoff deployment drift | Yes; `--dry-run` writes nothing |
+| `hf fleet render MEMBER` | Render a fleet member packet from the fleet ledger | Yes |
+| `hf-mcp` | Strict MCP stdio bridge over current `hf` tools; unknown tool args fail closed before CLI dispatch | Long-running |
 
 ## 10. Session State Machine
 
@@ -998,12 +1005,26 @@ Acceptance:
 
 Deliver:
 
-- MCP tools/resources for status/resume/claim/checkpoint/handoff/repo map
+- MCP tools/resources for the current agent control surface:
+  - continuity: `hf_status`, `hf_resume`, `hf_claim`, `hf_checkpoint`, `hf_done`,
+    `hf_test`, `hf_handoff`;
+  - front-door/delivery: `hf_prompt_hub`, `hf_intake`, `hf_dispatch`,
+    `hf_delivery_get`, `hf_delivery_list`;
+  - governance: `hf_drift`, `hf_policy_check_claim`, `hf_policy_check_edit`,
+    `hf_policy_check_handoff`, `hf_gatekeeper_check`, `hf_policy_gate`;
+  - navigation/support: `hf_version`, `hf_lease`, `hf_schema`, `hf_session_start`,
+    `hf_session_end`, `hf_session_reap`;
+  - fleet: `hf_fleet_status`, `hf_fleet_sync`, `hf_fleet_render`.
+- Strict JSON schemas for each tool with `additionalProperties: false`; the server also validates
+  allowed arguments before constructing CLI argv so tool typos fail closed instead of becoming a
+  narrower side effect.
 - no provider ownership
 
 Acceptance:
 
 - external agent can resume and claim via MCP
+- external agent can discover fleet/session/schema/lease support tools via `tools/list`
+- unknown MCP tool arguments return an error before any `hf` process is spawned
 
 ### Phase 9 - Hardening
 
