@@ -45,18 +45,18 @@ toml = "0.8"
 # that serializes into an RVF WITNESS_SEG). Path dep mirrors `ledger`'s rvf-crypto: handoff
 # CI clones FlexNetOS/meta-ruvector as the sibling `RuVector/` (.github/workflows/ci.yml), so
 # the standalone build resolves it. default-features off → no ruvector-core/napi pulled in.
-ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-features = false }
+ruvector-verified = { git = "https://github.com/FlexNetOS/meta-ruvector.git", rev = "d8cb103b046fa58c8fca954743c758ff61a9f364", package = "ruvector-verified", default-features = false }
 # HFTASK-0018 (ADR-0012): RuVector's contextual Thompson bandit for highest-value next-task
 # routing. default-features off (its default is empty; RVF integration stays optional) → only
 # serde/thiserror/rand. Path dep, crates-only, CI-safe (same as the other RuVector crates).
-ruvector-domain-expansion = { path = "../../RuVector/crates/ruvector-domain-expansion", default-features = false }
+ruvector-domain-expansion = { git = "https://github.com/FlexNetOS/meta-ruvector.git", rev = "d8cb103b046fa58c8fca954743c758ff61a9f364", package = "ruvector-domain-expansion", default-features = false }
 rand = "0.8"
 # HFTASK-0083: the envctl secrets merge-gate moved into `handoff-secrets` (optional, behind the
 # `secrets` feature). main's `policy gate` path calls it directly; the gatekeeper crate has its own.
 handoff-secrets = { path = "../handoff-secrets", optional = true }
 # HFTASK-0017 (ADR-0001 R13): cognitum-gate-tilezero — RuVector coherence-gate arbiter for
 # in-loop action decisions (Permit/Defer/Deny) witnessed into the ledger.
-cognitum-gate-tilezero = { path = "../../RuVector/crates/cognitum-gate-tilezero", default-features = false, optional = true }
+cognitum-gate-tilezero = { git = "https://github.com/FlexNetOS/meta-ruvector.git", rev = "d8cb103b046fa58c8fca954743c758ff61a9f364", package = "cognitum-gate-tilezero", default-features = false, optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 # HFTASK-0083 (ADR-0019 D5 #4): routing/ledger ops resolved into `handoff-route`; hf aliases as `route`.
 handoff-route = { path = "../handoff-route" }
