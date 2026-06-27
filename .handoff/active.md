@@ -1,4 +1,4 @@
 # Active
 
-Next: TASK-D633AC-0001
-Done 101/102 · witness-verified 584 events
+Next: —
+Done 102/102 · witness-verified 591 events
