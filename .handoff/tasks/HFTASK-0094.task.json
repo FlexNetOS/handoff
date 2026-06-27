@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0094",
   "title": "hf test zero-test failures include actionable runner/filter diagnostics",
-  "status": "backlog",
+  "status": "done",
   "priority": "P3",
   "objective": "The Weave /review run correctly failed closed when several `cargo test` filters executed zero tests, but the recovery required manual test-name/feature investigation. The fail-closed behavior is correct and must remain; upgrade the diagnostics so a zero-test result gives actionable next steps, especially for Cargo filters hidden behind features. For Cargo, suggest `cargo test -p <pkg> --features <needed> -- --list` or show nearby matching test names when practical. This is a fleet UX hardening task, not a weakening of the completion gate.",
   "path_scope": [

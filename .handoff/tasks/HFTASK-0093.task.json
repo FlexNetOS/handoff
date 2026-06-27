@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0093",
   "title": "Fleet-member schema checks resolve canonical kernel schemas without local schema files",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "The Weave /review run exposed that `hf schema --check` from a member repo can fail with `cannot read schemas/task.schema.json` when the member does not carry local schema files. Schema validation should be a kernel capability available from every fleet member, not a cwd-sensitive file lookup. Upgrade `hf schema --check` to resolve schemas from the kernel home, embedded generated schemas, or a deployed fleet schema cache, and make member-mode behavior explicit and fail-closed only on real schema violations.",
   "path_scope": [

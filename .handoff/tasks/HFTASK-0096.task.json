@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0096",
   "title": "Install hygiene: reconcile stale shadow `hf` copies on PATH to a symlink into the meta build (ADR-0006)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "After `cargo install --path hf` (handoff-loop-init.sh Phase 0 rebuild) the canonical binary lands in `~/.cargo/bin/hf`, but a real COPY of `hf` earlier on PATH (e.g. `~/.local/bin/hf`) shadows it — so `hf` keeps serving the OLD binary and freshly-added verbs report 'unknown command' until someone manually re-copies. This is the recurring 'cp after every cargo install' gotcha and it silently defeats rung-0 staleness automation (the rebuild SUCCEEDS but the running `hf` is still stale). Add a post-install PATH-reconciliation step: a `reconcile_hf_path()` helper in `scripts/handoff-lib.sh`, called from `scripts/handoff-loop-init.sh` right after the build/install, that resolves the canonical freshly-built binary and converges every shadowing `hf` that resolves before it on PATH — per ADR-0006 doctrine, replacing each writable shadow COPY with a SYMLINK into the meta build (never a churning copy). Idempotent, `--dry-run`-aware, fail-soft + loud (warn, never abort the run) when a path isn't writable or a shadow is a foreign/non-hf binary. Verify: `bash -n` both scripts; a functional drive that seeds a stale copy on a synthetic PATH and asserts the helper turns it into a symlink to the canonical binary; idempotent re-run is a no-op.",
   "path_scope": [

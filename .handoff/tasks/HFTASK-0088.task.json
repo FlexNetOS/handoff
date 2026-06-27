@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0088",
   "title": "Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P3",
   "objective": "Adding a member to `.meta.yaml` scaffolds no `.handoff` — onboarding is a remembered manual `handoff-loop-init.sh /path`. Make `hf fleet sync` (HFTASK-0087) treat 'member present in .meta.yaml but no conformant .handoff' as a remediation target and auto-init it (portable `hf init` + full deploy), and/or add a `meta git update` post-step hook that detects a freshly-cloned member without `.handoff` and onboards it. New repos become continuity-enabled with zero manual steps. Depends on HFTASK-0087.",
   "path_scope": [

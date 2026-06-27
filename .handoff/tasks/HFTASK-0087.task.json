@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0087",
   "title": "Automation rung 3: hf fleet sync — REMEDIATE detected drift, not just report it",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "`hf fleet status` detects non-conformant members (missing ledger guard, no committed ledger.events.jsonl, stale binary) but only REPORTS — a human must then run handoff-loop-init. Add `hf fleet sync` (and/or `hf fleet status --fix`) that, for each member the status sweep flags, runs the idempotent loop-init deploy bits (gitignore guard, hooks, diff-drive workflow, rules) + the binary staleness rebuild (HFTASK-0085), turning detection into remediation. Fail-closed per member (one member's failure never aborts the sweep; report it). Schedulable from a meta-level cron workflow so the fleet self-heals hands-off. Depends on HFTASK-0085.",
   "path_scope": [

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-D633AC-0001",
   "title": "[bundle] Apply and audit fleet deployment remediation: run hf fleet s",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Apply and audit fleet deployment remediation: run hf fleet sync for the current meta fleet, fix/remediate remaining ledger guard, WAL/SHM guard, JSONL export, legacy SQLite ledger, and tracked ledger violations where safely automatable; produce before/after fleet status evidence and clear next gaps for any residual manual/multi-repo work.",
   "path_scope": [

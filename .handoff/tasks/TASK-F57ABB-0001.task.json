@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-F57ABB-0001",
   "title": "[bundle] Fix prompt_hub/intake bundle artifact residency: non-task Sw",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix prompt_hub/intake bundle artifact residency: non-task SwarmBundle JSON files must not be written under .handoff/tasks because card loading treats every JSON there as a task card and emits schema warnings. Move bundles to a non-card inbox path, update intake default path/docs/tests, and ensure prompt_hub still mints tasks without polluting the task-card directory.",
   "path_scope": [
