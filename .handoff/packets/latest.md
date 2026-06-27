@@ -7,7 +7,7 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 90/96.  Tamper-evident events verified: 440.
+Done: 92/98.  Tamper-evident events verified: 470.
 
 ## 0. Next Action / Direction
 - **Next safe task:** HFTASK-0088 — Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)
@@ -124,6 +124,8 @@ hf claim HFTASK-0088
     "HFTASK-0086",
     "HFTASK-0087",
     "HFTASK-0090",
+    "HFTASK-0095",
+    "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
     "TASK-0001",
     "TASK-0002",
@@ -142,7 +144,7 @@ hf claim HFTASK-0088
     "HFTASK-0094"
   ],
   "schema": "handoff.packet.v2",
-  "tasks_total": 96,
-  "witnessed_events_verified": 440
+  "tasks_total": 98,
+  "witnessed_events_verified": 470
 }
 ```
