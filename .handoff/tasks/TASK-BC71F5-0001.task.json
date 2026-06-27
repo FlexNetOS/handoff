@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-BC71F5-0001",
   "title": "[bundle] Fix the agent navigation gap where top-level help promises h",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix the agent navigation gap where top-level help promises hf help <command> but most common commands such as resume status claim checkpoint test done drift release reopen handoff ship lease version and policy return unknown command. Add focused help coverage or a clear supported-command fallback so agents can navigate every common/lifecycle command without contradiction, while preserving unknown-command fail-closed behavior. Prove hf help for common commands exits 0 and unknown commands still exit nonzero.",
   "path_scope": [

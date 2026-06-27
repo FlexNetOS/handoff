@@ -3835,6 +3835,26 @@ fn print_help(args: &[String]) -> bool {
     }
 }
 
+fn reject_unsupported_args(command: &str, args: &[String], allowed: &[&str]) {
+    for arg in args.iter().skip(1) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
@@ -3856,13 +3876,13 @@ fn main() {
         // as a future idea, but silently running the normal index makes agents believe that
         // intent-aware indexing happened. Help paths are handled before this match.
         Some("index") => {
-            if let Some(flag) = args.get(1) {
-                eprintln!("hf index: unknown flag '{flag}' (supported: no flags)");
-                std::process::exit(2);
-            }
+            reject_unsupported_args("index", &args, &[]);
             index::cmd_index()
         }
-        Some("plan") => index::cmd_plan(args.iter().any(|a| a == "--json")),
+        Some("plan") => {
+            reject_unsupported_args("plan", &args, &["--json"]);
+            index::cmd_plan(args.iter().any(|a| a == "--json"))
+        }
         Some("claim") => {
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
                 cmd_claim_batch();
@@ -3878,7 +3898,10 @@ fn main() {
                 .find(|a| a.starts_with("--"))
                 .map(|s| s.as_str()),
         ),
-        Some("reconcile") => cmd_reconcile(),
+        Some("reconcile") => {
+            reject_unsupported_args("reconcile", &args, &[]);
+            cmd_reconcile()
+        }
         Some("export") => cmd_export(),
         Some("import") => cmd_import(),
         Some("migrate") => {
@@ -3920,6 +3943,7 @@ fn main() {
             }
         }
         Some("sync-cards") => {
+            reject_unsupported_args("sync-cards", &args, &[]);
             let n = sync_cards();
             println!("hf sync-cards: synced {n} card(s) from ledger truth");
         }
@@ -4222,7 +4246,10 @@ fn main() {
                 std::process::exit(code);
             }
         }
-        Some("handoff") => cmd_handoff(),
+        Some("handoff") => {
+            reject_unsupported_args("handoff", &args, &[]);
+            cmd_handoff()
+        }
         Some("resume") => {
             let mode = if args.iter().any(|a| a == "--json") {
                 ResumeMode::Json

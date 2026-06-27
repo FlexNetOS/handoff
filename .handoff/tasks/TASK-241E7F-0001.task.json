@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "TASK-241E7F-0001",
   "title": "[bundle] Fix audit-found no-conflict agent navigation gap: `hf lease ",
-  "status": "claimed",
+  "status": "done",
   "priority": "P1",
   "objective": "Fix audit-found no-conflict agent navigation gap: `hf lease --json` still reports held leases for tasks already Done (`TASK-E88691-0001` and `TASK-429729-0001`). Completion/release must clear or hide stale/expired in-ledger claim leases so agents do not see false active holders/conflicts after work is done. Add regression coverage and prove `hf lease --json` has no held Done-task leases after completion.",
   "path_scope": [
