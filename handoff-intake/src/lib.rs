@@ -207,7 +207,9 @@ pub fn cmd_dispatch(correlation_id: Option<&str>, next_only: bool, claim: &dyn F
 /// Resolve a default bundle path under `.handoff/` (used only by the help text / future seam).
 #[allow(dead_code)]
 fn default_bundle_path() -> PathBuf {
-    handoff_core::tasks_dir().join("incoming.bundle.json")
+    std::path::Path::new(handoff_core::HF)
+        .join("bundles")
+        .join("incoming.bundle.json")
 }
 
 #[cfg(test)]
@@ -301,5 +303,21 @@ mod tests {
         let scope = vec!["spike/**".to_string()];
         let orders = synthesize_orders(&b, None, Some(&scope)).unwrap();
         assert_eq!(orders[0].path_scope, vec!["spike/**".to_string()]);
+    }
+
+    #[test]
+    fn default_bundle_path_is_not_under_tasks_dir() {
+        let path = default_bundle_path();
+        assert_eq!(
+            path,
+            std::path::Path::new(handoff_core::HF)
+                .join("bundles")
+                .join("incoming.bundle.json")
+        );
+        assert!(
+            !path.starts_with(handoff_core::tasks_dir()),
+            "bundle JSON is not a task card and must not live under tasks/: {}",
+            path.display()
+        );
     }
 }
