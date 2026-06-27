@@ -14,7 +14,8 @@
   ],
   "test_commands": [
     "bash -n scripts/handoff-loop-init.sh",
-    "bash -n scripts/handoff-lib.sh"
+    "bash -n scripts/handoff-lib.sh",
+    "bash scripts/test-reconcile-hf-path.sh"
   ],
   "dependencies": [
     "HFTASK-0085"

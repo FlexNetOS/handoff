@@ -3460,11 +3460,14 @@ fn cmd_seed() {
             // differential drive at verify time (commit → rebuild → stamp == git HEAD), since
             // build.rs's cargo:rerun-if-changed directives are not unit-testable from the crate.
             "HFTASK-0095" => &["cargo test -p hf version"],
-            // HFTASK-0096: shell-only PATH reconcile — syntax-check both scripts (the functional
-            // stale-copy→symlink drive runs at verify time on a synthetic PATH).
+            // HFTASK-0096: PATH reconcile — syntax-check both scripts AND run the self-contained
+            // functional drive (stale-copy→symlink + idempotent + dry-run + canonical-first). The
+            // drive emits a libtest summary so `hf test` COUNT-verifies it (tests-ran>0), instead
+            // of resting on a bash -n exit-0 (the U3 fail-open gap a syntax check alone leaves).
             "HFTASK-0096" => &[
                 "bash -n scripts/handoff-loop-init.sh",
                 "bash -n scripts/handoff-lib.sh",
+                "bash scripts/test-reconcile-hf-path.sh",
             ],
             _ => continue,
         };
