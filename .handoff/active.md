@@ -1,4 +1,4 @@
 # Active
 
 Next: —
-Done 106/106 · witness-verified 630 events
+Done 107/107 · witness-verified 639 events
