@@ -7,30 +7,29 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 94/98.  Tamper-evident events verified: 509.
+Done: 95/98.  Tamper-evident events verified: 514.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0091 — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
-- **Next command:** `hf checkpoint HFTASK-0091`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** HFTASK-0092 — hf sync KB mirror is isolated from ambient dirty meta worktrees
+- **Next command:** `hf claim HFTASK-0092`
+- **Why it is next:** first backlog card that is unblocked — no dependencies, priority P1.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P1] **HFTASK-0091** — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
 - [P1] **HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
 - [P2] **HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
 - [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0091** — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
-  objective: The Weave /review run exposed that `hf sync --auto` still reports several fleet members (observed: network-control, prompt_hub, lane) as legacy C-SQLite `.handoff/ledger.db` sources and then skips their rollup. That is a remembered manual migration, not fleet automation. Upgrade the handoff kernel so fleet sync/fleet status can safely remediate or produce a first-class migration plan for legacy member ledgers without ever treating unreadable ledgers as empty. The default no-C hf binary must remain no-C; use an explicit legacy-sqlite helper path, controlled rebuild, or generated per-member remediation command, with out-of-tree backups and witness-chain verification before cursor advancement.
+**HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
+  objective: The Weave /review run exposed `hf sync --auto` failing the ledger-to-KB mirror step with `git-kb checkout ... Uncommitted changes exist in workspace` because the broader meta workspace was dirty. That makes a fleet maintenance operation depend on unrelated ambient worktree state. Upgrade the kernel so KB mirror/write-back is isolated, deterministic, and non-destructive: use a dedicated temporary worktree/index, a git-kb non-checkout API, or a staged writer that never requires discarding unrelated user changes. Ledger rollup and health remediation must remain independent from KB mirror failure, with structured per-phase results.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0091
+hf claim HFTASK-0092
 ```
 
 ## 7. Machine Summary
@@ -124,6 +123,7 @@ hf claim HFTASK-0091
     "HFTASK-0088",
     "HFTASK-0089",
     "HFTASK-0090",
+    "HFTASK-0091",
     "HFTASK-0095",
     "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
@@ -132,24 +132,16 @@ hf claim HFTASK-0091
     "TASK-0003",
     "TASK-0004"
   ],
-  "next_command": "hf claim HFTASK-0091",
-  "next_task_id": "HFTASK-0091",
+  "next_command": "hf claim HFTASK-0092",
+  "next_task_id": "HFTASK-0092",
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [
-    "HFTASK-0091",
     "HFTASK-0092",
     "HFTASK-0093",
     "HFTASK-0094"
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 509
+  "witnessed_events_verified": 514
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **HFTASK-0091** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0x84df0ba3a9f105a3` · verifier `0x00010000` (lean-agentic 0.1.0).
