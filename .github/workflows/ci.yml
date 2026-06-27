@@ -32,7 +32,10 @@ jobs:
           # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
           # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/FlexNetOS/meta-ruvector.git RuVector
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
             crates/rvf/rvf-runtime \
             crates/rvf/rvf-crypto \
@@ -43,6 +46,8 @@ jobs:
             crates/ruvector-verified \
             crates/ruvector-domain-expansion \
             crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       # HFTASK-0013/0017: optional path deps live in the sibling envctl/RuVector checkouts.
       # CI only needs the manifests to resolve; default-feature builds do not compile envctl.
@@ -100,7 +105,10 @@ jobs:
           # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
           # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/FlexNetOS/meta-ruvector.git RuVector
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
             crates/rvf/rvf-runtime \
             crates/rvf/rvf-crypto \
@@ -111,6 +119,8 @@ jobs:
             crates/ruvector-verified \
             crates/ruvector-domain-expansion \
             crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
@@ -157,7 +167,10 @@ jobs:
           # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
           # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/FlexNetOS/meta-ruvector.git RuVector
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
             crates/rvf/rvf-runtime \
             crates/rvf/rvf-crypto \
@@ -168,6 +181,8 @@ jobs:
             crates/ruvector-verified \
             crates/ruvector-domain-expansion \
             crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       # The optional `secrets` feature links the REAL envctl broker module, so this job
       # clones the real envctl (the Windows manifest-only stub used elsewhere lacks broker).
@@ -201,7 +216,10 @@ jobs:
           # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
           # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/FlexNetOS/meta-ruvector.git RuVector
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
             crates/rvf/rvf-runtime \
             crates/rvf/rvf-crypto \
@@ -212,6 +230,8 @@ jobs:
             crates/ruvector-verified \
             crates/ruvector-domain-expansion \
             crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
@@ -260,7 +280,10 @@ jobs:
           # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
           # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/FlexNetOS/meta-ruvector.git RuVector
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
             crates/rvf/rvf-runtime \
             crates/rvf/rvf-crypto \
@@ -271,6 +294,8 @@ jobs:
             crates/ruvector-verified \
             crates/ruvector-domain-expansion \
             crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
