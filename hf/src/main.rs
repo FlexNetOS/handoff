@@ -91,6 +91,35 @@ const HF_SHIP_HELP: &str = "usage: hf ship ID [--base BR]\n\nOpen the shipping f
 const HF_LEASE_HELP: &str = "usage: hf lease [--json]\n\nInspect currently held coordination leases; terminal task leases are filtered from active holders.\n";
 const HF_VERSION_HELP: &str = "usage: hf version [--json]\n\nPrint the hf package version plus embedded build commit/date metadata.\n";
 const HF_POLICY_HELP: &str = "usage: hf policy <gate ACTION [--task ID]|check-claim|check-edit|check-handoff [--json]>\n\nRun continuity policy gates for claim, edit, and handoff preconditions.\n";
+const HF_INIT_HELP: &str =
+    "usage: hf init\n\nInitialize .handoff continuity state for the current repository.\n";
+const HF_SEED_HELP: &str =
+    "usage: hf seed\n\nSeed the repository with the built-in kernel task cards.\n";
+const HF_INDEX_HELP: &str = "usage: hf index\n\nGenerate repository, test, owner, and dependency navigation maps under .handoff/maps/.\n";
+const HF_PLAN_HELP: &str =
+    "usage: hf plan [--json]\n\nRender the task DAG/order from the current card set.\n";
+const HF_SESSION_HELP: &str = "usage: hf session <start|end|reap> [--recycle] [--reap] [--force] [--base BRANCH]\n\nManage continuity sessions and stale worktree reaping.\n";
+const HF_DOCTOR_HELP: &str = "usage: hf doctor [--json]\n\nAudit the local continuity ledger, cards, and witness chain health.\n";
+const HF_GITIGNORE_HELP: &str = "usage: hf gitignore [--check|--repair|--write]\n\nCheck or update .gitignore guards for local ledger/cache residency.\n";
+const HF_RECONCILE_HELP: &str =
+    "usage: hf reconcile\n\nSync task cards to ledger truth and re-render the handoff packet.\n";
+const HF_EXPORT_HELP: &str =
+    "usage: hf export\n\nExport the local ledger database to .handoff/ledger.events.jsonl.\n";
+const HF_IMPORT_HELP: &str = "usage: hf import\n\nImport .handoff/ledger.events.jsonl into the local ledger database cache.\n";
+const HF_MIGRATE_HELP: &str = "usage: hf migrate [PATH]\n\nMigrate a legacy SQLite ledger into the current local ledger format.\n";
+const HF_SYNC_CARDS_HELP: &str =
+    "usage: hf sync-cards\n\nSync task card status from authoritative ledger truth.\n";
+const HF_SYNC_HELP: &str = "usage: hf sync [--auto] [--dry-run] [--json]\n\nCompare or update task cards from ledger truth.\n";
+const HF_INTAKE_HELP: &str = "usage: hf intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]\n\nCreate task cards from an intake bundle and optional natural-language intent.\n";
+const HF_DISPATCH_HELP: &str = "usage: hf dispatch WORKFLOW_ID [--next]\n\nDispatch the next safe order for an intake/prompt-hub workflow.\n";
+const HF_DELIVERY_HELP: &str = "usage: hf delivery <get CORRELATION_ID [--json]|list [--json]>\n\nInspect delivery records by correlation ID or list recent deliveries.\n";
+const HF_PROMOTE_HELP: &str =
+    "usage: hf promote\n\nRun the local promotion gate for verified work.\n";
+const HF_REVIEW_HELP: &str = "usage: hf review <request ID PR|verdict ID PR approve|deny [--by WHO]>\n\nRequest or record a witnessed review verdict for a task/PR.\n";
+const HF_GATEKEEPER_HELP: &str = "usage: hf gatekeeper check PR [--task ID]\n\nRun the AI gatekeeper check for a pull request, optionally scoped to a task.\n";
+const HF_HOOK_HELP: &str = "usage: hf hook <list|run EVENT [--payload JSON] [--json]>\n\nList or run configured continuity hooks.\n";
+const HF_SCHEMA_HELP: &str =
+    "usage: hf schema [--check|--write]\n\nCheck or regenerate committed JSON schemas.\n";
 
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
@@ -3731,9 +3760,22 @@ fn cmd_version(json: bool) {
 
 fn focused_help(topic: &str) -> Option<&'static str> {
     match topic {
+        "init" => Some(HF_INIT_HELP),
+        "seed" => Some(HF_SEED_HELP),
         "resume" => Some(HF_RESUME_HELP),
         "status" => Some(HF_STATUS_HELP),
+        "index" => Some(HF_INDEX_HELP),
+        "plan" => Some(HF_PLAN_HELP),
+        "session" => Some(HF_SESSION_HELP),
         "claim" => Some(HF_CLAIM_HELP),
+        "doctor" => Some(HF_DOCTOR_HELP),
+        "gitignore" => Some(HF_GITIGNORE_HELP),
+        "reconcile" => Some(HF_RECONCILE_HELP),
+        "export" => Some(HF_EXPORT_HELP),
+        "import" => Some(HF_IMPORT_HELP),
+        "migrate" => Some(HF_MIGRATE_HELP),
+        "sync-cards" => Some(HF_SYNC_CARDS_HELP),
+        "sync" => Some(HF_SYNC_HELP),
         "checkpoint" => Some(HF_CHECKPOINT_HELP),
         "test" => Some(HF_TEST_HELP),
         "done" => Some(HF_DONE_HELP),
@@ -3741,13 +3783,21 @@ fn focused_help(topic: &str) -> Option<&'static str> {
         "fleet" => Some(HF_FLEET_HELP),
         "prompt-hub" => Some(HF_PROMPT_HUB_HELP),
         "task" => Some(HF_TASK_HELP),
+        "intake" => Some(HF_INTAKE_HELP),
+        "dispatch" => Some(HF_DISPATCH_HELP),
+        "delivery" => Some(HF_DELIVERY_HELP),
         "release" => Some(HF_RELEASE_HELP),
         "reopen" => Some(HF_REOPEN_HELP),
         "handoff" => Some(HF_HANDOFF_HELP),
         "ship" => Some(HF_SHIP_HELP),
+        "promote" => Some(HF_PROMOTE_HELP),
+        "review" => Some(HF_REVIEW_HELP),
+        "gatekeeper" => Some(HF_GATEKEEPER_HELP),
+        "hook" => Some(HF_HOOK_HELP),
         "lease" => Some(HF_LEASE_HELP),
         "version" => Some(HF_VERSION_HELP),
         "policy" => Some(HF_POLICY_HELP),
+        "schema" => Some(HF_SCHEMA_HELP),
         _ => None,
     }
 }
