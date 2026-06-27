@@ -163,7 +163,7 @@ sequenceDiagram
         hf-->>Agent: Rejected (conflict)
     end
     
-    Agent->>hf: hf checkpoint --note "fixed null check"
+    Agent->>hf: hf checkpoint TASK-0042 "fixed null check"
     hf->>Git: Diff HEAD vs working tree
     hf->>ledger.db: Insert checkpoint event + diff digest
     hf-->>Agent: Checkpointed (event ID, files changed)
