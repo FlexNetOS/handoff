@@ -117,6 +117,10 @@ struct Row {
     /// HFTASK-0035 upgrade: a continuity member (has `.handoff`) whose `.gitignore` lacks the
     /// `.handoff/**/*.db-wal` / `.handoff/**/*.db-shm` side-car guard.
     walshm_guard_missing: bool,
+    /// HFTASK-0091: a member whose local `.handoff/ledger.db` is the retired C-SQLite
+    /// format. This is a typed remediation condition: default no-C `hf` must never attempt
+    /// to open it as redb (or treat the failure as empty).
+    legacy_sqlite_ledger: bool,
     /// HFTASK-0033: this member's own per-repo ledger chain, verified independently of the
     /// central rollup. `Some((events, witnessed))` when `<member>/.handoff/ledger.db` exists
     /// and its witness chain was checked; `None` when the member carries no local ledger.
@@ -193,6 +197,13 @@ fn local_ledger_on_disk(repo: &Path) -> bool {
     repo.join(".handoff").join("ledger.db").is_file()
 }
 
+fn legacy_sqlite_ledger(repo: &Path) -> bool {
+    let p = repo.join(".handoff").join("ledger.db");
+    p.to_str()
+        .map(ledger::file_is_legacy_sqlite)
+        .unwrap_or(false)
+}
+
 /// HFTASK-0034 (ADR-0004 §6 rev): the `.gitignore` residency guard must exist so a local
 /// ledger can never be committed. `git check-ignore -q .handoff/ledger.db` exits 0 iff the
 /// path is ignored — true for both `/.handoff/ledger.db` and `.handoff/**/ledger.db`
@@ -250,6 +261,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 && has_handoff
                 && ledger_guard_present(&repo)
                 && !walshm_guard_present(&repo);
+            let legacy_sqlite_ledger = present && has_handoff && legacy_sqlite_ledger(&repo);
             Row {
                 name: name.clone(),
                 present,
@@ -263,10 +275,35 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 tracked_ledger,
                 ledger_guard_missing,
                 walshm_guard_missing,
-                per_repo_chain: per_repo_chain_stats(&repo),
+                legacy_sqlite_ledger,
+                per_repo_chain: if legacy_sqlite_ledger {
+                    None
+                } else {
+                    per_repo_chain_stats(&repo)
+                },
             }
         })
         .collect()
+}
+
+fn migration_command(root: &Path, member: &str) -> String {
+    let ledger = root.join(member).join(".handoff").join("ledger.db");
+    format!(
+        "cd {} && cargo run -p hf --features legacy-sqlite -- migrate {}",
+        root.join("handoff").display(),
+        ledger.display()
+    )
+}
+
+fn migration_plan_json(root: &Path, member: &str) -> serde_json::Value {
+    let ledger = root.join(member).join(".handoff").join("ledger.db");
+    serde_json::json!({
+        "member": member,
+        "ledger_path": ledger.to_string_lossy(),
+        "command": migration_command(root, member),
+        "backup": "out-of-tree via HANDOFF_LEDGER_BACKUP_DIR, XDG_DATA_HOME, or ~/.local/share/handoff-ledger-backups",
+        "requires_feature": "legacy-sqlite",
+    })
 }
 
 /// FLEET ledger event count + witness-chain verification (0/0 if absent).
@@ -349,6 +386,13 @@ pub fn cmd_fleet_status(json: bool) {
             r.name
         ));
     }
+    for r in rows.iter().filter(|r| r.legacy_sqlite_ledger) {
+        warnings.push(format!(
+            "{}: legacy C-SQLite `.handoff/ledger.db` blocks redb rollup — run `hf fleet sync` or migration command: {}",
+            r.name,
+            migration_command(&root, &r.name)
+        ));
+    }
     // HFTASK-0033: a broken provenance bridge is an integrity alarm, not a style nit —
     // surface it as a warning so the loop's drift/gate sees it.
     if let Some(p) = &provenance
@@ -398,6 +442,8 @@ pub fn cmd_fleet_status(json: bool) {
                 "tracked_ledger": r.tracked_ledger,
                 "ledger_guard_missing": r.ledger_guard_missing,
                 "walshm_guard_missing": r.walshm_guard_missing,
+                "legacy_sqlite_ledger": r.legacy_sqlite_ledger,
+                "migration_plan": r.legacy_sqlite_ledger.then(|| migration_plan_json(&root, &r.name)),
                 // HFTASK-0033 (ii): this member's own ledger chain, verified standalone.
                 "per_repo_chain": r.per_repo_chain.as_ref().map(|c| serde_json::json!({
                     "events": c.events,
@@ -474,13 +520,15 @@ pub fn cmd_fleet_status(json: bool) {
             r.tracked_ledger,
             r.ledger_guard_missing,
             r.walshm_guard_missing,
+            r.legacy_sqlite_ledger,
         ) {
-            (true, _, _, _, _) => "  ⚠ missing .handoff (onboard)",
-            (false, true, _, _, _) => "  ⚠ no committed ledger.events.jsonl (P7)",
-            (false, false, true, _, _) => "  ⚠ tracked ledger.db (P7)",
-            (false, false, false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
-            (false, false, false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
-            (false, false, false, false, false) => "",
+            (true, _, _, _, _, _) => "  ⚠ missing .handoff (onboard)",
+            (false, _, _, _, _, true) => "  ⚠ legacy SQLite ledger (migration required)",
+            (false, true, _, _, _, _) => "  ⚠ no committed ledger.events.jsonl (P7)",
+            (false, false, true, _, _, _) => "  ⚠ tracked ledger.db (P7)",
+            (false, false, false, true, _, _) => "  ⚠ no ledger .gitignore guard (P7)",
+            (false, false, false, false, true, _) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
+            (false, false, false, false, false, false) => "",
         };
         // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
         let chain = match &r.per_repo_chain {
@@ -526,6 +574,7 @@ fn member_needs_sync(r: &Row) -> bool {
         || r.tracked_ledger
         || r.ledger_guard_missing
         || r.walshm_guard_missing
+        || r.legacy_sqlite_ledger
 }
 
 /// The onboarding/P7 conformance flags as a JSON object (shared by the before/after snapshots).
@@ -536,6 +585,7 @@ fn flags_json(r: &Row) -> serde_json::Value {
         "tracked_ledger": r.tracked_ledger,
         "ledger_guard_missing": r.ledger_guard_missing,
         "walshm_guard_missing": r.walshm_guard_missing,
+        "legacy_sqlite_ledger": r.legacy_sqlite_ledger,
     })
 }
 
@@ -743,6 +793,7 @@ pub fn cmd_fleet_sync(json: bool, dry_run: bool) {
                 "resolved": m.resolved,
                 "flags_before": m.flags_before,
                 "flags_after": m.flags_after,
+                "migration_plan": m.flags_before["legacy_sqlite_ledger"].as_bool().unwrap_or(false).then(|| migration_plan_json(&root, &m.name)),
                 "failure": m.failure,
             })).collect::<Vec<_>>(),
             "failures": report.members.iter().filter_map(|m| {
@@ -957,6 +1008,7 @@ mod tests {
             tracked_ledger: flags.1,
             ledger_guard_missing: flags.2,
             walshm_guard_missing: flags.3,
+            legacy_sqlite_ledger: false,
             per_repo_chain: None,
         }
     }
@@ -990,6 +1042,9 @@ mod tests {
         assert!(super::member_needs_sync(&row_with((
             false, false, false, true
         ))));
+        let mut legacy = row_with((false, false, false, false));
+        legacy.legacy_sqlite_ledger = true;
+        assert!(super::member_needs_sync(&legacy));
     }
 
     /// THE load-bearing guarantee (verifier's constraint): the loop-init script exits 0 even
@@ -1362,5 +1417,88 @@ other:
         );
 
         std::fs::remove_dir_all(&repo).ok();
+    }
+
+    /// HFTASK-0091: a legacy SQLite member ledger is a first-class, machine-readable
+    /// remediation condition. Once migrated to redb and exported to tracked JSONL, the same
+    /// member is healthy; the legacy file was never opened as an empty redb ledger.
+    #[test]
+    fn legacy_sqlite_member_has_migration_plan_then_becomes_healthy() {
+        use ledger::Ledger;
+        use std::process::Command;
+
+        let root = unique_tmp("legacy-plan");
+        let member = root.join("memberx");
+        std::fs::create_dir_all(member.join(".handoff/tasks")).unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "t@example.com"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "t"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+        std::fs::write(
+            member.join(".gitignore"),
+            ".handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n",
+        )
+        .unwrap();
+        let ledger_path = member.join(".handoff/ledger.db");
+        std::fs::write(&ledger_path, b"SQLite format 3\0legacy fixture").unwrap();
+
+        let before = super::collect_rows(&root, &["memberx".to_string()])
+            .pop()
+            .unwrap();
+        assert!(before.legacy_sqlite_ledger);
+        assert!(super::member_needs_sync(&before));
+        assert!(before.per_repo_chain.is_none());
+        let plan = super::migration_plan_json(&root, "memberx");
+        assert!(
+            plan["command"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("--features legacy-sqlite")
+        );
+        assert_eq!(
+            plan["ledger_path"].as_str().unwrap_or_default(),
+            ledger_path.to_string_lossy()
+        );
+
+        // Simulate the safe migration result: the binary is now redb, its chain verifies,
+        // and its deterministic JSONL export is staged/tracked as the durable git truth.
+        std::fs::remove_file(&ledger_path).unwrap();
+        let mut led = Ledger::open(ledger_path.to_str().unwrap()).unwrap();
+        led.append("checkpoint", "LEGACY-MIGRATED", "{}", 1)
+            .unwrap();
+        let events = led.all_events().unwrap();
+        let jsonl = ledger::export_jsonl(&events).unwrap();
+        drop(led);
+        std::fs::write(member.join(".handoff/ledger.events.jsonl"), jsonl).unwrap();
+        Command::new("git")
+            .args(["add", "-f", ".handoff/ledger.events.jsonl"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+
+        let after = super::collect_rows(&root, &["memberx".to_string()])
+            .pop()
+            .unwrap();
+        assert!(!after.legacy_sqlite_ledger);
+        assert!(
+            !super::member_needs_sync(&after),
+            "migrated redb ledger + tracked JSONL + guards is healthy"
+        );
+        let chain = after.per_repo_chain.expect("migrated redb chain verifies");
+        assert_eq!(chain.events, 1);
+        assert_eq!(chain.witnessed, 1);
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }

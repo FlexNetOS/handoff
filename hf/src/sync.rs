@@ -110,6 +110,14 @@ fn part_c_rollup(root: &Path, dry: bool) {
         }
 
         let src_lp = src_path.to_string_lossy().into_owned();
+        if ledger::file_is_legacy_sqlite(&src_lp) {
+            eprintln!(
+                "hf sync [C] {member}: legacy C-SQLite ledger detected at {src_lp}; rollup is blocked until migration. \
+                 Plan: cd {} && cargo run -p hf --features legacy-sqlite -- migrate {src_lp}",
+                root.join("handoff").display()
+            );
+            continue;
+        }
         let src = match Ledger::open(&src_lp) {
             Ok(l) => l,
             Err(e) => {
@@ -525,6 +533,26 @@ mod tests {
             central_count(&root),
             2,
             "only repo_a rolled; text-only skipped"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// HFTASK-0091: a legacy C-SQLite source ledger is an explicit rollup blocker. The
+    /// default no-C sync path must not open it as redb and must not advance central state
+    /// as if the member were empty.
+    #[test]
+    fn part_c_legacy_sqlite_source_is_blocked_not_treated_empty() {
+        let root = temp_meta_root(&["legacy_member"]);
+        let dir = root.join("legacy_member/.handoff");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ledger.db"), b"SQLite format 3\0legacy fixture").unwrap();
+
+        part_c_rollup(&root, false);
+
+        assert_eq!(
+            central_count(&root),
+            0,
+            "legacy SQLite members are blocked pending migration, never rolled as empty"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
