@@ -575,6 +575,124 @@ fn nested_readonly_commands_reject_unknown_flags_without_writes() {
 }
 
 #[test]
+fn high_impact_commands_reject_unknown_flags_before_work() {
+    for (command, args) in [
+        (
+            "fleet status",
+            vec!["fleet", "status", "--definitely-unsupported-flag"],
+        ),
+        (
+            "fleet sync",
+            vec![
+                "fleet",
+                "sync",
+                "--definitely-unsupported-flag",
+                "--dry-run",
+            ],
+        ),
+        (
+            "fleet render",
+            vec![
+                "fleet",
+                "render",
+                "handoff",
+                "--definitely-unsupported-flag",
+            ],
+        ),
+        (
+            "sync",
+            vec!["sync", "--definitely-unsupported-flag", "--dry-run"],
+        ),
+        ("export", vec!["export", "--definitely-unsupported-flag"]),
+        (
+            "dispatch",
+            vec!["dispatch", "missing-cid", "--definitely-unsupported-flag"],
+        ),
+        ("intake", vec!["intake", "--definitely-unsupported-flag"]),
+        (
+            "task mint",
+            vec!["task", "mint", "--definitely-unsupported-flag"],
+        ),
+        (
+            "review request",
+            vec!["review", "request", "123", "--definitely-unsupported-flag"],
+        ),
+        (
+            "gatekeeper check",
+            vec![
+                "gatekeeper",
+                "check",
+                "123",
+                "--definitely-unsupported-flag",
+            ],
+        ),
+        (
+            "policy gate",
+            vec!["policy", "gate", "Claim", "--definitely-unsupported-flag"],
+        ),
+    ] {
+        let repo = temp_empty(&format!("high-impact-{}", command.replace(' ', "-")));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported flags before work, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "hf {command}: unknown flag '--definitely-unsupported-flag'"
+            )),
+            "`hf {}` stderr should name command and unsupported flag, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create files before rejecting unsupported flags",
+            args.join(" ")
+        );
+    }
+
+    for args in [
+        ["fleet", "status", "--json"].as_slice(),
+        ["fleet", "sync", "--dry-run", "--json"].as_slice(),
+        ["sync", "--dry-run", "--json"].as_slice(),
+        ["dispatch", "missing-cid", "--next"].as_slice(),
+        ["intake", "--bundle", "missing.json", "--scope", "hf/src/**"].as_slice(),
+        ["task", "mint", "--from-kb", "missing-slug"].as_slice(),
+        ["review", "request", "123", "--task", "TASK-123"].as_slice(),
+        ["gatekeeper", "check", "123", "--task", "TASK-123"].as_slice(),
+        ["policy", "gate", "Claim", "--task", "TASK-123"].as_slice(),
+    ] {
+        let repo = temp_empty(&format!("high-impact-supported-{}", args.join("-")));
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(args)
+            .output()
+            .expect("spawn hf");
+        assert_ne!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` is a supported command shape and should not be rejected as unsupported args, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
     for (command, args) in [
         ("plan", vec!["plan", "--definitely-unsupported-flag"]),

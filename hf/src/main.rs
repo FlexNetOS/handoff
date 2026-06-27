@@ -3988,6 +3988,117 @@ fn validate_policy_check_args(args: &[String]) {
     reject_unsupported_args_after(&command, args, 2, &["--json"]);
 }
 
+fn validate_flags_and_positionals(
+    command: &str,
+    args: &[String],
+    start: usize,
+    allowed_flags: &[&str],
+    value_flags: &[&str],
+    max_positionals: usize,
+) {
+    let mut positionals = 0usize;
+    let mut i = start;
+    while i < args.len() {
+        let arg = &args[i];
+        if value_flags.contains(&arg.as_str()) {
+            match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    i += 2;
+                    continue;
+                }
+                _ => {
+                    eprintln!("hf {command}: option '{arg}' requires a value");
+                    std::process::exit(2);
+                }
+            }
+        }
+        if allowed_flags.contains(&arg.as_str()) {
+            i += 1;
+            continue;
+        }
+        if !arg.starts_with('-') && positionals < max_positionals {
+            positionals += 1;
+            i += 1;
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let mut supported = Vec::new();
+        supported.extend_from_slice(allowed_flags);
+        supported.extend_from_slice(value_flags);
+        let supported = if supported.is_empty() {
+            if max_positionals == 0 {
+                "no flags".to_string()
+            } else {
+                format!("up to {max_positionals} positional argument(s)")
+            }
+        } else if max_positionals == 0 {
+            supported.join(", ")
+        } else {
+            format!(
+                "{} plus up to {max_positionals} positional argument(s)",
+                supported.join(", ")
+            )
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn validate_intake_args(args: &[String]) {
+    validate_flags_and_positionals(
+        "intake",
+        args,
+        1,
+        &[],
+        &["--bundle", "--vibe", "--intent", "--scope"],
+        0,
+    );
+}
+
+fn validate_review_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("request") => {
+            validate_flags_and_positionals("review request", args, 2, &[], &["--task"], 1);
+        }
+        Some("verdict") => {
+            validate_flags_and_positionals("review verdict", args, 2, &[], &["--by"], 3);
+        }
+        _ => {}
+    }
+}
+
+fn validate_gatekeeper_args(args: &[String]) {
+    if args.get(1).map(String::as_str) == Some("check") {
+        validate_flags_and_positionals("gatekeeper check", args, 2, &[], &["--task"], 1);
+    }
+}
+
+fn validate_policy_gate_args(args: &[String]) {
+    validate_flags_and_positionals("policy gate", args, 2, &[], &["--task"], 1);
+}
+
+fn validate_fleet_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("status") => validate_flags_and_positionals(
+            "fleet status",
+            args,
+            2,
+            &["--fix", "--json", "--dry-run"],
+            &[],
+            0,
+        ),
+        Some("sync") => {
+            validate_flags_and_positionals("fleet sync", args, 2, &["--json", "--dry-run"], &[], 0);
+        }
+        Some("render") => validate_flags_and_positionals("fleet render", args, 2, &[], &[], 1),
+        _ => {}
+    }
+}
+
 fn validate_init_args(args: &[String]) {
     let flags_with_values = ["--name", "--northstar", "--role", "--plane"];
     let mut i = 1usize;
@@ -4137,8 +4248,14 @@ fn main() {
             reject_unsupported_args("reconcile", &args, &[]);
             cmd_reconcile()
         }
-        Some("export") => cmd_export(),
-        Some("import") => cmd_import(),
+        Some("export") => {
+            reject_unsupported_args("export", &args, &[]);
+            cmd_export()
+        }
+        Some("import") => {
+            reject_unsupported_args("import", &args, &[]);
+            cmd_import()
+        }
         Some("migrate") => {
             let path = args
                 .get(1)
@@ -4204,6 +4321,7 @@ fn main() {
                 );
                 return;
             }
+            reject_unsupported_args("sync", &args, &["--auto", "--dry-run", "--json"]);
             let auto = args.iter().any(|a| a == "--auto");
             let dry = args.iter().any(|a| a == "--dry-run");
             let json = args.iter().any(|a| a == "--json");
@@ -4226,6 +4344,7 @@ fn main() {
             cmd_test(id);
         }
         Some("task") if args.get(1).map(|s| s.as_str()) == Some("mint") => {
+            validate_flags_and_positionals("task mint", &args, 2, &[], &["--from-kb"], 0);
             let slug = args
                 .iter()
                 .position(|a| a == "--from-kb")
@@ -4235,6 +4354,7 @@ fn main() {
             kb::cmd_mint_from_kb(slug);
         }
         Some("intake") => {
+            validate_intake_args(&args);
             let flag = |name: &str| {
                 args.iter()
                     .position(|a| a == name)
@@ -4255,6 +4375,7 @@ fn main() {
             );
         }
         Some("dispatch") => {
+            validate_flags_and_positionals("dispatch", &args, 1, &["--next"], &[], 1);
             let next_only = args.iter().any(|a| a == "--next");
             let cid = args
                 .get(1)
@@ -4281,6 +4402,7 @@ fn main() {
         // `hf done --pr`). Replaces the manual `gh api PATCH .../master` ff.
         Some("promote") => cmd_promote(),
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("request") => {
+            validate_review_args(&args);
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -4290,6 +4412,7 @@ fn main() {
             cmd_review_request(pr, task_id);
         }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("verdict") => {
+            validate_review_args(&args);
             let by = args
                 .iter()
                 .position(|a| a == "--by")
@@ -4304,6 +4427,7 @@ fn main() {
             );
         }
         Some("gatekeeper") if args.get(1).map(|s| s.as_str()) == Some("check") => {
+            validate_gatekeeper_args(&args);
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -4384,6 +4508,7 @@ fn main() {
         }
         #[cfg(feature = "cognitum")]
         Some("policy") if args.get(1).map(|s| s.as_str()) == Some("gate") => {
+            validate_policy_gate_args(&args);
             let action = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -4403,6 +4528,7 @@ fn main() {
             gates::cmd_policy_check(kind, args.iter().any(|a| a == "--json"));
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
+            validate_fleet_args(&args);
             // HFTASK-0087: `hf fleet status --fix` is an alias for `hf fleet sync` — it remediates
             // the drift the sweep detects instead of only reporting it.
             if args.iter().any(|a| a == "--fix") {
@@ -4415,6 +4541,7 @@ fn main() {
             }
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("sync") => {
+            validate_fleet_args(&args);
             // HFTASK-0087: remediate every non-conformant member the status sweep flags.
             fleet::cmd_fleet_sync(
                 args.iter().any(|a| a == "--json"),
@@ -4422,6 +4549,7 @@ fn main() {
             );
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("render") => {
+            validate_fleet_args(&args);
             // hf fleet render <member> — compile <member>'s packet from the FLEET ledger
             let member = args.get(2).map(|s| s.as_str()).unwrap_or("");
             if member.is_empty() {
