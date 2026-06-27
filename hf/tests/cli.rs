@@ -348,6 +348,105 @@ fn index_unknown_flag_fails_closed_without_writing_maps() {
 }
 
 #[test]
+fn setup_commands_reject_unknown_args_without_writes() {
+    for (command, args) in [
+        ("init", vec!["init", "--definitely-unsupported-flag"]),
+        ("seed", vec!["seed", "--definitely-unsupported-flag"]),
+    ] {
+        let repo = temp_empty(&format!("{command}-unknown-arg"));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported args before setup writes, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "hf {command}: unknown flag '--definitely-unsupported-flag'"
+            )),
+            "`hf {}` stderr should name the unsupported flag and command, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create .handoff files before rejecting unsupported args",
+            args.join(" ")
+        );
+    }
+
+    for flag in ["--name", "--northstar", "--role", "--plane"] {
+        let repo = temp_empty(&format!("init-missing-{}", flag.trim_start_matches("--")));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(["init", flag])
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf init {flag}` should reject missing values before setup writes"
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("requires a value"),
+            "missing init option value should be explicit, got: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf init {flag}` must not create files before rejecting the missing value"
+        );
+    }
+
+    let repo = temp_empty("init-supported-options");
+    let out = hf()
+        .current_dir(&repo)
+        .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+        .args([
+            "init",
+            "--name",
+            "agent-nav",
+            "--northstar",
+            "agent navigation",
+            "--role",
+            "kernel",
+            "--plane",
+            "orchestration",
+        ])
+        .output()
+        .expect("spawn hf init");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "supported init options should still work, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let capsule = std::fs::read_to_string(repo.join(".handoff/context/capsule.json"))
+        .expect("init should write capsule");
+    assert!(
+        capsule.contains("\"project_name\": \"agent-nav\"")
+            && capsule.contains("\"northstar\": \"agent navigation\"")
+            && capsule.contains("\"role\": \"kernel\"")
+            && capsule.contains("\"plane\": \"orchestration\""),
+        "supported init options should populate capsule, got: {capsule}"
+    );
+}
+
+#[test]
 fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
     for (command, args) in [
         ("plan", vec!["plan", "--definitely-unsupported-flag"]),
