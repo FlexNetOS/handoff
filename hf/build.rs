@@ -80,10 +80,73 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=GITHUB_SHA");
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
-    // .git/HEAD + the ref it points at change on every commit/checkout in the kernel tree.
-    for p in ["../.git/HEAD", ".git/HEAD"] {
-        if std::path::Path::new(p).exists() {
-            println!("cargo:rerun-if-changed={p}");
+    emit_git_rerun_watches();
+}
+
+/// Resolve the kernel checkout's real git directory, worktree-aware (HFTASK-0095).
+/// build.rs runs with CWD = the crate dir (`hf/`), so the repo `.git` is typically at `../.git`.
+/// A normal checkout's `.git` is a directory; a LINKED WORKTREE's `.git` is a FILE containing
+/// `gitdir: <path>`. Returns the gitdir, or None for a `.git`-less build (release tarball /
+/// sandbox) — in which case no rerun watch is emitted (graceful: the binary still stamps the
+/// commit captured at build time). Fail-soft at every step; no unwrap/expect/panic.
+fn resolve_gitdir() -> Option<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+    for cand in ["../.git", ".git"] {
+        let p = Path::new(cand);
+        if p.is_dir() {
+            return Some(p.to_path_buf());
+        }
+        if p.is_file() {
+            // Worktree gitlink: "gitdir: <abs-or-rel path>". A parse failure on this candidate
+            // falls through to the next rather than aborting the resolution.
+            if let Ok(contents) = std::fs::read_to_string(p)
+                && let Some(rest) = contents
+                    .lines()
+                    .next()
+                    .and_then(|l| l.strip_prefix("gitdir:"))
+            {
+                let gd = PathBuf::from(rest.trim());
+                let gd = if gd.is_absolute() {
+                    gd
+                } else {
+                    p.parent().unwrap_or_else(|| Path::new(".")).join(gd)
+                };
+                if gd.exists() {
+                    return Some(gd);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Emit `cargo:rerun-if-changed` for the files that actually move on a commit, so the build
+/// stamp never lags HEAD (HFTASK-0095). The old code watched only `.git/HEAD`, but a normal
+/// `git commit` moves the branch ref (`.git/refs/heads/<branch>`) — NOT `.git/HEAD` — so cargo
+/// never re-ran build.rs after a commit and `HF_BUILD_COMMIT` went stale, making the SessionStart
+/// staleness check false-positive. The reflog (`logs/HEAD`) updates on EVERY commit/checkout/reset
+/// in both normal repos and linked worktrees, so it is the robust catch-all; HEAD + the concrete
+/// ref (gitdir-local and, for a worktree, the shared common dir) are belt-and-suspenders.
+fn emit_git_rerun_watches() {
+    let Some(gitdir) = resolve_gitdir() else {
+        return;
+    };
+    let watch = |path: std::path::PathBuf| {
+        if path.exists() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    };
+    watch(gitdir.join("HEAD"));
+    watch(gitdir.join("logs/HEAD"));
+    // The concrete ref HEAD points at (e.g. refs/heads/develop), so a loose-ref update with no
+    // reflog still re-stamps. Resolve against the gitdir and, for a worktree, the common dir.
+    if let Ok(head) = std::fs::read_to_string(gitdir.join("HEAD"))
+        && let Some(refpath) = head.lines().next().and_then(|l| l.strip_prefix("ref:"))
+    {
+        let refpath = refpath.trim();
+        watch(gitdir.join(refpath));
+        if let Ok(common) = std::fs::read_to_string(gitdir.join("commondir")) {
+            watch(gitdir.join(common.trim()).join(refpath));
         }
     }
 }
