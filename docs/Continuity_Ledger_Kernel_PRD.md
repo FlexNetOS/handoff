@@ -355,7 +355,7 @@ repo/
 | `hf doctor` | Diagnose repo/handoff health | Yes |
 | `hf lease [--json]` | Show held leases for no-conflict agent navigation | Yes |
 | `hf schema [--check\|--write]` | Print/check/write the generated task schema | Yes; `--write` mutates intentionally |
-| `hf fleet status [--json] [--fix]` | Verify fleet handoff deployment and optionally remediate via sync | Yes |
+| `hf fleet status [--json] [--fix [--dry-run]]` | Verify fleet handoff deployment and optionally remediate via sync; `--dry-run` is valid only with `--fix` | Yes |
 | `hf fleet sync [--dry-run] [--json]` | Remediate fleet handoff deployment drift | Yes; `--dry-run` writes nothing |
 | `hf fleet render MEMBER` | Render a fleet member packet from the fleet ledger | Yes |
 | `hf-mcp` | Strict MCP stdio bridge over current `hf` tools; unknown tool args fail closed before CLI dispatch | Long-running |

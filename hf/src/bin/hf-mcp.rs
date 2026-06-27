@@ -503,6 +503,12 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
         }
         "hf_fleet_status" => {
             ensure_only_args(name, args, &["json", "fix", "dry_run"])?;
+            if arg_bool(args, "dry_run") && !arg_bool(args, "fix") {
+                return Err(
+                    "hf_fleet_status: dry_run is only valid with fix=true; use hf_fleet_sync dry_run=true"
+                        .to_string(),
+                );
+            }
             hf_args.push("fleet".to_string());
             hf_args.push("status".to_string());
             if arg_bool(args, "json") {
@@ -1143,6 +1149,14 @@ mod tests {
         args.insert("definitely_unknown".to_string(), Value::Bool(true));
         let err = build_hf_args("hf_status", &args).unwrap_err();
         assert!(err.contains("unknown argument 'definitely_unknown'"));
+    }
+
+    #[test]
+    fn fleet_status_dry_run_requires_fix_before_dispatch() {
+        let mut args = serde_json::Map::new();
+        args.insert("dry_run".to_string(), Value::Bool(true));
+        let err = build_hf_args("hf_fleet_status", &args).unwrap_err();
+        assert!(err.contains("dry_run is only valid with fix=true"));
     }
 
     #[test]

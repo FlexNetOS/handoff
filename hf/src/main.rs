@@ -71,9 +71,9 @@ pub(crate) use handoff_core::{
 /// (heartbeat) extends it; `hf release` or expiry frees it.
 const CLAIM_TTL_SECS: u64 = 3600;
 
-const HF_USAGE: &str = "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run] [--json]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>";
+const HF_USAGE: &str = "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run] [--json]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix [--dry-run]]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>";
 const HF_HELP: &str = "usage: hf [--ledger PATH] <command> [args]\n\nCommon commands:\n  resume [--json|--compact]      Render the current handoff packet\n  status [--json]                Show task/loop status\n  claim ID|--next|--batch        Claim work with a witnessed lease\n  checkpoint ID [note]           Witness progress\n  test [ID]                      Run the task's test_commands\n  done ID [--pr N]               Mark verified work done\n  drift [--json]                 Check policy/contract drift\n  fleet status|sync|render       Audit/remediate fleet handoff deployment\n  prompt-hub \"<vibe>\"            Mint verifiable tasks from intent\n  task mint --from-kb SLUG       Mint a task from a git-kb document\n\nRun `hf help <command>` or `hf <command> --help` for focused usage.\n";
-const HF_FLEET_HELP: &str = "usage: hf fleet <status|sync|render> [args]\n\n  hf fleet status [--json] [--fix]\n      Audit all meta members for handoff onboarding, ledger export, and residency guards.\n      --fix is an alias for `hf fleet sync`.\n\n  hf fleet sync [--dry-run] [--json]\n      Remediate detected fleet deployment drift and verify after-state flags.\n\n  hf fleet render MEMBER\n      Render one member packet from the FLEET ledger.\n";
+const HF_FLEET_HELP: &str = "usage: hf fleet <status|sync|render> [args]\n\n  hf fleet status [--json] [--fix [--dry-run]]\n      Audit all meta members for handoff onboarding, ledger export, and residency guards.\n      --fix is an alias for `hf fleet sync`; --dry-run is valid only with --fix.\n\n  hf fleet sync [--dry-run] [--json]\n      Remediate detected fleet deployment drift and verify after-state flags.\n\n  hf fleet render MEMBER\n      Render one member packet from the FLEET ledger.\n";
 const HF_TASK_HELP: &str = "usage: hf task mint --from-kb SLUG\n\nMint a witnessed handoff.task.v1 card from a git-kb task/spec document. Task lifecycle commands are top-level: `hf claim`, `hf checkpoint`, `hf test`, `hf done`, `hf release`, and `hf reopen`.\n";
 const HF_PROMPT_HUB_HELP: &str = "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]\n\nMint one or more verifiable handoff.task.v1 cards from natural-language intent. Use --dispatch to immediately claim the next safe minted task.\n";
 const HF_RESUME_HELP: &str = "usage: hf resume [--json|--compact]\n\nRender the latest handoff packet so an agent can resume from ledger-backed project state.\n";
@@ -4140,14 +4140,22 @@ fn validate_policy_gate_args(args: &[String]) {
 
 fn validate_fleet_args(args: &[String]) {
     match args.get(1).map(String::as_str) {
-        Some("status") => validate_flags_and_positionals(
-            "fleet status",
-            args,
-            2,
-            &["--fix", "--json", "--dry-run"],
-            &[],
-            0,
-        ),
+        Some("status") => {
+            validate_flags_and_positionals(
+                "fleet status",
+                args,
+                2,
+                &["--fix", "--json", "--dry-run"],
+                &[],
+                0,
+            );
+            if args.iter().any(|a| a == "--dry-run") && !args.iter().any(|a| a == "--fix") {
+                eprintln!(
+                    "hf fleet status: --dry-run is only valid with --fix; use `hf fleet sync --dry-run` for remediation dry-runs"
+                );
+                std::process::exit(2);
+            }
+        }
         Some("sync") => {
             validate_flags_and_positionals("fleet sync", args, 2, &["--json", "--dry-run"], &[], 0);
         }
