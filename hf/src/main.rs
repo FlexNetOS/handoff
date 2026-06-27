@@ -2349,6 +2349,14 @@ fn cmd_status(json: bool) {
     }
 }
 
+/// Agent-navigation command for the next safe action. The exhausted-backlog case must still be
+/// a valid shell command: bare `done` is a shell reserved word that errors outside a loop and
+/// conflicts with the top-level `hf done ID` lifecycle verb.
+fn next_command_for(next: Option<&WorkOrder>) -> String {
+    next.map(|t| format!("hf claim {}", t.id))
+        .unwrap_or_else(|| "hf handoff".into())
+}
+
 /// HFTASK-0020: the loop's machine read-model (`handoff.loop_status.v1`) — the witnessed
 /// ledger event stream rendered as JSON for Mission Control / the MCP seam / RuVocal.
 fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
@@ -2378,7 +2386,7 @@ fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
             "title": t.title,
         })).collect::<Vec<_>>(),
         "next_task_id": next.map(|t| t.id.clone()),
-        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "next_command": next_command_for(next),
         "session": {
             "open": sess.open_branch.is_some(),
             "branch": sess.open_branch,
@@ -2418,7 +2426,7 @@ fn summary_json(
         "remaining": remaining,
         "next_task_id": next.map(|t| &t.id),
         "witnessed_events_verified": witness,
-        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "next_command": next_command_for(next),
     })
 }
 
@@ -5403,6 +5411,40 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         assert_eq!(
             s["next_command"],
             serde_json::json!(format!("hf claim {}", tasks[1].id))
+        );
+    }
+
+    #[test]
+    fn exhausted_backlog_summary_uses_valid_handoff_command() {
+        let tasks = sample_tasks();
+        let replay = vec![
+            (tasks[0].id.clone(), Status::Done),
+            (tasks[1].id.clone(), Status::Done),
+        ];
+        let s = summary_json(&tasks, &replay, 760);
+        assert_eq!(s["next_task_id"], serde_json::Value::Null);
+        assert_eq!(s["next_command"], serde_json::json!("hf handoff"));
+    }
+
+    #[test]
+    fn exhausted_backlog_resume_commands_do_not_emit_bare_done() {
+        let tasks = sample_tasks();
+        let replay = vec![
+            (tasks[0].id.clone(), Status::Done),
+            (tasks[1].id.clone(), Status::Done),
+        ];
+        let md = render_packet_md(&tasks, &replay, 760);
+        assert!(
+            md.contains("Next command:** `hf handoff`"),
+            "direction block must point to a valid command:\n{md}"
+        );
+        assert!(
+            md.contains("```bash\nhf resume\nhf handoff\n```"),
+            "resume command block must not contain an invalid bare done token:\n{md}"
+        );
+        assert!(
+            !md.contains("\nhf resume\ndone\n"),
+            "bare done is invalid shell outside a loop and must not guide agents:\n{md}"
         );
     }
 
