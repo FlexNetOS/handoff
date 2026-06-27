@@ -3795,7 +3795,23 @@ fn main() {
             gates::cmd_policy_check(kind, args.iter().any(|a| a == "--json"));
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
-            fleet::cmd_fleet_status(args.iter().any(|a| a == "--json"));
+            // HFTASK-0087: `hf fleet status --fix` is an alias for `hf fleet sync` — it remediates
+            // the drift the sweep detects instead of only reporting it.
+            if args.iter().any(|a| a == "--fix") {
+                fleet::cmd_fleet_sync(
+                    args.iter().any(|a| a == "--json"),
+                    args.iter().any(|a| a == "--dry-run"),
+                );
+            } else {
+                fleet::cmd_fleet_status(args.iter().any(|a| a == "--json"));
+            }
+        }
+        Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("sync") => {
+            // HFTASK-0087: remediate every non-conformant member the status sweep flags.
+            fleet::cmd_fleet_sync(
+                args.iter().any(|a| a == "--json"),
+                args.iter().any(|a| a == "--dry-run"),
+            );
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("render") => {
             // hf fleet render <member> — compile <member>'s packet from the FLEET ledger
@@ -3888,7 +3904,7 @@ fn main() {
                 eprintln!("hf: unknown command '{verb}'");
             }
             eprintln!(
-                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
+                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
             );
             if other.is_some() {
                 std::process::exit(2);

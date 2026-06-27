@@ -486,6 +486,302 @@ pub fn cmd_fleet_status(json: bool) {
     }
 }
 
+// ===========================================================================
+// HFTASK-0087 (ADR-0018 D1 / automation rung 3): `hf fleet sync` — REMEDIATE the
+// non-conformant members `hf fleet status` detects, instead of only REPORTING them.
+//
+// For each member `collect_rows` flags (jsonl_export_missing / tracked_ledger /
+// ledger_guard_missing / walshm_guard_missing), drive the idempotent loop-init deploy
+// bits (`scripts/handoff-loop-init.sh <member-dir>` — ensure_ledger_guard, deploy_hooks,
+// deploy_diff_drive, deploy_session_relay, deploy_rules, + the HFTASK-0085 staleness
+// rebuild), then RE-evaluate that member's row and judge success by the AFTER flags —
+// NEVER by the script's exit code. The loop-init script ends in an unconditional `exit 0`
+// and a per-member failure does `FAIL+=1; continue` WITHOUT changing the exit code, so
+// trusting it would be a FAIL-OPEN trap (LESSONS L7–L10). Fail-closed per member: one
+// member's failure never aborts the sweep; the verb exits non-zero iff any flagged member
+// is still non-conformant after remediation.
+// ===========================================================================
+
+/// A member needs remediation iff any P7 conformance flag is set.
+fn member_needs_sync(r: &Row) -> bool {
+    r.jsonl_export_missing || r.tracked_ledger || r.ledger_guard_missing || r.walshm_guard_missing
+}
+
+/// The four P7 conformance flags as a JSON object (shared by the before/after snapshots).
+fn flags_json(r: &Row) -> serde_json::Value {
+    serde_json::json!({
+        "jsonl_export_missing": r.jsonl_export_missing,
+        "tracked_ledger": r.tracked_ledger,
+        "ledger_guard_missing": r.ledger_guard_missing,
+        "walshm_guard_missing": r.walshm_guard_missing,
+    })
+}
+
+/// The loop-init remediation script. `HANDOFF_LOOP_INIT` overrides (a non-standard kernel
+/// home, or tests pointing at a stub); else the canonical
+/// `<meta_root>/handoff/scripts/handoff-loop-init.sh` (DR2-verified: it accepts a single
+/// member-directory positional and deploys to just that member, no `--fleet` required).
+fn loop_init_script(root: &Path) -> PathBuf {
+    match std::env::var("HANDOFF_LOOP_INIT") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => root.join("handoff/scripts/handoff-loop-init.sh"),
+    }
+}
+
+/// Per-member remediation outcome.
+struct MemberSync {
+    name: String,
+    /// Was this member non-conformant before the sweep?
+    flagged: bool,
+    /// "ok" (not flagged) · "would-remediate" (dry-run) · "remediate" (real run).
+    action: &'static str,
+    /// The loop-init script's exit code, when spawned. NOT used to judge success.
+    script_exit: Option<i32>,
+    /// Judged by the AFTER flags (a real run only): conformant now.
+    resolved: bool,
+    flags_before: serde_json::Value,
+    flags_after: serde_json::Value,
+    /// Set iff the member could not be remediated (spawn error, missing script, or still
+    /// non-conformant after the deploy ran).
+    failure: Option<String>,
+}
+
+/// The result of a fleet-sync sweep.
+struct SyncReport {
+    dry_run: bool,
+    script: PathBuf,
+    script_present: bool,
+    members: Vec<MemberSync>,
+}
+
+impl SyncReport {
+    /// A real run is OK iff every flagged member resolved. A dry run is a preview — never fails.
+    fn ok(&self) -> bool {
+        self.dry_run || self.members.iter().all(|m| m.resolved)
+    }
+    /// How many members were flagged (i.e. acted on / would be acted on).
+    fn remediated(&self) -> usize {
+        self.members.iter().filter(|m| m.flagged).count()
+    }
+}
+
+/// The core sweep (no stdout, no ledger writes) — testable with a stub script. For each
+/// member: collect its row; if not flagged, skip (resolved). If flagged, run the loop-init
+/// script for that member's directory (passing `--dry-run` through), then RE-collect and judge
+/// `resolved` by the AFTER flags. Per-member fail-closed: a spawn error, a missing script, or a
+/// still-flagged AFTER row is a failure recorded on that member; the sweep always continues.
+fn run_fleet_sync(root: &Path, members: &[String], dry_run: bool, script: &Path) -> SyncReport {
+    let script_present = script.is_file();
+    let mut out: Vec<MemberSync> = Vec::with_capacity(members.len());
+    for name in members {
+        let Some(b) = collect_rows(root, std::slice::from_ref(name))
+            .into_iter()
+            .next()
+        else {
+            continue;
+        };
+        let flags_before = flags_json(&b);
+        if !member_needs_sync(&b) {
+            out.push(MemberSync {
+                name: name.clone(),
+                flagged: false,
+                action: "ok",
+                script_exit: None,
+                resolved: true,
+                flags_after: flags_before.clone(),
+                flags_before,
+                failure: None,
+            });
+            continue;
+        }
+        let action = if dry_run {
+            "would-remediate"
+        } else {
+            "remediate"
+        };
+        // Fail-closed: a flagged member with no remediation script cannot be fixed.
+        if !script_present {
+            out.push(MemberSync {
+                name: name.clone(),
+                flagged: true,
+                action,
+                script_exit: None,
+                resolved: false,
+                flags_after: flags_before.clone(),
+                flags_before,
+                failure: Some(format!(
+                    "loop-init script not found at {} — cannot remediate",
+                    script.display()
+                )),
+            });
+            continue;
+        }
+        let mut cmd = Command::new("bash");
+        cmd.arg(script);
+        if dry_run {
+            cmd.arg("--dry-run");
+        }
+        cmd.arg(root.join(name));
+        let (script_exit, spawn_err) = match cmd.output() {
+            Ok(o) => (o.status.code(), None),
+            Err(e) => (None, Some(format!("failed to spawn remediation: {e}"))),
+        };
+        // Judge by the AFTER state, NEVER the script exit code (it always exits 0).
+        let after = collect_rows(root, std::slice::from_ref(name));
+        let still_flagged = after.first().map(member_needs_sync).unwrap_or(true);
+        let flags_after = after
+            .first()
+            .map(flags_json)
+            .unwrap_or_else(|| flags_before.clone());
+        let resolved = !dry_run && spawn_err.is_none() && !still_flagged;
+        let failure = if let Some(e) = spawn_err {
+            Some(e)
+        } else if !dry_run && still_flagged {
+            Some("still non-conformant after remediation".to_string())
+        } else {
+            None
+        };
+        out.push(MemberSync {
+            name: name.clone(),
+            flagged: true,
+            action,
+            script_exit,
+            resolved,
+            flags_before,
+            flags_after,
+            failure,
+        });
+    }
+    SyncReport {
+        dry_run,
+        script: script.to_path_buf(),
+        script_present,
+        members: out,
+    }
+}
+
+/// HFTASK-0087: `hf fleet sync` (and the `hf fleet status --fix` alias). Resolve the meta root +
+/// members, run the remediation sweep, witness a `fleet_sync` event into the FLEET ledger
+/// (fail-closed when present, loud-degrade when absent), print the report, and exit non-zero iff
+/// any flagged member is still non-conformant after remediation — so a meta-level cron can gate
+/// the fleet's self-healing on a clean exit code.
+pub fn cmd_fleet_sync(json: bool, dry_run: bool) {
+    let Some(root) = find_meta_root() else {
+        eprintln!("hf fleet sync: no .meta.yaml found from the current directory upward");
+        std::process::exit(1);
+    };
+    let meta_yaml = std::fs::read_to_string(root.join(".meta.yaml")).unwrap_or_default();
+    let members = parse_members(&meta_yaml);
+    let script = loop_init_script(&root);
+    let report = run_fleet_sync(&root, &members, dry_run, &script);
+
+    // Witness the remediation centrally (real runs that actually acted only). FLEET ledger
+    // present → fail-closed (`must_witness` aborts if the append fails — we took an action we
+    // could not record); absent → loud-degrade (there is genuinely nowhere central to witness).
+    if !dry_run && report.remediated() > 0 {
+        let fleet_db = root.join(".handoff").join("ledger.db");
+        if fleet_db.is_file() {
+            let payload = serde_json::json!({
+                "remediated": report.remediated(),
+                "all_resolved": report.ok(),
+                "members": report.members.iter().filter(|m| m.flagged).map(|m| serde_json::json!({
+                    "name": m.name, "resolved": m.resolved, "script_exit": m.script_exit,
+                })).collect::<Vec<_>>(),
+            })
+            .to_string();
+            let lp = fleet_db.to_string_lossy().into_owned();
+            handoff_core::must_witness(
+                Ledger::open(&lp).and_then(|mut l| {
+                    l.append("fleet_sync", "FLEET", &payload, handoff_core::now_ns())
+                }),
+                "fleet_sync",
+            );
+        } else {
+            eprintln!(
+                "hf fleet sync: WARNING — no FLEET ledger at {}; remediation not centrally witnessed (loud-degrade)",
+                fleet_db.display()
+            );
+        }
+    }
+
+    if json {
+        let out = serde_json::json!({
+            "schema": "handoff.fleet_sync.v1",
+            "meta_root": root.to_string_lossy(),
+            "dry_run": dry_run,
+            "script": report.script.to_string_lossy(),
+            "script_present": report.script_present,
+            "remediated": report.remediated(),
+            "all_resolved": report.ok(),
+            "members": report.members.iter().map(|m| serde_json::json!({
+                "name": m.name,
+                "flagged": m.flagged,
+                "action": m.action,
+                "script_exit": m.script_exit,
+                "resolved": m.resolved,
+                "flags_before": m.flags_before,
+                "flags_after": m.flags_after,
+                "failure": m.failure,
+            })).collect::<Vec<_>>(),
+            "failures": report.members.iter().filter_map(|m| {
+                m.failure.as_ref().map(|f| serde_json::json!({ "name": m.name, "reason": f }))
+            }).collect::<Vec<_>>(),
+        });
+        println!("{}", handoff_core::pretty_json(&out));
+    } else {
+        println!(
+            "=== hf fleet sync ===  (meta root: {}){}",
+            root.to_string_lossy(),
+            if dry_run {
+                "  [DRY-RUN — no changes]"
+            } else {
+                ""
+            }
+        );
+        println!(
+            "  script: {}{}",
+            report.script.display(),
+            if report.script_present {
+                ""
+            } else {
+                "  (MISSING)"
+            }
+        );
+        for m in report.members.iter().filter(|m| m.flagged) {
+            let state = if dry_run {
+                "would remediate"
+            } else if m.resolved {
+                "RESOLVED ✓"
+            } else {
+                "STILL NON-CONFORMANT ✗"
+            };
+            println!("  {:<26} {}", m.name, state);
+            if let Some(f) = &m.failure {
+                println!("      ⚠ {f}");
+            }
+        }
+        let flagged = report.remediated();
+        if flagged == 0 {
+            println!("  all members conformant — nothing to remediate");
+        } else {
+            println!(
+                "\n{} member(s) {}; all_resolved: {}",
+                flagged,
+                if dry_run {
+                    "would be remediated"
+                } else {
+                    "remediated"
+                },
+                report.ok()
+            );
+        }
+    }
+
+    if !report.ok() {
+        std::process::exit(1);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Fleet-aware packet rendering (ADR-0004 §4) — compile a member's packet from the
 // FLEET ledger + that member's git-text capsule/cards, NOT from a per-repo ledger
@@ -621,6 +917,149 @@ fn compose_member_packet(
 #[cfg(test)]
 mod tests {
     use super::parse_members;
+
+    // ---- HFTASK-0087: hf fleet sync remediation ----
+
+    /// Build a `Row` with the four P7 conformance flags set as given (other fields neutral).
+    fn row_with(flags: (bool, bool, bool, bool)) -> super::Row {
+        super::Row {
+            name: "m".into(),
+            present: true,
+            has_handoff: true,
+            cards: 0,
+            project_name: None,
+            role: None,
+            plane: None,
+            jsonl_export_missing: flags.0,
+            tracked_ledger: flags.1,
+            ledger_guard_missing: flags.2,
+            walshm_guard_missing: flags.3,
+            per_repo_chain: None,
+        }
+    }
+
+    /// Isolated temp directory (pid + nanos), never the real workspace.
+    fn unique_tmp(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "hf-fleetsync-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn sync_selects_only_flagged_members() {
+        assert!(!super::member_needs_sync(&row_with((
+            false, false, false, false
+        ))));
+        assert!(super::member_needs_sync(&row_with((
+            true, false, false, false
+        ))));
+        assert!(super::member_needs_sync(&row_with((
+            false, true, false, false
+        ))));
+        assert!(super::member_needs_sync(&row_with((
+            false, false, true, false
+        ))));
+        assert!(super::member_needs_sync(&row_with((
+            false, false, false, true
+        ))));
+    }
+
+    /// THE load-bearing guarantee (verifier's constraint): the loop-init script exits 0 even
+    /// when it remediated nothing, so success MUST be judged by the AFTER state. A stub that
+    /// exits 0 but changes nothing leaves the member flagged → resolved=false, failure recorded.
+    #[test]
+    fn sync_judges_by_after_state_not_script_exit() {
+        let root = unique_tmp("after");
+        std::fs::create_dir_all(root.join("memberx/.handoff/tasks")).unwrap();
+        let stub = root.join("noop.sh");
+        std::fs::write(&stub, "#!/usr/bin/env bash\nexit 0\n").unwrap();
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], false, &stub);
+        let m = &report.members[0];
+        assert!(
+            m.flagged,
+            "a non-git .handoff member is flagged (ledger_guard_missing)"
+        );
+        assert_eq!(m.script_exit, Some(0), "stub exited 0");
+        assert!(
+            !m.resolved,
+            "exit 0 must NOT mean resolved when the after-state is still flagged"
+        );
+        assert!(m.failure.is_some());
+        assert!(
+            !report.ok(),
+            "an unresolved flagged member makes the run fail-closed"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A dry run is a preview: it passes `--dry-run` through to the script and never fails.
+    #[test]
+    fn sync_dry_run_passes_through_and_never_fails() {
+        let root = unique_tmp("dry");
+        std::fs::create_dir_all(root.join("memberx/.handoff/tasks")).unwrap();
+        let marker = root.join("args.txt");
+        let stub = root.join("rec.sh");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/usr/bin/env bash\necho \"$@\" > {}\nexit 0\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], true, &stub);
+        assert!(
+            report.dry_run && report.ok(),
+            "dry-run is a preview, never fails"
+        );
+        assert_eq!(report.members[0].action, "would-remediate");
+        let recorded = std::fs::read_to_string(&marker).unwrap_or_default();
+        assert!(
+            recorded.contains("--dry-run"),
+            "dry-run must pass --dry-run; got {recorded:?}"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Idempotence: a conformant fleet (member with no `.handoff`) yields an empty remediation
+    /// set and a clean exit — running sync on a healthy fleet is a no-op.
+    #[test]
+    fn sync_clean_fleet_is_noop() {
+        let root = unique_tmp("clean");
+        std::fs::create_dir_all(root.join("memberx")).unwrap();
+        let stub = root.join("noop.sh");
+        std::fs::write(&stub, "#!/usr/bin/env bash\nexit 0\n").unwrap();
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], false, &stub);
+        assert_eq!(report.remediated(), 0);
+        assert!(report.ok());
+        assert_eq!(report.members[0].action, "ok");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Fail-closed: a flagged member with no remediation script on disk is a recorded failure,
+    /// not a silent skip.
+    #[test]
+    fn sync_missing_script_fails_closed() {
+        let root = unique_tmp("noscript");
+        std::fs::create_dir_all(root.join("memberx/.handoff/tasks")).unwrap();
+        let missing = root.join("does-not-exist.sh");
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], false, &missing);
+        assert!(!report.script_present);
+        let m = &report.members[0];
+        assert!(m.flagged && !m.resolved);
+        assert!(m.failure.as_deref().unwrap_or("").contains("not found"));
+        assert!(!report.ok());
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     #[test]
     fn parses_member_keys_under_projects_only() {
