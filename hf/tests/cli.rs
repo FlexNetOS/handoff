@@ -447,6 +447,60 @@ fn setup_commands_reject_unknown_args_without_writes() {
 }
 
 #[test]
+fn prompt_hub_rejects_malformed_args_without_writes() {
+    for args in [
+        ["prompt-hub", "vibe", "--definitely-unsupported-flag"].as_slice(),
+        ["prompt-hub", "vibe", "--scope"].as_slice(),
+        ["prompt-hub", "vibe", "--scope", "--json"].as_slice(),
+        ["prompt-hub", "vibe", "extra"].as_slice(),
+    ] {
+        let repo = temp_empty(&format!("prompt-hub-malformed-{}", args.join("-")));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject malformed args before minting, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create task/bundle artifacts before rejecting malformed args",
+            args.join(" ")
+        );
+    }
+
+    let repo = temp_empty("prompt-hub-supported");
+    let out = hf()
+        .current_dir(&repo)
+        .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+        .args(["prompt-hub", "audit supported path", "--scope", "hf/src/**"])
+        .output()
+        .expect("spawn hf prompt-hub");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "supported prompt-hub args should still mint, stdout: {}, stderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let files = snapshot_files(&repo);
+    assert!(
+        files.iter().any(|p| p.starts_with(".handoff/tasks/"))
+            && files.iter().any(|p| p.starts_with(".handoff/bundles/")),
+        "supported prompt-hub should mint task and bundle artifacts, files: {files:?}"
+    );
+}
+
+#[test]
 fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
     for (command, args) in [
         ("plan", vec!["plan", "--definitely-unsupported-flag"]),

@@ -3938,6 +3938,62 @@ fn validate_init_args(args: &[String]) {
     }
 }
 
+fn parse_prompt_hub_args(args: &[String]) -> (String, Option<Vec<String>>, bool, bool) {
+    let mut vibe: Option<String> = None;
+    let mut scope: Option<Vec<String>> = None;
+    let mut dispatch = false;
+    let mut json = false;
+    let mut i = 1usize;
+    while i < args.len() {
+        let arg = &args[i];
+        match arg.as_str() {
+            "--scope" => match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    scope = Some(
+                        value
+                            .split(',')
+                            .map(|g| g.trim().to_string())
+                            .filter(|g| !g.is_empty())
+                            .collect(),
+                    );
+                    i += 2;
+                }
+                _ => {
+                    eprintln!("hf prompt-hub: option '--scope' requires a value");
+                    std::process::exit(2);
+                }
+            },
+            "--dispatch" => {
+                dispatch = true;
+                i += 1;
+            }
+            "--json" => {
+                json = true;
+                i += 1;
+            }
+            _ if arg.starts_with('-') => {
+                eprintln!(
+                    "hf prompt-hub: unknown flag '{arg}' (supported: --scope VALUE, --dispatch, --json)"
+                );
+                std::process::exit(2);
+            }
+            _ if vibe.is_none() => {
+                vibe = Some(arg.clone());
+                i += 1;
+            }
+            _ => {
+                eprintln!("hf prompt-hub: unknown argument '{arg}' (supported: one vibe argument)");
+                std::process::exit(2);
+            }
+        }
+    }
+    let Some(vibe) = vibe else {
+        eprintln!("usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]");
+        std::process::exit(2);
+    };
+    (vibe, scope, dispatch, json)
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
@@ -4323,32 +4379,8 @@ fn main() {
             }
         }
         Some("prompt-hub") => {
-            let flag = |name: &str| {
-                args.iter()
-                    .position(|a| a == name)
-                    .and_then(|i| args.get(i + 1))
-                    .map(|s| s.as_str())
-            };
-            let scope: Option<Vec<String>> = flag("--scope").map(|s| {
-                s.split(',')
-                    .map(|g| g.trim().to_string())
-                    .filter(|g| !g.is_empty())
-                    .collect()
-            });
-            let vibe = args
-                .get(1)
-                .map(|s| s.as_str())
-                .filter(|s| !s.starts_with("--"))
-                .unwrap_or("");
-            let dispatch = args.iter().any(|a| a == "--dispatch");
-            let json = args.iter().any(|a| a == "--json");
-            if vibe.is_empty() {
-                eprintln!(
-                    "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]"
-                );
-                std::process::exit(2);
-            }
-            prompt_hub::cmd_prompt_hub(vibe, scope.as_deref(), dispatch, json);
+            let (vibe, scope, dispatch, json) = parse_prompt_hub_args(&args);
+            prompt_hub::cmd_prompt_hub(&vibe, scope.as_deref(), dispatch, json);
         }
         Some("schema") => {
             let code = schema::cmd_schema(&args[1..]);
