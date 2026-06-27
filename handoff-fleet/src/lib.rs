@@ -96,6 +96,9 @@ struct Row {
     name: String,
     present: bool,
     has_handoff: bool,
+    /// HFTASK-0088: a present `.meta.yaml` member with no `.handoff` is not healthy;
+    /// it needs first-time onboarding via portable `hf init` + the normal deploy bits.
+    onboarding_missing: bool,
     cards: usize,
     project_name: Option<String>,
     role: Option<String>,
@@ -232,6 +235,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
             let repo = root.join(name);
             let present = repo.is_dir();
             let has_handoff = repo.join(".handoff").is_dir();
+            let onboarding_missing = present && !has_handoff;
             // HFTASK-0034: ask Git, not the filesystem. A tracked .db is the violation; a
             // present-but-gitignored .db is legitimate. The guard is required for any repo
             // that carries a .handoff continuity layer.
@@ -250,6 +254,7 @@ fn collect_rows(root: &Path, members: &[String]) -> Vec<Row> {
                 name: name.clone(),
                 present,
                 has_handoff,
+                onboarding_missing,
                 cards: count_cards(&repo),
                 project_name: capsule_field(&repo, "project_name"),
                 role: capsule_field(&repo, "role"),
@@ -314,6 +319,12 @@ pub fn cmd_fleet_status(json: bool) {
     let mut warnings: Vec<String> = Vec::new();
     // ADR-0018 D1 (HFTASK-0067): the NEW primary gate — a repo with a local ledger must commit its
     // `.handoff/ledger.events.jsonl` text export (the durable continuity truth).
+    for r in rows.iter().filter(|r| r.onboarding_missing) {
+        warnings.push(format!(
+            "{}: present in `.meta.yaml` but missing `.handoff` — new repo needs continuity onboarding (HFTASK-0088; run `hf fleet sync`)",
+            r.name
+        ));
+    }
     for r in rows.iter().filter(|r| r.jsonl_export_missing) {
         warnings.push(format!(
             "{}: has a local ledger but its `.handoff/ledger.events.jsonl` text export is NOT git-tracked — the committed continuity truth is missing (ADR-0018 D1; run `hf export` and commit it)",
@@ -378,6 +389,7 @@ pub fn cmd_fleet_status(json: bool) {
                 "name": r.name,
                 "present": r.present,
                 "has_handoff": r.has_handoff,
+                "onboarding_missing": r.onboarding_missing,
                 "cards": r.cards,
                 "project_name": r.project_name,
                 "role": r.role,
@@ -457,16 +469,18 @@ pub fn cmd_fleet_status(json: bool) {
         // ADR-0018 D1 + HFTASK-0034/0035: flag a missing JSONL export (the new primary gate),
         // a git-TRACKED binary ledger, and/or missing binary-cache guards.
         let flag = match (
+            r.onboarding_missing,
             r.jsonl_export_missing,
             r.tracked_ledger,
             r.ledger_guard_missing,
             r.walshm_guard_missing,
         ) {
-            (true, _, _, _) => "  ⚠ no committed ledger.events.jsonl (P7)",
-            (false, true, _, _) => "  ⚠ tracked ledger.db (P7)",
-            (false, false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
-            (false, false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
-            (false, false, false, false) => "",
+            (true, _, _, _, _) => "  ⚠ missing .handoff (onboard)",
+            (false, true, _, _, _) => "  ⚠ no committed ledger.events.jsonl (P7)",
+            (false, false, true, _, _) => "  ⚠ tracked ledger.db (P7)",
+            (false, false, false, true, _) => "  ⚠ no ledger .gitignore guard (P7)",
+            (false, false, false, false, true) => "  ⚠ no WAL/SHM .gitignore guard (P7)",
+            (false, false, false, false, false) => "",
         };
         // HFTASK-0033 (ii): this member's own per-repo chain, verified independently.
         let chain = match &r.per_repo_chain {
@@ -490,7 +504,10 @@ pub fn cmd_fleet_status(json: bool) {
 // HFTASK-0087 (ADR-0018 D1 / automation rung 3): `hf fleet sync` — REMEDIATE the
 // non-conformant members `hf fleet status` detects, instead of only REPORTING them.
 //
-// For each member `collect_rows` flags (jsonl_export_missing / tracked_ledger /
+// HFTASK-0088 extends the detection set to first-time onboarding: a present `.meta.yaml`
+// member with no `.handoff` is a remediation target, not a clean/no-op member.
+//
+// For each member `collect_rows` flags (onboarding_missing / jsonl_export_missing / tracked_ledger /
 // ledger_guard_missing / walshm_guard_missing), drive the idempotent loop-init deploy
 // bits (`scripts/handoff-loop-init.sh <member-dir>` — ensure_ledger_guard, deploy_hooks,
 // deploy_diff_drive, deploy_session_relay, deploy_rules, + the HFTASK-0085 staleness
@@ -502,14 +519,19 @@ pub fn cmd_fleet_status(json: bool) {
 // is still non-conformant after remediation.
 // ===========================================================================
 
-/// A member needs remediation iff any P7 conformance flag is set.
+/// A member needs remediation iff it lacks onboarding or any P7 conformance flag is set.
 fn member_needs_sync(r: &Row) -> bool {
-    r.jsonl_export_missing || r.tracked_ledger || r.ledger_guard_missing || r.walshm_guard_missing
+    r.onboarding_missing
+        || r.jsonl_export_missing
+        || r.tracked_ledger
+        || r.ledger_guard_missing
+        || r.walshm_guard_missing
 }
 
-/// The four P7 conformance flags as a JSON object (shared by the before/after snapshots).
+/// The onboarding/P7 conformance flags as a JSON object (shared by the before/after snapshots).
 fn flags_json(r: &Row) -> serde_json::Value {
     serde_json::json!({
+        "onboarding_missing": r.onboarding_missing,
         "jsonl_export_missing": r.jsonl_export_missing,
         "tracked_ledger": r.tracked_ledger,
         "ledger_guard_missing": r.ledger_guard_missing,
@@ -926,6 +948,7 @@ mod tests {
             name: "m".into(),
             present: true,
             has_handoff: true,
+            onboarding_missing: false,
             cards: 0,
             project_name: None,
             role: None,
@@ -1028,12 +1051,66 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
-    /// Idempotence: a conformant fleet (member with no `.handoff`) yields an empty remediation
-    /// set and a clean exit — running sync on a healthy fleet is a no-op.
+    /// HFTASK-0088: a present member with no `.handoff` is not a clean/no-op member;
+    /// it is selected for first-time onboarding. A stub that creates `.handoff` plus the
+    /// ledger-cache guards proves the after-state, not script exit alone, resolves it.
+    #[test]
+    fn sync_onboards_present_member_missing_handoff() {
+        use std::process::Command;
+        let root = unique_tmp("onboard");
+        let member = root.join("memberx");
+        std::fs::create_dir_all(&member).unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+        let stub = root.join("init.sh");
+        std::fs::write(
+            &stub,
+            "#!/usr/bin/env bash\nset -e\ndir=\"${@: -1}\"\nmkdir -p \"$dir/.handoff/tasks\"\ncat > \"$dir/.gitignore\" <<'EOF'\n.handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\nEOF\nexit 0\n",
+        )
+        .unwrap();
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], false, &stub);
+        assert_eq!(report.remediated(), 1, "missing .handoff must be selected");
+        assert!(
+            report.ok(),
+            "stub-created .handoff + guards resolves the member"
+        );
+        let m = &report.members[0];
+        assert_eq!(m.action, "remediate");
+        assert!(
+            m.flags_before["onboarding_missing"]
+                .as_bool()
+                .unwrap_or(false)
+        );
+        assert!(
+            !m.flags_after["onboarding_missing"]
+                .as_bool()
+                .unwrap_or(true)
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Idempotence: a conformant already-onboarded fleet yields an empty remediation set
+    /// and a clean exit — running sync on a healthy fleet is a no-op.
     #[test]
     fn sync_clean_fleet_is_noop() {
+        use std::process::Command;
         let root = unique_tmp("clean");
-        std::fs::create_dir_all(root.join("memberx")).unwrap();
+        let member = root.join("memberx");
+        std::fs::create_dir_all(member.join(".handoff/tasks")).unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&member)
+            .output()
+            .unwrap();
+        std::fs::write(
+            member.join(".gitignore"),
+            ".handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n",
+        )
+        .unwrap();
         let stub = root.join("noop.sh");
         std::fs::write(&stub, "#!/usr/bin/env bash\nexit 0\n").unwrap();
 

@@ -7,12 +7,12 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 92/98.  Tamper-evident events verified: 470.
+Done: 92/98.  Tamper-evident events verified: 487.
 
 ## 0. Next Action / Direction
 - **Next safe task:** HFTASK-0088 — Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)
-- **Next command:** `hf claim HFTASK-0088`
-- **Why it is next:** first backlog card that is unblocked — deps satisfied (HFTASK-0087), priority P3.
+- **Next command:** `hf checkpoint HFTASK-0088`
+- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
@@ -145,6 +145,15 @@ hf claim HFTASK-0088
   ],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 470
+  "witnessed_events_verified": 487
 }
 ```
+
+## Contract Proof (ADR-0011 — ruvector-verified/Lean)
+Active task **HFTASK-0088** — AgentContract PROVEN via ruvector-verified (5 obligation(s)).
+- ✓ `intent:objective` (Eq.refl proof-term #0)
+- ✓ `intent:path_scope` (Eq.refl proof-term #1)
+- ✓ `intent:acceptance` (Eq.refl proof-term #2)
+- ✓ `intent:constraint` (Eq.refl proof-term #3)
+- ✓ `intent:northstar` (Eq.refl proof-term #4)
+5 proof-term(s) · proof-hash `81782f7e9e455c98` · binding `0x707fc842a6388a4f` · verifier `0x00010000` (lean-agentic 0.1.0).
