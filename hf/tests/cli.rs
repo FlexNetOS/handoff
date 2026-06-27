@@ -699,6 +699,94 @@ fn high_impact_commands_reject_unknown_flags_before_work() {
 }
 
 #[test]
+fn remaining_stateful_commands_reject_unknown_args_before_work() {
+    for (command, args) in [
+        (
+            "claim",
+            vec!["claim", "TASK-X", "--definitely-unsupported-flag"],
+        ),
+        (
+            "claim --next",
+            vec!["claim", "--next", "--definitely-unsupported-flag"],
+        ),
+        (
+            "done",
+            vec!["done", "TASK-X", "--definitely-unsupported-flag"],
+        ),
+        ("done --pr", vec!["done", "TASK-X", "--pr"]),
+        (
+            "test",
+            vec!["test", "TASK-X", "--definitely-unsupported-flag"],
+        ),
+        ("migrate", vec!["migrate", "--definitely-unsupported-flag"]),
+        (
+            "reopen",
+            vec![
+                "reopen",
+                "TASK-X",
+                "reason",
+                "--definitely-unsupported-flag",
+            ],
+        ),
+        (
+            "ship",
+            vec!["ship", "TASK-X", "--definitely-unsupported-flag"],
+        ),
+        ("ship --base", vec!["ship", "TASK-X", "--base"]),
+        ("promote", vec!["promote", "--definitely-unsupported-flag"]),
+        (
+            "session start",
+            vec!["session", "start", "--definitely-unsupported-flag"],
+        ),
+        ("session start --base", vec!["session", "start", "--base"]),
+        (
+            "session end",
+            vec!["session", "end", "--definitely-unsupported-flag"],
+        ),
+        (
+            "session reap",
+            vec!["session", "reap", "--definitely-unsupported-flag"],
+        ),
+        (
+            "schema",
+            vec!["schema", "--check", "--definitely-unsupported-flag"],
+        ),
+    ] {
+        let repo = temp_empty(&format!(
+            "remaining-stateful-{}",
+            command.replace(' ', "-").replace("--", "")
+        ));
+        let before = snapshot_files(&repo);
+        let out = hf()
+            .current_dir(&repo)
+            .env("HANDOFF_LEDGER", repo.join(".handoff/ledger.db"))
+            .args(&args)
+            .output()
+            .expect("spawn hf");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`hf {}` should reject unsupported or malformed args before work, stdout: {}, stderr: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("unknown") || stderr.contains("requires a value"),
+            "`hf {}` stderr should explain the argument problem, got: {stderr}",
+            args.join(" ")
+        );
+        assert_eq!(
+            snapshot_files(&repo),
+            before,
+            "`hf {}` must not create files before rejecting bad args",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
 fn side_effecting_no_arg_commands_reject_unknown_args_without_writes() {
     for (command, args) in [
         ("plan", vec!["plan", "--definitely-unsupported-flag"]),
