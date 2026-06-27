@@ -7,27 +7,24 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 97/98.  Tamper-evident events verified: 541.
+Done: 98/98.  Tamper-evident events verified: 546.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0094 — hf test zero-test failures include actionable runner/filter diagnostics
-- **Next command:** `hf checkpoint HFTASK-0094`
-- **Why it is next:** resume the in-progress task (status Claimed) before starting any new work.
+- **Next safe task:** none — backlog is exhausted (all cards Done).
+- **Next command:** `hf handoff` (render the closing packet).
+- **Why it is next:** no Backlog/in-progress card remains.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
-  objective: The Weave /review run correctly failed closed when several `cargo test` filters executed zero tests, but the recovery required manual test-name/feature investigation. The fail-closed behavior is correct and must remain; upgrade the diagnostics so a zero-test result gives actionable next steps, especially for Cargo filters hidden behind features. For Cargo, suggest `cargo test -p <pkg> --features <needed> -- --list` or show nearby matching test names when practical. This is a fleet UX hardening task, not a weakening of the completion gate.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0094
+done
 ```
 
 ## 7. Machine Summary
@@ -124,6 +121,7 @@ hf claim HFTASK-0094
     "HFTASK-0091",
     "HFTASK-0092",
     "HFTASK-0093",
+    "HFTASK-0094",
     "HFTASK-0095",
     "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
@@ -132,21 +130,12 @@ hf claim HFTASK-0094
     "TASK-0003",
     "TASK-0004"
   ],
-  "next_command": "hf claim HFTASK-0094",
-  "next_task_id": "HFTASK-0094",
+  "next_command": "done",
+  "next_task_id": null,
   "project": "handoff (Continuity Ledger Kernel)",
-  "remaining": [
-    "HFTASK-0094"
-  ],
+  "remaining": [],
   "schema": "handoff.packet.v2",
   "tasks_total": 98,
-  "witnessed_events_verified": 541
+  "witnessed_events_verified": 546
 }
 ```
-
-## Contract Proof (ADR-0011 — ruvector-verified/Lean)
-Active task **HFTASK-0094** — AgentContract PROVEN via ruvector-verified (3 obligation(s)).
-- ✓ `intent:objective` (Eq.refl proof-term #0)
-- ✓ `intent:path_scope` (Eq.refl proof-term #1)
-- ✓ `intent:acceptance` (Eq.refl proof-term #2)
-3 proof-term(s) · proof-hash `4fae6edd4fe50dc5` · binding `0xe05db3b0d134be08` · verifier `0x00010000` (lean-agentic 0.1.0).
