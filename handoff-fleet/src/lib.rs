@@ -589,6 +589,24 @@ fn flags_json(r: &Row) -> serde_json::Value {
     })
 }
 
+/// The planned conformance state after a successful remediation.
+///
+/// In a real run `flags_after` is measured from disk after the remediation script executes. In
+/// a dry run, the script must not mutate member repos, so a second collection would necessarily
+/// keep the same unresolved flags and make the preview look like a no-op. For agent navigation,
+/// `flags_before` remains the measured problem set and `flags_after` is the intended clean state
+/// that the real remediation is expected to produce.
+fn planned_resolved_flags_json() -> serde_json::Value {
+    serde_json::json!({
+        "onboarding_missing": false,
+        "jsonl_export_missing": false,
+        "tracked_ledger": false,
+        "ledger_guard_missing": false,
+        "walshm_guard_missing": false,
+        "legacy_sqlite_ledger": false,
+    })
+}
+
 /// The loop-init remediation script. `HANDOFF_LOOP_INIT` overrides (a non-standard kernel
 /// home, or tests pointing at a stub); else the canonical
 /// `<meta_root>/handoff/scripts/handoff-loop-init.sh` (DR2-verified: it accepts a single
@@ -701,10 +719,14 @@ fn run_fleet_sync(root: &Path, members: &[String], dry_run: bool, script: &Path)
         // Judge by the AFTER state, NEVER the script exit code (it always exits 0).
         let after = collect_rows(root, std::slice::from_ref(name));
         let still_flagged = after.first().map(member_needs_sync).unwrap_or(true);
-        let flags_after = after
-            .first()
-            .map(flags_json)
-            .unwrap_or_else(|| flags_before.clone());
+        let flags_after = if dry_run && spawn_err.is_none() {
+            planned_resolved_flags_json()
+        } else {
+            after
+                .first()
+                .map(flags_json)
+                .unwrap_or_else(|| flags_before.clone())
+        };
         let resolved = !dry_run && spawn_err.is_none() && !still_flagged;
         let failure = if let Some(e) = spawn_err {
             Some(e)
@@ -1103,6 +1125,45 @@ mod tests {
             recorded.contains("--dry-run"),
             "dry-run must pass --dry-run; got {recorded:?}"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A dry run is an agent-facing preview: `flags_before` is the measured unresolved state
+    /// and `flags_after` is the planned clean state, not a misleading second read of unchanged
+    /// disk state.
+    #[test]
+    fn fleet_sync_dry_run_reports_planned_resolution() {
+        let root = unique_tmp("dryplanned");
+        std::fs::create_dir_all(root.join("memberx/.handoff/tasks")).unwrap();
+        let stub = root.join("noop.sh");
+        std::fs::write(&stub, "#!/usr/bin/env bash\nexit 0\n").unwrap();
+
+        let report = super::run_fleet_sync(&root, &["memberx".to_string()], true, &stub);
+        let m = &report.members[0];
+        assert_eq!(m.action, "would-remediate");
+        assert!(
+            m.flags_before["ledger_guard_missing"]
+                .as_bool()
+                .unwrap_or(false),
+            "test fixture should start with a measured missing ledger guard"
+        );
+        assert!(
+            !m.flags_after["ledger_guard_missing"]
+                .as_bool()
+                .unwrap_or(true),
+            "dry-run flags_after should show the planned resolved state"
+        );
+        assert!(
+            !m.flags_after["jsonl_export_missing"]
+                .as_bool()
+                .unwrap_or(true)
+        );
+        assert!(
+            !m.flags_after["legacy_sqlite_ledger"]
+                .as_bool()
+                .unwrap_or(true)
+        );
+        assert!(report.ok(), "dry-run remains a non-mutating preview");
         std::fs::remove_dir_all(&root).ok();
     }
 
