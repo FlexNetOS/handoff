@@ -335,8 +335,14 @@ for dir in "${TARGETS[@]}"; do
     if [ -n "$legacy" ]; then
       if repo_quiescent "$dir"; then
         say "  legacy SQLite ledger detected — migrating to redb"
-        if [ "$DRY" = 1 ]; then echo "    DRY: (cd $dir && $HF migrate)"; else
-          ( cd "$dir" && "$HF" migrate ) && { MIGRATED=$((MIGRATED+1)); say "  hf migrate ✓"; } \
+        legacy_abs="$(cd "$(dirname "$legacy")" && pwd)/$(basename "$legacy")"
+        if [ -n "$KERNEL_HOME" ] && _is_kernel_home "$KERNEL_HOME"; then
+          migrate_cmd="cd \"$KERNEL_HOME\" && cargo run -q -p hf --features legacy-sqlite -- migrate \"$legacy_abs\""
+        else
+          migrate_cmd="cd \"$dir\" && \"$HF\" migrate \"$legacy_abs\""
+        fi
+        if [ "$DRY" = 1 ]; then echo "    DRY: $migrate_cmd"; else
+          eval "$migrate_cmd" && { MIGRATED=$((MIGRATED+1)); say "  hf migrate ✓"; } \
             || { say "  hf migrate FAILED"; FAIL=$((FAIL+1)); }
         fi
       else
