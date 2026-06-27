@@ -10,7 +10,10 @@
     "hf/src/kb.rs",
     "hf/src/main.rs",
     "handoff-kb/**",
-    ".handoff/tasks/HFTASK-0092.task.json"
+    ".handoff/tasks/HFTASK-0092.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
   ],
   "acceptance_criteria": [
     "A dirty unrelated meta workspace no longer blocks `hf sync --auto` from updating the ledger rollup and from performing KB mirror work where safe.",
@@ -32,7 +35,7 @@
   "role": "kernel-upgrade-planner",
   "intent_lock": {
     "objective_hash": "blake3:43d5f98f625deb79d6e5a80e9414ff969fb2eb2844b94f38a0ea250e5cb00bb2",
-    "path_scope_hash": "blake3:b78425b9a9382006d1e1f3e8dabb1f27e90b65552fe5ad6e30b0d568c802ffd9",
+    "path_scope_hash": "blake3:919e7503a029aff94b6dc209f50e535360dc2a611fecf4491f5c09e94fac97c2",
     "acceptance_hash": "blake3:8431e09571fbc9740b000acd364add65cea452dcf7ec0ae32d73de0ec7e1624e"
   }
 }

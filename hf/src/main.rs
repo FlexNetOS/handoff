@@ -3621,7 +3621,7 @@ fn main() {
             // so an unsafe help path could mutate state on a `--help` invocation.
             if args.iter().any(|a| a == "--help" || a == "-h") {
                 println!(
-                    "usage: hf sync [--auto] [--dry-run]\n  \
+                    "usage: hf sync [--auto] [--dry-run] [--json]\n  \
                      Repairs .meta.yaml/.gitignore, mirrors ledger->.kb, and rolls each member \
                      repo's local .handoff/ledger.db up into the central FLEET ledger \
                      (append-with-provenance; idempotent via the per-repo sync cursor).\n  \
@@ -3632,7 +3632,8 @@ fn main() {
             }
             let auto = args.iter().any(|a| a == "--auto");
             let dry = args.iter().any(|a| a == "--dry-run");
-            sync::cmd_sync(auto, dry);
+            let json = args.iter().any(|a| a == "--json");
+            sync::cmd_sync(auto, dry, json);
         }
         Some("done") => {
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
