@@ -1,10 +1,10 @@
 {
   "schema": "handoff.delivery.v1",
   "correlation_id": "handoff-buildout",
-  "task_id": "HFTASK-0073",
-  "pr": "131",
+  "task_id": "HFTASK-0087",
+  "pr": "180",
   "status": "merged",
-  "summary": "HFTASK-0073 completed via PR 131 (status: merged)",
-  "url": "https://github.com/FlexNetOS/handoff/pull/131",
-  "timestamp_ns": 1782209209898184276
+  "summary": "HFTASK-0087 completed via PR 180 (status: merged)",
+  "url": "https://github.com/FlexNetOS/handoff/pull/180",
+  "timestamp_ns": 1782518722098574785
 }
