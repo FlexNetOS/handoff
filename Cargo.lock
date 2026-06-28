@@ -447,6 +447,7 @@ dependencies = [
 [[package]]
 name = "cognitum-gate-tilezero"
 version = "0.1.1"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "base64",
  "blake3",
@@ -828,6 +829,7 @@ checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 [[package]]
 name = "envctl-secrets-engine"
 version = "0.1.0"
+source = "git+https://github.com/FlexNetOS/envctl.git?rev=0fa1248d97e7812d46d92c91fdb01aa0c669e789#0fa1248d97e7812d46d92c91fdb01aa0c669e789"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2701,6 +2703,7 @@ dependencies = [
 [[package]]
 name = "ruvector-domain-expansion"
 version = "2.2.3"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "rand",
  "serde",
@@ -2711,6 +2714,7 @@ dependencies = [
 [[package]]
 name = "ruvector-verified"
 version = "0.1.1"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "lean-agentic",
  "thiserror 2.0.18",
@@ -2719,6 +2723,7 @@ dependencies = [
 [[package]]
 name = "rvf-crypto"
 version = "0.2.0"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "ed25519-dalek",
  "rvf-types",
@@ -2728,10 +2733,12 @@ dependencies = [
 [[package]]
 name = "rvf-index"
 version = "0.2.0"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 
 [[package]]
 name = "rvf-quant"
 version = "0.2.0"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "rvf-types",
 ]
@@ -2739,6 +2746,7 @@ dependencies = [
 [[package]]
 name = "rvf-runtime"
 version = "0.3.0"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "crc32fast",
  "rvf-index",
@@ -2749,6 +2757,7 @@ dependencies = [
 [[package]]
 name = "rvf-types"
 version = "0.2.1"
+source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 
 [[package]]
 name = "ryu"
