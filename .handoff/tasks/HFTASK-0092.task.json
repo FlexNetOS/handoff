@@ -1,0 +1,41 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0092",
+  "title": "hf sync KB mirror is isolated from ambient dirty meta worktrees",
+  "status": "done",
+  "priority": "P1",
+  "objective": "The Weave /review run exposed `hf sync --auto` failing the ledger-to-KB mirror step with `git-kb checkout ... Uncommitted changes exist in workspace` because the broader meta workspace was dirty. That makes a fleet maintenance operation depend on unrelated ambient worktree state. Upgrade the kernel so KB mirror/write-back is isolated, deterministic, and non-destructive: use a dedicated temporary worktree/index, a git-kb non-checkout API, or a staged writer that never requires discarding unrelated user changes. Ledger rollup and health remediation must remain independent from KB mirror failure, with structured per-phase results.",
+  "path_scope": [
+    "hf/src/sync.rs",
+    "hf/src/kb.rs",
+    "hf/src/main.rs",
+    "handoff-kb/**",
+    ".handoff/tasks/HFTASK-0092.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "A dirty unrelated meta workspace no longer blocks `hf sync --auto` from updating the ledger rollup and from performing KB mirror work where safe.",
+    "The KB mirror path no longer runs a destructive or ambient `git-kb checkout` against the operator's current dirty tree; it uses an isolated worktree/index/API or fails with a typed, actionable per-phase result.",
+    "`hf sync --json` or equivalent structured output distinguishes A registration, B KB mirror, and C fleet rollup statuses per repo/member.",
+    "If KB mirror is blocked, sync exits/reporting make clear whether rollup succeeded and what remains, without hiding the failure in plain text.",
+    "Tests simulate a dirty meta worktree and prove sync either mirrors through isolation or reports only the KB phase blocked while preserving rollup success."
+  ],
+  "test_commands": [
+    "cargo test -p hf sync",
+    "cargo test -p hf kb",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "weave-review-fleet-kernel-followup",
+  "role": "kernel-upgrade-planner",
+  "intent_lock": {
+    "objective_hash": "blake3:43d5f98f625deb79d6e5a80e9414ff969fb2eb2844b94f38a0ea250e5cb00bb2",
+    "path_scope_hash": "blake3:919e7503a029aff94b6dc209f50e535360dc2a611fecf4491f5c09e94fac97c2",
+    "acceptance_hash": "blake3:8431e09571fbc9740b000acd364add65cea452dcf7ec0ae32d73de0ec7e1624e"
+  }
+}

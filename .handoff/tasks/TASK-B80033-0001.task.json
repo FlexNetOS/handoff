@@ -1,0 +1,34 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-B80033-0001",
+  "title": "[bundle] Audit hf MCP/front-door feature coverage and doc sync after ",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Audit hf MCP/front-door feature coverage and doc sync after the CLI fail-closed hardening. Verify hf-mcp exposes the current safe command surface without stale or conflicting guidance; check tool argument handling for side-effecting actions and confirm docs/help match implemented commands. If a real gap exists, fix it with regression tests and any needed doc sync. Scope: hf/src/bin/hf-mcp.rs, hf/tests/**, docs/**, AGENTS.md, .handoff/**",
+  "path_scope": [
+    "hf/src/bin/hf-mcp.rs",
+    "hf/tests/**",
+    "docs/**",
+    "AGENTS.md",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-f87273994b397932-1782590898323072853",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:4376f42b5416493e8d22dceae32e7f56402c1c8d1a8fe60ab88503a85dbd2d3b",
+    "path_scope_hash": "blake3:8ce8ecb1bddbe81c5864793b9c91b1f05c7ec60e860cf84a8e0bf8c6458ec535",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

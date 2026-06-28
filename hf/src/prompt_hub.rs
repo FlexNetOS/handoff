@@ -7,6 +7,7 @@
 //! `correlation_id` can be round-tripped through `hf status` and `hf delivery` to surface
 //! loop state and delivery back in chat (HFTASK-0020 / HFTASK-0021).
 
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use work_order::{Intent, SwarmBundle};
@@ -30,6 +31,14 @@ fn now_ns() -> u64 {
         .unwrap_or(0)
 }
 
+fn bundle_inbox_dir() -> PathBuf {
+    Path::new(crate::HF).join("bundles")
+}
+
+fn prompt_hub_bundle_path(workflow_id: &str) -> PathBuf {
+    bundle_inbox_dir().join(format!("prompt_hub.{workflow_id}.bundle.json"))
+}
+
 /// `hf prompt-hub "<vibe>" [--scope glob,glob] [--dispatch] [--json]`
 ///
 /// Generates a `SwarmBundle` with empty `role_prompts` (production reality), classifies the
@@ -50,13 +59,13 @@ pub fn cmd_prompt_hub(vibe: &str, scope: Option<&[String]>, dispatch: bool, json
         evolution_suggestions: vec![],
     };
 
-    let tasks_dir = crate::tasks_dir();
-    if let Err(e) = std::fs::create_dir_all(&tasks_dir) {
-        eprintln!("hf prompt-hub: cannot create tasks dir: {e}");
+    let bundle_dir = bundle_inbox_dir();
+    if let Err(e) = std::fs::create_dir_all(&bundle_dir) {
+        eprintln!("hf prompt-hub: cannot create bundle inbox: {e}");
         return;
     }
 
-    let bundle_path = tasks_dir.join(format!("prompt_hub.{workflow_id}.bundle.json"));
+    let bundle_path = prompt_hub_bundle_path(&workflow_id);
     let bundle_json = match serde_json::to_string_pretty(&bundle) {
         Ok(j) => j,
         Err(e) => {
@@ -172,5 +181,21 @@ mod tests {
         assert!(!orders[0].path_scope.iter().any(|s| s == "."));
         assert!(orders[0].objective.len() >= 10);
         assert!(orders[0].intent_unchanged());
+    }
+
+    #[test]
+    fn prompt_hub_bundle_path_is_not_under_tasks_dir() {
+        let path = prompt_hub_bundle_path("wf-123");
+        assert_eq!(
+            path,
+            Path::new(crate::HF)
+                .join("bundles")
+                .join("prompt_hub.wf-123.bundle.json")
+        );
+        assert!(
+            !path.starts_with(crate::tasks_dir()),
+            "bundle JSON is not a task card and must not live under tasks/: {}",
+            path.display()
+        );
     }
 }

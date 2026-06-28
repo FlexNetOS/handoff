@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-4F8EBB-0001",
+  "title": "[bundle] Fix the next agent-navigation fail-open gap found after PR #",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix the next agent-navigation fail-open gap found after PR #221: read-only/lifecycle commands still accept unsupported flags as success. Live audit shows `hf version --definitely-unsupported-flag`, `hf status --definitely-unsupported-flag`, `hf resume --definitely-unsupported-flag`, `hf drift --definitely-unsupported-flag`, `hf release --definitely-unsupported-flag`, and `hf checkpoint --definitely-unsupported-flag` exit 0 instead of rejecting unsupported arguments; release/checkpoint even treat an unsupported flag as a task id/no-op success. Make these commands reject unsupported flags/arguments before doing work, preserve documented help paths and supported flags (`version/status/resume/drift/lease/doctor --json`, `resume --compact`, `checkpoint --auto --quiet --sync-cards`, `release <ID>`), and add CLI regressions proving unsupported flags exit nonzero without creating files in an empty temp repo.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf version, hf status, hf resume, hf drift, hf release, and hf checkpoint reject unsupported flags/arguments before doing work or treating a flag as a task id.",
+    "Unsupported-argument regressions prove those commands exit nonzero and create no files in an empty temp repo.",
+    "Documented help paths and supported flags still work: version/status/drift/lease/doctor --json, resume --json/--compact, checkpoint --auto/--quiet/--sync-cards, and release <ID>.",
+    "Normal supported lifecycle behavior is not otherwise downgraded."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli read_only_lifecycle_commands_reject_unknown_args_without_writes",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-b8b55613255cd9ec-1782587704777265876",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:ff70def73489ce4c09fdb695bc59594052624b3ca49aa056fa04ee4c6e1f4c11",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:93f5ac4eeb84c66e61d680c61638d2d9457ecd1cefe8be5cce7d021c99111b80"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0091",
+  "title": "Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup",
+  "status": "done",
+  "priority": "P1",
+  "objective": "The Weave /review run exposed that `hf sync --auto` still reports several fleet members (observed: network-control, prompt_hub, lane) as legacy C-SQLite `.handoff/ledger.db` sources and then skips their rollup. That is a remembered manual migration, not fleet automation. Upgrade the handoff kernel so fleet sync/fleet status can safely remediate or produce a first-class migration plan for legacy member ledgers without ever treating unreadable ledgers as empty. The default no-C hf binary must remain no-C; use an explicit legacy-sqlite helper path, controlled rebuild, or generated per-member remediation command, with out-of-tree backups and witness-chain verification before cursor advancement.",
+  "path_scope": [
+    "hf/src/sync.rs",
+    "hf/src/fleet.rs",
+    "hf/src/main.rs",
+    "ledger/**",
+    "scripts/**",
+    ".handoff/tasks/HFTASK-0091.task.json",
+    "handoff-fleet/src/lib.rs",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "`hf sync --auto`/fleet remediation detects legacy SQLite member ledgers as a typed remediable condition, not an opaque warning buried in output.",
+    "A fleet-wide remediation path exists: either `hf fleet sync --fix` migrates each legacy member through the legacy-sqlite helper safely, or emits a machine-readable migration plan with exact commands and member paths.",
+    "Migration keeps the default hf binary C-free/no-C; any C-SQLite reader is isolated behind the existing `legacy-sqlite` feature or a purpose-built helper.",
+    "Each migrated member gets an out-of-tree backup path recorded, the source witness chain re-verified, the redb target re-verified, and the central rollup cursor advances only after verification.",
+    "Re-running the remediation is idempotent and never treats a legacy/unreadable ledger as an empty ledger.",
+    "Tests cover at least one fixture legacy SQLite member ledger and prove sync/fleet status moves from legacy-blocked to healthy/remediated."
+  ],
+  "test_commands": [
+    "cargo test -p hf sync",
+    "cargo test -p hf fleet",
+    "cargo test -p ledger",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "weave-review-fleet-kernel-followup",
+  "role": "kernel-upgrade-planner",
+  "intent_lock": {
+    "objective_hash": "blake3:0258064a49e9f932cfad5bf59a36c1579b9d46ec7e4cb46e3bae976bdeb980e6",
+    "path_scope_hash": "blake3:675817c4ec7db707a18b98286c5549406669d7d0afe39decadf5e34c4160322d",
+    "acceptance_hash": "blake3:71a5aaa583c0a6bfe5f9dac85100847ab254f369a0df8e7206e4fe574c78f5b1"
+  }
+}

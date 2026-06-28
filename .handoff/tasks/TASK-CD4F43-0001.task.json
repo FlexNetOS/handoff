@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-CD4F43-0001",
+  "title": "[bundle] Fix the next audit-found setup-command fail-open gap: `hf in",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix the next audit-found setup-command fail-open gap: `hf init --definitely-unsupported-flag` and `hf seed --definitely-unsupported-flag` currently accept unsupported arguments and write .handoff files/task cards. Make setup commands reject unsupported args before mutation with clear diagnostics. Preserve supported `hf init` options (`--name`, `--northstar`, `--role`, `--plane` each requiring a value) and bare `hf seed`; keep documented help paths side-effect free. Add CLI regressions proving unsupported init/seed args exit nonzero and create no files in an empty temp repo, and proving supported init options still work.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf init and hf seed reject unsupported arguments before creating .handoff files or task cards.",
+    "hf init rejects missing option values for --name, --northstar, --role, and --plane with a clear diagnostic.",
+    "Regression coverage proves unsupported init/seed args exit nonzero and create no files in an empty temp repo.",
+    "Supported hf init options and bare hf seed behavior are preserved, and documented help paths remain side-effect free."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli setup_commands_reject_unknown_args_without_writes",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-d45fc3464a4801d0-1782588201256614636",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:5cf00cabdb7415f5dcd142724bbdea937d8cd58e1abbe1694ba7bc6a4e613663",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:c758cf8405c4a948d9827e018b35d3fc4400fca7d4efa94d380c23a143ab6ffa"
+  }
+}

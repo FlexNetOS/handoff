@@ -7,7 +7,7 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 80/80.  Tamper-evident events verified: 347.
+Done: 126/126.  Tamper-evident events verified: 774.
 
 ## 0. Next Action / Direction
 - **Next safe task:** none — backlog is exhausted (all cards Done).
@@ -24,7 +24,7 @@ Done: 80/80.  Tamper-evident events verified: 347.
 ## 6. Resume Commands
 ```bash
 hf resume
-done
+hf handoff
 ```
 
 ## 7. Machine Summary
@@ -106,18 +106,64 @@ done
     "HFTASK-0076",
     "HFTASK-0077",
     "HFTASK-0078",
+    "HFTASK-0079",
+    "HFTASK-0080",
+    "HFTASK-0081",
+    "HFTASK-0082",
+    "HFTASK-0083",
+    "HFTASK-0084",
+    "HFTASK-0085",
+    "HFTASK-0086",
+    "HFTASK-0087",
+    "HFTASK-0088",
+    "HFTASK-0089",
+    "HFTASK-0090",
+    "HFTASK-0091",
+    "HFTASK-0092",
+    "HFTASK-0093",
+    "HFTASK-0094",
+    "HFTASK-0095",
+    "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
     "TASK-0001",
     "TASK-0002",
     "TASK-0003",
-    "TASK-0004"
+    "TASK-0004",
+    "TASK-065DD9-0001",
+    "TASK-241E7F-0001",
+    "TASK-24F664-0001",
+    "TASK-2A8854-0001",
+    "TASK-2DECCC-0001",
+    "TASK-398859-0001",
+    "TASK-412D56-0001",
+    "TASK-429729-0001",
+    "TASK-452CDA-0001",
+    "TASK-4F8EBB-0001",
+    "TASK-665FF8-0001",
+    "TASK-73ACBF-0001",
+    "TASK-77253B-0001",
+    "TASK-7870BF-0001",
+    "TASK-839831-0001",
+    "TASK-9D0939-0001",
+    "TASK-B80033-0001",
+    "TASK-BC71F5-0001",
+    "TASK-C0901B-0001",
+    "TASK-C25CE6-0001",
+    "TASK-CD4F43-0001",
+    "TASK-D633AC-0001",
+    "TASK-E48B17-0001",
+    "TASK-E660E5-0001",
+    "TASK-E88691-0001",
+    "TASK-F08B79-0001",
+    "TASK-F57ABB-0001",
+    "TASK-FAC475-0001"
   ],
-  "next_command": "done",
+  "next_command": "hf handoff",
   "next_task_id": null,
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [],
   "schema": "handoff.packet.v2",
-  "tasks_total": 80,
-  "witnessed_events_verified": 347
+  "tasks_total": 126,
+  "witnessed_events_verified": 774
 }
 ```

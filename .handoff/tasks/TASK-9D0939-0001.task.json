@@ -1,0 +1,34 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-9D0939-0001",
+  "title": "[bundle] Fix audit-found exhausted-backlog agent navigation conflict:",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found exhausted-backlog agent navigation conflict: hf status/resume JSON machine summary reports next_command=\"done\" when no tasks remain, while rendered direction says hf handoff. This invalid bare done command can mislead agents. Make exhausted backlog next_command be a valid safe command (hf handoff), update resume commands accordingly, add regression proving status/resume JSON and text no longer emit bare done at all-done state, and sync docs/tests if needed.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    "docs/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Regression tests assert all-done status/resume summaries use hf handoff, not bare done.",
+    "Focused cargo tests, hf task test, and drift audit pass with edits within path_scope."
+  ],
+  "test_commands": [
+    "cargo test -p hf exhausted_backlog",
+    "cargo test -p hf summary_counts_done_vs_remaining_and_picks_next",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-270a4eb5efcd8463-1782594788082818553",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:695f1954629ab17de016d1c98c7e9dbace1fe472fef67860f35dff7d0809e32d",
+    "path_scope_hash": "blake3:d1a976ac37213e883dbad1b3ed20c3b7c263ff7b37a33175f10a9bf7f888b406",
+    "acceptance_hash": "blake3:8d19f2901be1ff9769f07325dc1821b03e5f26ac6822aff664ba244c50cac0f1"
+  }
+}

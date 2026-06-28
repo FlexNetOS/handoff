@@ -1,0 +1,41 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0093",
+  "title": "Fleet-member schema checks resolve canonical kernel schemas without local schema files",
+  "status": "done",
+  "priority": "P2",
+  "objective": "The Weave /review run exposed that `hf schema --check` from a member repo can fail with `cannot read schemas/task.schema.json` when the member does not carry local schema files. Schema validation should be a kernel capability available from every fleet member, not a cwd-sensitive file lookup. Upgrade `hf schema --check` to resolve schemas from the kernel home, embedded generated schemas, or a deployed fleet schema cache, and make member-mode behavior explicit and fail-closed only on real schema violations.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "handoff-schema/**",
+    "schemas/**",
+    "scripts/handoff-loop-init.sh",
+    ".handoff/tasks/HFTASK-0093.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "From `meta/handoff`, `hf schema --check` still validates the canonical schemas.",
+    "From a fleet member repo such as Weave with no local `schemas/` directory, `hf schema --check` resolves the canonical kernel schemas or embedded schemas and does not fail merely because cwd lacks `schemas/task.schema.json`.",
+    "If schema files are stale/missing and cannot be resolved from kernel home or embedded data, the error names the exact resolution attempts and repair command.",
+    "Tests cover kernel cwd and member cwd schema checks, including no-local-schemas member fixtures.",
+    "No hand-authored duplicate schema files are required in every member repo."
+  ],
+  "test_commands": [
+    "cargo test -p hf schema",
+    "cargo test -p handoff-schema",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "weave-review-fleet-kernel-followup",
+  "role": "kernel-upgrade-planner",
+  "intent_lock": {
+    "objective_hash": "blake3:5eb4a353a916f86f8c898599bea39974ec27574fe10ef77b44698eb63f5626a7",
+    "path_scope_hash": "blake3:8933977960804bf1e39a7a30c03f998d2f02b7a95e31dbdffab2dfeae70af1d6",
+    "acceptance_hash": "blake3:4bbd4bacd68260d323212c7232989d90bf05594471282549fe02836f3645886c"
+  }
+}

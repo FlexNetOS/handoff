@@ -1,0 +1,38 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0094",
+  "title": "hf test zero-test failures include actionable runner/filter diagnostics",
+  "status": "done",
+  "priority": "P3",
+  "objective": "The Weave /review run correctly failed closed when several `cargo test` filters executed zero tests, but the recovery required manual test-name/feature investigation. The fail-closed behavior is correct and must remain; upgrade the diagnostics so a zero-test result gives actionable next steps, especially for Cargo filters hidden behind features. For Cargo, suggest `cargo test -p <pkg> --features <needed> -- --list` or show nearby matching test names when practical. This is a fleet UX hardening task, not a weakening of the completion gate.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/tasks/HFTASK-0094.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "`hf test` still fails closed when a recognized runner executes zero tests.",
+    "For Cargo zero-test results, output includes the package/filter that matched zero and an actionable suggestion to run `cargo test ... -- --list`, preserving any required feature flags when known.",
+    "Where feasible, hf captures/list-checks nearby test names or at least distinguishes 'compiled without feature-gated tests' from 'filter typo' using Cargo list output.",
+    "Tests cover a zero-test Cargo command and assert the diagnostic contains the suggested list command and does not mark the task done.",
+    "No downgrade to HFTASK-0045/HFTASK-0063 evidence gating."
+  ],
+  "test_commands": [
+    "cargo test -p hf test",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "weave-review-fleet-kernel-followup",
+  "role": "kernel-upgrade-planner",
+  "intent_lock": {
+    "objective_hash": "blake3:769dc1545d5e29935a7c265033c268d3a1a7e2b6f85f4738401eb2311320b406",
+    "path_scope_hash": "blake3:7555154ed39a120c888123d938f2498f2877deeade2d25ee7bc098ee6dc661ed",
+    "acceptance_hash": "blake3:28d5a11a73356dec515bc7d9b76cd17b49bdb9bda84e202ed7cc672aad51fb1a"
+  }
+}

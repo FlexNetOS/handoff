@@ -367,6 +367,12 @@ mod tests {
         git(&["init", "-q"]);
         git(&["config", "user.email", "t@example.com"]);
         git(&["config", "user.name", "t"]);
+        // Keep the repository-policy tests deterministic on hosted runners: a user/global
+        // excludes file that ignores `.handoff` is a real production condition for the guard to
+        // surface, but these unit tests are specifically proving the repo-local canonical
+        // fragment. Override global excludes in the temp repo so host config cannot masquerade
+        // as a fragment regression (macOS CI exposed this).
+        git(&["config", "core.excludesFile", "/dev/null"]);
         repo
     }
 

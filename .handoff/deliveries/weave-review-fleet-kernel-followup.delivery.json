@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.delivery.v1",
+  "correlation_id": "weave-review-fleet-kernel-followup",
+  "task_id": "HFTASK-0094",
+  "pr": "199",
+  "status": "merged",
+  "summary": "HFTASK-0094 completed via PR 199 (status: merged)",
+  "url": "https://github.com/FlexNetOS/handoff/pull/199",
+  "timestamp_ns": 1782560043191225181
+}

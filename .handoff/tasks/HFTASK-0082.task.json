@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0082",
   "title": "Extend error-handling deny lints to the rusty-idd toolkit (crates/{cli,core,runner,spec,tui})",
-  "status": "backlog",
+  "status": "done",
   "priority": "P3",
   "objective": "Follow-up to HFTASK-0080. The kernel crates (work-order, ledger, handoff-core, hf) adopt clippy unwrap_used/expect_used/panic = deny; the co-located rusty-idd toolkit (crates/{cli,core,runner,spec,tui}, ADR-0019 D2: a SEPARATE Intent-Driven-Development toolkit, never invoked by hf) carries a documented crate-root `#![allow(...)]` opt-out so the kernel hardening is not blocked on the toolkit's ~577 sites. Harden the toolkit the same way (test-only allow + per-site propagate/justify) and REMOVE the root allows so the whole tree enforces the deny. Lower priority because the toolkit is not on the kernel's trust path.",
   "path_scope": [

@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-398859-0001",
+  "title": "[bundle] Fix CI-found durability test host-ignore contamination: PR #",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix CI-found durability test host-ignore contamination: PR #224 macOS CI fails `durability::tests::canonical_fragment_alone_is_healthy_and_complete` because the temp git repo can inherit runner/global git ignore state that reports durable .handoff probes as ignored even when the repo has only the canonical fragment. Make the durability tests isolate their temporary repos from host/global excludes (for example local `core.excludesFile /dev/null`) so the test proves the repository fragment itself. Keep the production swallow guard behavior unchanged unless a safer diagnostic-preserving adjustment is necessary. Add or update regression evidence and prove the hf bin durability test and CLI prompt-hub tests are green.",
+  "path_scope": [
+    "hf/src/durability.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Durability temp git repositories used by tests are isolated from host/global git excludes so canonical-fragment health tests are deterministic across CI runners.",
+    "Production swallow-guard behavior is not downgraded.",
+    "The specific durability bin test and the prompt-hub CLI regression are green.",
+    "Drift audit passes with edits inside task scope."
+  ],
+  "test_commands": [
+    "cargo test -p hf --bin hf durability::tests::canonical_fragment_alone_is_healthy_and_complete",
+    "cargo test -p hf --test cli prompt_hub_rejects_malformed_args_without_writes",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-e037e31171374562-1782588925219603796",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:58955b51cda5504bd2799baf414d389dd2d2e64617ce2bd33de934e2a2f700fb",
+    "path_scope_hash": "blake3:24a53b78f49d51f795488c19c95acf3e07855817aaa50546cfce4e852ae5df83",
+    "acceptance_hash": "blake3:f8307990194c9793e49539e92ca497789c55e2351aa5663474766f8ed3987d09"
+  }
+}

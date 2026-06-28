@@ -27,14 +27,34 @@ jobs:
       # (../../RuVector/crates/rvf/rvf-crypto from ledger/), mirroring the
       # meta workspace layout where RuVector is a sibling checkout.
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        shell: bash
+        run: |
+          # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
+          # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
+          # crates handoff path-depends on. Linux/macOS also use this path for parity.
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
+          git -C RuVector sparse-checkout set \
+            crates/rvf/rvf-runtime \
+            crates/rvf/rvf-crypto \
+            crates/rvf/rvf-types \
+            crates/rvf/rvf-index \
+            crates/rvf/rvf-quant \
+            crates/rvf/rvf-wire \
+            crates/ruvector-verified \
+            crates/ruvector-domain-expansion \
+            crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       # HFTASK-0013/0017: optional path deps live in the sibling envctl/RuVector checkouts.
       # CI only needs the manifests to resolve; default-feature builds do not compile envctl.
       - name: Clone envctl provider (envctl)
         shell: bash
         run: |
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          if [ "${RUNNER_OS:-}" != "Linux" ]; then
             mkdir -p envctl/crates/secrets-engine/src
             {
               printf '%s\n' '[package]'
@@ -48,7 +68,7 @@ jobs:
               printf '%s\n' 'default = []'
               printf '%s\n' 'inmem-store = []'
             } > envctl/crates/secrets-engine/Cargo.toml
-            printf '// Windows CI manifest-only stub; the optional secrets feature is not built here.\n' > envctl/crates/secrets-engine/src/lib.rs
+            printf '// non-Linux CI manifest-only stub; handoff-secrets is tested on Linux with real envctl.\n' > envctl/crates/secrets-engine/src/lib.rs
           else
             git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
           fi
@@ -59,7 +79,16 @@ jobs:
           workspaces: handoff
       - name: Run tests
         working-directory: handoff
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          if [ "${RUNNER_OS:-}" = "Linux" ]; then
+            cargo test --workspace
+          else
+            # handoff-secrets wraps envctl's broker and is validated on Linux with the real
+            # envctl checkout. macOS/Windows use a manifest-only provider so ordinary
+            # workspace tests still cover handoff without compiling envctl's OS-specific seam.
+            cargo test --workspace --exclude handoff-secrets
+          fi
 
   test-no-default-features:
     name: Test (no default features)
@@ -71,12 +100,32 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        shell: bash
+        run: |
+          # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
+          # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
+          # crates handoff path-depends on. Linux/macOS also use this path for parity.
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
+          git -C RuVector sparse-checkout set \
+            crates/rvf/rvf-runtime \
+            crates/rvf/rvf-crypto \
+            crates/rvf/rvf-types \
+            crates/rvf/rvf-index \
+            crates/rvf/rvf-quant \
+            crates/rvf/rvf-wire \
+            crates/ruvector-verified \
+            crates/ruvector-domain-expansion \
+            crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
         run: |
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          if [ "${RUNNER_OS:-}" != "Linux" ]; then
             mkdir -p envctl/crates/secrets-engine/src
             {
               printf '%s\n' '[package]'
@@ -90,7 +139,7 @@ jobs:
               printf '%s\n' 'default = []'
               printf '%s\n' 'inmem-store = []'
             } > envctl/crates/secrets-engine/Cargo.toml
-            printf '// Windows CI manifest-only stub; the optional secrets feature is not built here.\n' > envctl/crates/secrets-engine/src/lib.rs
+            printf '// non-Linux CI manifest-only stub; handoff-secrets is tested on Linux with real envctl.\n' > envctl/crates/secrets-engine/src/lib.rs
           else
             git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
           fi
@@ -113,7 +162,27 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        shell: bash
+        run: |
+          # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
+          # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
+          # crates handoff path-depends on. Linux/macOS also use this path for parity.
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
+          git -C RuVector sparse-checkout set \
+            crates/rvf/rvf-runtime \
+            crates/rvf/rvf-crypto \
+            crates/rvf/rvf-types \
+            crates/rvf/rvf-index \
+            crates/rvf/rvf-quant \
+            crates/rvf/rvf-wire \
+            crates/ruvector-verified \
+            crates/ruvector-domain-expansion \
+            crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       # The optional `secrets` feature links the REAL envctl broker module, so this job
       # clones the real envctl (the Windows manifest-only stub used elsewhere lacks broker).
@@ -142,12 +211,32 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        shell: bash
+        run: |
+          # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
+          # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
+          # crates handoff path-depends on. Linux/macOS also use this path for parity.
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
+          git -C RuVector sparse-checkout set \
+            crates/rvf/rvf-runtime \
+            crates/rvf/rvf-crypto \
+            crates/rvf/rvf-types \
+            crates/rvf/rvf-index \
+            crates/rvf/rvf-quant \
+            crates/rvf/rvf-wire \
+            crates/ruvector-verified \
+            crates/ruvector-domain-expansion \
+            crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
         run: |
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          if [ "${RUNNER_OS:-}" != "Linux" ]; then
             mkdir -p envctl/crates/secrets-engine/src
             {
               printf '%s\n' '[package]'
@@ -161,7 +250,7 @@ jobs:
               printf '%s\n' 'default = []'
               printf '%s\n' 'inmem-store = []'
             } > envctl/crates/secrets-engine/Cargo.toml
-            printf '// Windows CI manifest-only stub; the optional secrets feature is not built here.\n' > envctl/crates/secrets-engine/src/lib.rs
+            printf '// non-Linux CI manifest-only stub; handoff-secrets is tested on Linux with real envctl.\n' > envctl/crates/secrets-engine/src/lib.rs
           else
             git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
           fi
@@ -186,12 +275,32 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        shell: bash
+        run: |
+          # Sparse checkout avoids Windows-invalid paths in meta-ruvector (for example
+          # `.codex/prompts/agents:agent-capabilities.md`) while preserving the exact
+          # crates handoff path-depends on. Linux/macOS also use this path for parity.
+          mkdir RuVector
+          git -C RuVector init
+          git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
+          git -C RuVector sparse-checkout init --cone
+          git -C RuVector sparse-checkout set \
+            crates/rvf/rvf-runtime \
+            crates/rvf/rvf-crypto \
+            crates/rvf/rvf-types \
+            crates/rvf/rvf-index \
+            crates/rvf/rvf-quant \
+            crates/rvf/rvf-wire \
+            crates/ruvector-verified \
+            crates/ruvector-domain-expansion \
+            crates/cognitum-gate-tilezero
+          git -C RuVector fetch --depth 1 --filter=blob:none origin HEAD
+          git -C RuVector checkout --force FETCH_HEAD
 
       - name: Clone envctl provider (envctl)
         shell: bash
         run: |
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          if [ "${RUNNER_OS:-}" != "Linux" ]; then
             mkdir -p envctl/crates/secrets-engine/src
             {
               printf '%s\n' '[package]'
@@ -205,7 +314,7 @@ jobs:
               printf '%s\n' 'default = []'
               printf '%s\n' 'inmem-store = []'
             } > envctl/crates/secrets-engine/Cargo.toml
-            printf '// Windows CI manifest-only stub; the optional secrets feature is not built here.\n' > envctl/crates/secrets-engine/src/lib.rs
+            printf '// non-Linux CI manifest-only stub; handoff-secrets is tested on Linux with real envctl.\n' > envctl/crates/secrets-engine/src/lib.rs
           else
             git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl
           fi

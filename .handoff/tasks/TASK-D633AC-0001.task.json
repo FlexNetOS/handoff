@@ -1,0 +1,48 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-D633AC-0001",
+  "title": "[bundle] Apply and audit fleet deployment remediation: run hf fleet s",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Apply and audit fleet deployment remediation: run hf fleet sync for the current meta fleet, fix/remediate remaining ledger guard, WAL/SHM guard, JSONL export, legacy SQLite ledger, and tracked ledger violations where safely automatable; produce before/after fleet status evidence and clear next gaps for any residual manual/multi-repo work.",
+  "path_scope": [
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    "../*/.gitignore",
+    "../*/.handoff/**",
+    "../*/AGENTS.md",
+    "../*/CLAUDE.md",
+    "../*/.claude/**",
+    "../*/.github/**",
+    "../*/scripts/differential-drive.sh",
+    "../*/scripts/**",
+    "scripts/handoff-loop-init.sh",
+    "handoff-fleet/src/**",
+    "hf/src/**",
+    "scripts/handoff-lib.sh"
+  ],
+  "acceptance_criteria": [
+    "Before/after fleet status evidence is captured for actual hf fleet sync remediation, including counts for ledger_guard_missing, walshm_guard_missing, jsonl_export_missing, legacy_sqlite_ledger, tracked_ledger, and onboarding_missing.",
+    "Any fleet member writes produced by hf fleet sync are inspected, scoped to permitted handoff deployment artifacts/guards, and either committed through the owning repo flow or explicitly reverted with a recorded residual gap.",
+    "Residual non-automatable fleet deployment gaps are enumerated with member names and next remediation commands instead of hidden behind a green dry-run.",
+    "Drift audit passes for the handoff task scope after checkpoint/handoff/export."
+  ],
+  "test_commands": [
+    "bash -n scripts/handoff-lib.sh",
+    "bash -n scripts/handoff-loop-init.sh",
+    "hf fleet status --json | jq -e '([.members[] | select(.ledger_guard_missing or .walshm_guard_missing or .jsonl_export_missing or .legacy_sqlite_ledger or .tracked_ledger or .onboarding_missing)] | length) == 0'",
+    "hf fleet sync --dry-run --json | jq -e '.remediated == 0 and .all_resolved == true'",
+    "git -C ../prompt_hub check-ignore -q .handoff/ledger.db"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-5ddf1ee4af8484ad-1782563432834554838",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:bf3db75394cdc2fd72693b863c8937fd1cc5bb4e4d0d9311ead4694eda5c2d88",
+    "path_scope_hash": "blake3:c5579773bc38892487682aa1ed0ccdd030c49acfdaf27317fde00739c5948b44",
+    "acceptance_hash": "blake3:915c3918c578ca8f36fb6a99761bcb243875e4873e3fe6073aeb7860990e26e9"
+  }
+}

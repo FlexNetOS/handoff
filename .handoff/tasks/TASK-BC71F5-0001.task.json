@@ -1,0 +1,36 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-BC71F5-0001",
+  "title": "[bundle] Fix the agent navigation gap where top-level help promises h",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix the agent navigation gap where top-level help promises hf help <command> but most common commands such as resume status claim checkpoint test done drift release reopen handoff ship lease version and policy return unknown command. Add focused help coverage or a clear supported-command fallback so agents can navigate every common/lifecycle command without contradiction, while preserving unknown-command fail-closed behavior. Prove hf help for common commands exits 0 and unknown commands still exit nonzero.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf help for every command named by the top-level common-command help exits 0 and prints focused usage or command guidance.",
+    "hf help for lifecycle/navigation commands resume status claim checkpoint test done drift release reopen handoff ship lease version and policy exits 0.",
+    "Unknown commands and unknown help topics still fail closed with a nonzero exit code.",
+    "Regression coverage is added for the expanded help contract."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli help",
+    "cargo test -p hf --test cli unknown_command_still_exits_2_after_help_expansion",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-7db66b4ea12777a9-1782584650694274612",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:79b5c7c900ed2c7d7999d0553bc9a084e5c73b59543fef99b9b50615a4a19b65",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:75936962e294fc5dde1f60af11d7b82a4102eed87993c6a941364335d06def32"
+  }
+}
