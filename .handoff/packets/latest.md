@@ -7,32 +7,24 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 90/96.  Tamper-evident events verified: 440.
+Done: 126/126.  Tamper-evident events verified: 774.
 
 ## 0. Next Action / Direction
-- **Next safe task:** HFTASK-0088 — Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)
-- **Next command:** `hf claim HFTASK-0088`
-- **Why it is next:** first backlog card that is unblocked — deps satisfied (HFTASK-0087), priority P3.
+- **Next safe task:** none — backlog is exhausted (all cards Done).
+- **Next command:** `hf handoff` (render the closing packet).
+- **Why it is next:** no Backlog/in-progress card remains.
 - **Cycle / context budget:** context — wrap at ~50% of the context window (cycle_flush=4 caps a runaway cycle); this session is at cycle 0/4.
 - **Ready to ship:** no (`hf ship` once the cycle is full / context budget hit).
 - **Blocking walls:** none.
 
 ## 4. Remaining (next safe first)
-- [P3] **HFTASK-0088** — Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)
-- [P2] **HFTASK-0089** — Automation rung 5: worktree/branch reap as a hook, not agent memory
-- [P1] **HFTASK-0091** — Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup
-- [P1] **HFTASK-0092** — hf sync KB mirror is isolated from ambient dirty meta worktrees
-- [P2] **HFTASK-0093** — Fleet-member schema checks resolve canonical kernel schemas without local schema files
-- [P3] **HFTASK-0094** — hf test zero-test failures include actionable runner/filter diagnostics
 
 ## 5. Next Best Task
-**HFTASK-0088** — Automation rung 4: new-repo auto-onboarding (member present, no conformant .handoff)
-  objective: Adding a member to `.meta.yaml` scaffolds no `.handoff` — onboarding is a remembered manual `handoff-loop-init.sh /path`. Make `hf fleet sync` (HFTASK-0087) treat 'member present in .meta.yaml but no conformant .handoff' as a remediation target and auto-init it (portable `hf init` + full deploy), and/or add a `meta git update` post-step hook that detects a freshly-cloned member without `.handoff` and onboards it. New repos become continuity-enabled with zero manual steps. Depends on HFTASK-0087.
 
 ## 6. Resume Commands
 ```bash
 hf resume
-hf claim HFTASK-0088
+hf handoff
 ```
 
 ## 7. Machine Summary
@@ -123,26 +115,55 @@ hf claim HFTASK-0088
     "HFTASK-0085",
     "HFTASK-0086",
     "HFTASK-0087",
+    "HFTASK-0088",
+    "HFTASK-0089",
     "HFTASK-0090",
+    "HFTASK-0091",
+    "HFTASK-0092",
+    "HFTASK-0093",
+    "HFTASK-0094",
+    "HFTASK-0095",
+    "HFTASK-0096",
     "KBTASK-FLEET-HANDOFF-ROLLOUT",
     "TASK-0001",
     "TASK-0002",
     "TASK-0003",
-    "TASK-0004"
+    "TASK-0004",
+    "TASK-065DD9-0001",
+    "TASK-241E7F-0001",
+    "TASK-24F664-0001",
+    "TASK-2A8854-0001",
+    "TASK-2DECCC-0001",
+    "TASK-398859-0001",
+    "TASK-412D56-0001",
+    "TASK-429729-0001",
+    "TASK-452CDA-0001",
+    "TASK-4F8EBB-0001",
+    "TASK-665FF8-0001",
+    "TASK-73ACBF-0001",
+    "TASK-77253B-0001",
+    "TASK-7870BF-0001",
+    "TASK-839831-0001",
+    "TASK-9D0939-0001",
+    "TASK-B80033-0001",
+    "TASK-BC71F5-0001",
+    "TASK-C0901B-0001",
+    "TASK-C25CE6-0001",
+    "TASK-CD4F43-0001",
+    "TASK-D633AC-0001",
+    "TASK-E48B17-0001",
+    "TASK-E660E5-0001",
+    "TASK-E88691-0001",
+    "TASK-F08B79-0001",
+    "TASK-F57ABB-0001",
+    "TASK-FAC475-0001"
   ],
-  "next_command": "hf claim HFTASK-0088",
-  "next_task_id": "HFTASK-0088",
+  "next_command": "hf handoff",
+  "next_task_id": null,
   "project": "handoff (Continuity Ledger Kernel)",
-  "remaining": [
-    "HFTASK-0088",
-    "HFTASK-0089",
-    "HFTASK-0091",
-    "HFTASK-0092",
-    "HFTASK-0093",
-    "HFTASK-0094"
-  ],
+  "remaining": [],
   "schema": "handoff.packet.v2",
-  "tasks_total": 96,
-  "witnessed_events_verified": 440
+  "tasks_total": 126,
+  "witnessed_events_verified": 774
 }
 ```

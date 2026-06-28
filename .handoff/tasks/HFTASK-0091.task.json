@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0091",
   "title": "Fleet sync remediates legacy SQLite member ledgers instead of skipping rollup",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "The Weave /review run exposed that `hf sync --auto` still reports several fleet members (observed: network-control, prompt_hub, lane) as legacy C-SQLite `.handoff/ledger.db` sources and then skips their rollup. That is a remembered manual migration, not fleet automation. Upgrade the handoff kernel so fleet sync/fleet status can safely remediate or produce a first-class migration plan for legacy member ledgers without ever treating unreadable ledgers as empty. The default no-C hf binary must remain no-C; use an explicit legacy-sqlite helper path, controlled rebuild, or generated per-member remediation command, with out-of-tree backups and witness-chain verification before cursor advancement.",
   "path_scope": [
@@ -11,7 +11,11 @@
     "hf/src/main.rs",
     "ledger/**",
     "scripts/**",
-    ".handoff/tasks/HFTASK-0091.task.json"
+    ".handoff/tasks/HFTASK-0091.task.json",
+    "handoff-fleet/src/lib.rs",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
   ],
   "acceptance_criteria": [
     "`hf sync --auto`/fleet remediation detects legacy SQLite member ledgers as a typed remediable condition, not an opaque warning buried in output.",
@@ -35,7 +39,7 @@
   "role": "kernel-upgrade-planner",
   "intent_lock": {
     "objective_hash": "blake3:0258064a49e9f932cfad5bf59a36c1579b9d46ec7e4cb46e3bae976bdeb980e6",
-    "path_scope_hash": "blake3:e7f1e6939d946d6023bfee56c2d1ad4bc1af3bbe86c4086361a9e613b8ecba4f",
+    "path_scope_hash": "blake3:675817c4ec7db707a18b98286c5549406669d7d0afe39decadf5e34c4160322d",
     "acceptance_hash": "blake3:71a5aaa583c0a6bfe5f9dac85100847ab254f369a0df8e7206e4fe574c78f5b1"
   }
 }

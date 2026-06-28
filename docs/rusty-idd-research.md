@@ -48,8 +48,8 @@ rusty-idd provides **implementation-level intent detection** - what the code is 
 ## Integration Points
 
 ### 1. hf index enhancement
-```
-hf index --intent-aware
+```text
+future hf index intent-aware mode
 └─> Could integrate rusty-idd
     └─> Generates implementation context
         └─> Enhances context capsule
@@ -89,6 +89,6 @@ The intent-driven aspect **exactly matches** our IntentLock drift control system
 | Task ID | Title | Priority |
 |---------|-------|----------|
 | INTEGRATE-RUSTY-IDD-001 | Analyze collaboration points with handoff | P2 |
-| ENHANCEMENT-RUSTY-IDD-001 | hf index --intent-aware flag | P3 |
+| ENHANCEMENT-RUSTY-IDD-001 | Add an explicit hf index intent-aware mode | P3 |
 | ENHANCEMENT-RUSTY-IDD-002 | Integrate implementation intent into IntentLock | P2 |
 

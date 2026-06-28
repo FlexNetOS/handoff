@@ -1,4 +1,4 @@
 # Active
 
-Next: HFTASK-0088
-Done 90/96 · witness-verified 440 events
+Next: —
+Done 126/126 · witness-verified 774 events

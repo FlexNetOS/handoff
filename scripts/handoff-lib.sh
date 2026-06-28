@@ -23,6 +23,58 @@ hf_bin() {
   echo ""; return 1
 }
 
+# Resolve a path to its canonical form (following symlinks). realpath > readlink -f > as-is.
+_realpath() {
+  local p="$1"
+  if command -v realpath >/dev/null 2>&1; then realpath "$p" 2>/dev/null
+  elif command -v readlink >/dev/null 2>&1; then readlink -f "$p" 2>/dev/null
+  else echo "$p"; fi
+}
+
+# Converge stale shadow `hf` copies on PATH to a symlink into the canonical build
+# (ADR-0006 / HFTASK-0096). After `cargo install --path hf` the fresh binary lands in the cargo
+# bin, but a real COPY of `hf` earlier on PATH (e.g. ~/.local/bin/hf) keeps shadowing it — so
+# `hf` serves the OLD binary and freshly-added verbs report "unknown command" until a manual cp,
+# silently defeating the rung-0 staleness automation. This walks PATH in order and, for every
+# `hf` that resolves BEFORE the canonical one and differs from it, replaces the shadow with a
+# symlink -> canonical (never a churning copy). Idempotent (a shadow already symlinked to
+# canonical is left untouched), fail-soft + LOUD (warns, never aborts) when a dir/file isn't
+# writable. Args: $1 = canonical hf path (the freshly-built/installed binary); $2 = DRY (1 = show
+# only). Returns 0 always.
+reconcile_hf_path() {
+  local canonical="$1" dry="${2:-0}"
+  [ -n "$canonical" ] && [ -e "$canonical" ] || return 0
+  local canon_real
+  canon_real="$(_realpath "$canonical")"
+  [ -n "$canon_real" ] || return 0
+  local oldifs="$IFS" dir target target_real seen_canon=0
+  IFS=:
+  for dir in $PATH; do
+    [ -n "$dir" ] || continue
+    target="$dir/hf"
+    [ -e "$target" ] || [ -L "$target" ] || continue
+    target_real="$(_realpath "$target")"
+    if [ "$target_real" = "$canon_real" ]; then
+      seen_canon=1            # canonical (or a symlink to it) — reached it; stop converging
+      continue
+    fi
+    [ "$seen_canon" = 0 ] || continue   # only shadows that resolve BEFORE canonical matter
+    if [ "$dry" = 1 ]; then
+      echo "    DRY: ln -sf '$canonical' '$target'  (stale shadow: $target_real)"
+    elif [ -w "$dir" ] && { [ ! -e "$target" ] || [ -w "$target" ]; }; then
+      if ln -sf "$canonical" "$target" 2>/dev/null; then
+        echo "[init] reconciled stale shadow hf: $target -> $canonical (ADR-0006)"
+      else
+        echo "[init] WARNING: could not symlink $target -> $canonical (left as-is)"
+      fi
+    else
+      echo "[init] WARNING: stale shadow hf at $target shadows the fresh $canonical but is not writable — fix PATH or run: ln -sf '$canonical' '$target'"
+    fi
+  done
+  IFS="$oldifs"
+  return 0
+}
+
 # Does this repo's .gitignore already ignore PATH? (git check-ignore is the truth, the
 # same predicate `hf fleet status` uses.)
 _gi_ignored() { git -C "$1" check-ignore -q "$2" 2>/dev/null; }
@@ -55,6 +107,21 @@ ensure_ledger_guard() {
   _add ".handoff/**/*.rvf.lock"
   _add ".handoff/**/*.sqlite.bak"   # redb-cutover migration backup (HFTASK-0053)
   _add ".handoff/**/*.redb.tmp"     # redb-cutover migration temp (HFTASK-0053)
+  # Older fleet rollouts also wrote a nested `.handoff/.gitignore` with `!ledger.db` to
+  # force-track the binary SQLite ledger. A parent `.gitignore` cannot override that nested
+  # negation, so append a later nested rule that restores the ADR-0018 D1 model: binary ledger
+  # caches are ignored, and `.handoff/ledger.events.jsonl` is the committed truth.
+  if [ -f "$dir/.handoff/.gitignore" ] && ! _gi_ignored "$dir" ".handoff/ledger.db"; then
+    {
+      echo ""
+      echo "# handoff continuity: binary ledger cache is gitignored"
+      echo "# (committed truth = ledger.events.jsonl — ADR-0018 D1 / HFTASK-0067)"
+      echo "ledger.db"
+      echo "ledger.db-wal"
+      echo "ledger.db-shm"
+    } >> "$dir/.handoff/.gitignore"
+    changed=1
+  fi
   return $((1 - changed))
 }
 

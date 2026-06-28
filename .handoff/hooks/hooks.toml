@@ -47,7 +47,7 @@ fail_mode = "block"
 # committed `.handoff/ledger.events.jsonl` truth (ADR-0018 D1 / HFTASK-0067).
 [[hooks]]
 event = "SessionEnd"
-command = "hf checkpoint --auto && hf handoff && hf export && hf sync --auto"
+command = "hf checkpoint --auto && hf handoff && hf export && hf sync --auto && hf session reap"
 timeout_seconds = 90
 fail_mode = "warn"
 
@@ -64,7 +64,7 @@ fail_mode = "block"
 [[hooks]]
 # After a merge lands, mirror state one-way to .kb + ensure meta registration (§6).
 event = "PostMerge"
-command = "hf sync --auto"               # HFTASK-0011
+command = "hf sync --auto && hf session reap" # HFTASK-0011 + HFTASK-0089
 timeout_seconds = 45
 fail_mode = "warn"
 

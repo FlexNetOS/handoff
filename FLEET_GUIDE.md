@@ -130,7 +130,7 @@ FLEET ledger when you run from `meta/`.
 | `hf dispatch <workflow_id> [--next]` | claim/activate the synthesized orders by `correlation_id` (witnessed `claim` path); `--next` claims only the first |
 | `hf claim <ID>` | reserve the weave lease + record the claim (no edit without a claim) |
 | `hf checkpoint <ID> [note] [--sync-cards]` | witness progress; `--sync-cards` re-renders cards from ledger truth |
-| `hf sync [--auto] [--dry-run]` | repair `.meta.yaml`/`.gitignore` registration + one-way `ledger→.kb` mirror |
+| `hf sync [--auto] [--dry-run] [--json]` | repair `.meta.yaml`/`.gitignore` registration + one-way `ledger→.kb` mirror |
 | `hf drift [--json]` | detect intent-lock drift + out-of-scope edits — **hard-fails on drift** |
 | `hf policy check-claim\|check-edit\|check-handoff [--json]` | enforce the lifecycle gates (deny-without-claim, scope, protected files) |
 | `hf fleet status [--json]` | the fleet board **+ integrity gate**: members' capsule/cards joined with the FLEET ledger; verifies (i) the central chain, (ii) each member's per-repo chain standalone, (iii) rollup provenance — every central event traces to its origin repo (HFTASK-0033); and flags P7 violations — a git-**tracked** `.db` under `.handoff` or a missing `.handoff/**/ledger.db` `.gitignore` guard (HFTASK-0034) |

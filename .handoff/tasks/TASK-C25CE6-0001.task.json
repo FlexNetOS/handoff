@@ -1,0 +1,38 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-C25CE6-0001",
+  "title": "[bundle] Fix doc-sync gap where agent guides and PRD/test docs still ",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix doc-sync gap where agent guides and PRD/test docs still instruct the removed/unimplemented hf start command even though live hf start fails with unknown command. Replace hf start guidance with the current implemented session/worktree/navigation flow (hf session start where worktree session is intended, or claim/edit/checkpoint/test/drift/handoff where no separate start verb exists). Prove docs no longer tell agents to run hf start and live help remains clean.",
+  "path_scope": [
+    "docs/**",
+    "FLEET_GUIDE.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Agent-facing docs no longer instruct operators to run the unimplemented top-level hf start command.",
+    "Docs that describe worktree/session start use the implemented hf session start command or describe the claim/edit/checkpoint/test/drift/handoff flow without a separate start verb.",
+    "Live CLI evidence remains explicit that hf start is not a command while hf session help exits 0.",
+    "Docs changed are scoped to documentation and handoff evidence only."
+  ],
+  "test_commands": [
+    "! rg -n '(^|[^[:alnum:]_-])hf start([^[:alnum:]_-]|$)' docs/USER_STORY.md docs/Continuity_Ledger_Kernel_PRD.md docs/TEST_MATRIX.md FLEET_GUIDE.md AGENTS.md CLAUDE.md",
+    "hf start >/tmp/hf-start-docsync.out 2>/tmp/hf-start-docsync.err; test $? -eq 2; rg -q \"unknown command 'start'\" /tmp/hf-start-docsync.err",
+    "hf help session >/tmp/hf-help-session.out && rg -q \"usage: hf session\" /tmp/hf-help-session.out",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-382cd92c3009b3d9-1782585746575184983",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:df3795e8db816358dcc98aed5723b3456448aef90d401f1511ed1f87ed802cca",
+    "path_scope_hash": "blake3:ff4960f126234a2a4872fd6cc7e392fba02a309915a8cfbd1f2e8f36e8d9842c",
+    "acceptance_hash": "blake3:f636920f8415f706ce9abdc589b967f6e2a15487157bd165e8ed376a5e243930"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-839831-0001",
+  "title": "[bundle] Fix PR 226 no-default-features CI failure: high impact unkno",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix PR 226 no-default-features CI failure: high impact unknown-flag regression assumes policy command exists when cognitum-gate default feature is disabled. Keep fail-closed coverage valid in both feature modes without weakening command validation. Scope: hf/tests/**, hf/src/main.rs, .handoff/**",
+  "path_scope": [
+    "hf/tests/**",
+    "hf/src/main.rs",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-4911ec93098b8ebd-1782590126711717606",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:a5a9609b23c72bfd48b63466a1cd4b37e3204eb1ce02119f253b7a5f24c22093",
+    "path_scope_hash": "blake3:4fcf01255d8e1187ee4b1d604635f86138efe3bb4aee265a72f686eb99556a94",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

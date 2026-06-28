@@ -1,0 +1,10 @@
+{
+  "schema": "handoff.delivery.v1",
+  "correlation_id": "vibe-ad29132362f944b5-1782561197955491874",
+  "task_id": "TASK-7870BF-0001",
+  "pr": "201",
+  "status": "merged",
+  "summary": "TASK-7870BF-0001 completed via PR 201 (status: merged)",
+  "url": "https://github.com/FlexNetOS/handoff/pull/201",
+  "timestamp_ns": 1782561470538334843
+}

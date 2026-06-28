@@ -1,0 +1,35 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0096",
+  "title": "Install hygiene: reconcile stale shadow `hf` copies on PATH to a symlink into the meta build (ADR-0006)",
+  "status": "done",
+  "priority": "P2",
+  "objective": "After `cargo install --path hf` (handoff-loop-init.sh Phase 0 rebuild) the canonical binary lands in `~/.cargo/bin/hf`, but a real COPY of `hf` earlier on PATH (e.g. `~/.local/bin/hf`) shadows it — so `hf` keeps serving the OLD binary and freshly-added verbs report 'unknown command' until someone manually re-copies. This is the recurring 'cp after every cargo install' gotcha and it silently defeats rung-0 staleness automation (the rebuild SUCCEEDS but the running `hf` is still stale). Add a post-install PATH-reconciliation step: a `reconcile_hf_path()` helper in `scripts/handoff-lib.sh`, called from `scripts/handoff-loop-init.sh` right after the build/install, that resolves the canonical freshly-built binary and converges every shadowing `hf` that resolves before it on PATH — per ADR-0006 doctrine, replacing each writable shadow COPY with a SYMLINK into the meta build (never a churning copy). Idempotent, `--dry-run`-aware, fail-soft + loud (warn, never abort the run) when a path isn't writable or a shadow is a foreign/non-hf binary. Verify: `bash -n` both scripts; a functional drive that seeds a stale copy on a synthetic PATH and asserts the helper turns it into a symlink to the canonical binary; idempotent re-run is a no-op.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Install hygiene: reconcile stale shadow `hf` copies on PATH to a symlink into the meta build (ADR-0006): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "bash -n scripts/handoff-loop-init.sh",
+    "bash -n scripts/handoff-lib.sh",
+    "bash scripts/test-reconcile-hf-path.sh"
+  ],
+  "dependencies": [
+    "HFTASK-0085"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:3c1cadade5e60a1e114e2b1de973f32c05b10d7d2cde24570fa825c21cc064f8",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:0d08738426089dae58b56d3ffbeedb911a8d012c2305c280523dcd9d015fd0f0",
+    "constraint_hash": "blake3:7748d6811789de4220a6b0c0c0d6b9bfa835cf40a9a6198e423607dc6f8d1033",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}

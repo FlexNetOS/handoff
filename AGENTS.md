@@ -35,6 +35,20 @@ points here — not a hardcoded string (ADR-0006).
 
 Maintain this repository through the Continuity Ledger Kernel (`.handoff`) protocol. The repo is the source of truth. Chat history is not authoritative.
 
+## Agent navigation surfaces
+
+The canonical local CLI is `hf`; the tool/front-door surface is `hf-mcp`.
+
+- `hf resume` is still the first read path and the ledger remains authoritative.
+- `hf-mcp` is a strict MCP stdio bridge over the same CLI, not a second source of truth.
+  Every tool argument schema rejects unknown properties and the server validates the allowlist
+  before dispatching to `hf`, so an agent typo must fail closed instead of silently running a
+  narrower action.
+- Current MCP coverage includes status/resume/claim/checkpoint/done/test/ship, prompt_hub intake
+  and dispatch, delivery get/list, policy/gatekeeper checks, drift/handoff, version, lease, schema,
+  session start/end/reap, and fleet status/sync/render. If a CLI verb is added or its flags change,
+  update `hf/src/bin/hf-mcp.rs`, docs, and tests in the same task.
+
 ## Knowledge base — the planning plane (`.kb`, ADR-0003 / ADR-0018 D7)
 
 handoff fully adopts the FlexNetOS agent guide (`../.kb/AGENTS.md`) with its OWN durable

@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0081",
   "title": "ADR-0019 D5 #4: continue the 12-crate decomposition (peel feature crates from hf)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P2",
   "objective": "ADR-0019 D5 #4 (PRD §7.2 target): the hf monolith is being decomposed into the planned handoff-* crate layout. `handoff-core` (leaf primitives) was peeled in #154 and edition-2024/resolver-3 landed in #153. Continue peeling cohesive feature modules out of `hf/src/*` into their own crates that depend on `handoff-core` (candidates: drift, hooks, contract/gatekeeper, fleet, intake) — behavior-preserving moves with `hf` re-exporting so existing `crate::` paths stay valid, each its own PR, each verified green. The work is incremental; one or more feature crates per increment.",
   "path_scope": [

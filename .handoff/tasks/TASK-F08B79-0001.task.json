@@ -1,0 +1,41 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-F08B79-0001",
+  "title": "[bundle] Fix remaining executable doc-sync contradictions in test/PRD",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix remaining executable doc-sync contradictions in test/PRD docs: docs still show non-live hf policy check --command, hf drift --path, and hf mcp serve examples even though current hf either rejects them or ignores the argument. Update those docs to current implemented policy/drift/MCP surfaces, and prove the stale examples no longer appear while live replacement help commands work.",
+  "path_scope": [
+    "docs/**",
+    "FLEET_GUIDE.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Docs no longer present hf policy check --command, hf drift --path, hf mcp serve, or hf checkpoint --note as live runnable examples.",
+    "Replacement docs point to current live surfaces: hf policy check-claim/check-edit/check-handoff or hf policy gate, hf drift without path flags, hf-mcp for MCP serving if applicable, and hf checkpoint ID \"note\".",
+    "Live replacement help commands exit 0 and stale command probes demonstrate the old examples were invalid or misleading.",
+    "Changes stay within docs and handoff evidence scope."
+  ],
+  "test_commands": [
+    "! rg -n 'hf (policy check --command|drift --path|mcp serve|checkpoint --note)' docs FLEET_GUIDE.md AGENTS.md CLAUDE.md .claude -g '*.md'",
+    "hf help policy >/tmp/hf-help-policy.out && rg -q \"check-claim\" /tmp/hf-help-policy.out && hf help drift >/tmp/hf-help-drift.out && rg -q \"usage: hf drift\" /tmp/hf-help-drift.out",
+    "hf policy check --command \"docker run\" >/tmp/hf-policy-stale.out 2>/tmp/hf-policy-stale.err; test $? -eq 2; rg -q \"unknown command|unknown\" /tmp/hf-policy-stale.err",
+    "hf mcp serve >/tmp/hf-mcp-stale.out 2>/tmp/hf-mcp-stale.err; test $? -eq 2; rg -q \"unknown command.*mcp\" /tmp/hf-mcp-stale.err",
+    "hf drift --path src/outside_scope.rs >/tmp/hf-drift-path.out 2>/tmp/hf-drift-path.err; ! rg -q \"src/outside_scope|out_of_scope_files\" /tmp/hf-drift-path.out /tmp/hf-drift-path.err",
+    "hf checkpoint --note x >/tmp/hf-checkpoint-note-stale.out 2>/tmp/hf-checkpoint-note-stale.err; test $? -ne 0; rg -q \"task x not found|usage|unknown\" /tmp/hf-checkpoint-note-stale.err",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-cf4551deddb6b5b8-1782586126211469487",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:72e9b66e7ad4f9de233ab375935a89f23b41394b72e4a46a2e80ab32b28a6e7a",
+    "path_scope_hash": "blake3:ff4960f126234a2a4872fd6cc7e392fba02a309915a8cfbd1f2e8f36e8d9842c",
+    "acceptance_hash": "blake3:510a4b05738d836debfff6c756d98ebf6552da617709a4114bc26d34459d08d5"
+  }
+}

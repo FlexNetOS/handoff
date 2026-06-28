@@ -22,15 +22,18 @@ members = [
 ]
 ```
 
-### 3. hf CLI Integration Point
-Add to `hf/src/main.rs`:
-- New subcommand: `hf index --intent-aware`
-- Logic: spawn rusty-idd subprocess, capture JSON output
+### 3. Proposed hf CLI Integration Point
+Future work could add an explicit intent-aware indexing mode to `hf index`. The current live `hf index` command has no flags; unsupported flags fail closed instead of silently running normal indexing.
 
-## Data Flow (CLI Mode)
+Proposed behavior for that future mode:
+- spawn rusty-idd as a subprocess
+- capture JSON output
+- merge implementation intent into `.handoff/context/capsule.json`
 
-```
-hf index --intent-aware
+## Data Flow (proposed future CLI mode)
+
+```text
+hf index with an explicit future intent-aware mode
     ↓ spawns rusty-idd as subprocess
 rusty-idd emits JSON intent map
     ↓ handoff captures JSON

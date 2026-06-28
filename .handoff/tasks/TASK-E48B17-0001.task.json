@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-E48B17-0001",
+  "title": "[bundle] Fix audit-found high-impact command fail-open gaps discovere",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found high-impact command fail-open gaps discovered during the full command walk: unsupported args are ignored by real command paths that can read/write or perform external actions, including `hf fleet status --unknown`, `hf fleet sync --unknown --dry-run`, `hf fleet render handoff --unknown` (writes packet), `hf sync --unknown --dry-run`, `hf export --unknown` (writes ledger.events), `hf dispatch CID --unknown`, `hf intake --unknown`, `hf task mint --unknown`, `hf review request PR --unknown`, `hf gatekeeper check PR --unknown`, and `hf policy gate ACTION --unknown`. Make these command groups reject unsupported flags and missing required flag values before side effects, preserving documented supported flags. Add CLI regressions for representative fleet/sync/export/intake/task/dispatch/review/gatekeeper/policy paths proving unknown flags exit nonzero and do not write files in an empty temp repo or dry-run fixture; keep help paths side-effect free.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf fleet status/sync/render, hf sync, hf export, hf dispatch, hf intake, hf task mint, hf review request/verdict, hf gatekeeper check, and hf policy gate reject unsupported flags before side effects or external actions.",
+    "Missing required values for value-bearing flags in those command groups fail closed before side effects.",
+    "Regression coverage proves representative unsupported high-impact args exit nonzero and avoid writes in temp repos or dry-run fixtures.",
+    "Documented supported flags for those command groups remain accepted and help paths stay side-effect free."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli high_impact_commands_reject_unknown_flags_before_work",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-e3ffef7c359afbe1-1782589602860932289",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:4f8fe1aa59ecccae6161a7e7d48c063a24e8597c64ddadfd92d2a1801c959c65",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:2b1b48ea31ed7a7cc8915526997b92075c1e4e4237412fecb571baf0bd233c60"
+  }
+}

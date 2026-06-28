@@ -71,6 +71,56 @@ pub(crate) use handoff_core::{
 /// (heartbeat) extends it; `hf release` or expiry frees it.
 const CLAIM_TTL_SECS: u64 = 3600;
 
+const HF_USAGE: &str = "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run] [--json]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix [--dry-run]]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>";
+const HF_HELP: &str = "usage: hf [--ledger PATH] <command> [args]\n\nCommon commands:\n  resume [--json|--compact]      Render the current handoff packet\n  status [--json]                Show task/loop status\n  claim ID|--next|--batch        Claim work with a witnessed lease\n  checkpoint ID [note]           Witness progress\n  test [ID]                      Run the task's test_commands\n  done ID [--pr N]               Mark verified work done\n  drift [--json]                 Check policy/contract drift\n  fleet status|sync|render       Audit/remediate fleet handoff deployment\n  prompt-hub \"<vibe>\"            Mint verifiable tasks from intent\n  task mint --from-kb SLUG       Mint a task from a git-kb document\n\nRun `hf help <command>` or `hf <command> --help` for focused usage.\n";
+const HF_FLEET_HELP: &str = "usage: hf fleet <status|sync|render> [args]\n\n  hf fleet status [--json] [--fix [--dry-run]]\n      Audit all meta members for handoff onboarding, ledger export, and residency guards.\n      --fix is an alias for `hf fleet sync`; --dry-run is valid only with --fix.\n\n  hf fleet sync [--dry-run] [--json]\n      Remediate detected fleet deployment drift and verify after-state flags.\n\n  hf fleet render MEMBER\n      Render one member packet from the FLEET ledger.\n";
+const HF_TASK_HELP: &str = "usage: hf task mint --from-kb SLUG\n\nMint a witnessed handoff.task.v1 card from a git-kb task/spec document. Task lifecycle commands are top-level: `hf claim`, `hf checkpoint`, `hf test`, `hf done`, `hf release`, and `hf reopen`.\n";
+const HF_PROMPT_HUB_HELP: &str = "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]\n\nMint one or more verifiable handoff.task.v1 cards from natural-language intent. Use --dispatch to immediately claim the next safe minted task.\n";
+const HF_RESUME_HELP: &str = "usage: hf resume [--json|--compact]\n\nRender the latest handoff packet so an agent can resume from ledger-backed project state.\n";
+const HF_STATUS_HELP: &str = "usage: hf status [--json]\n\nShow task/loop status, including next safe task and witnessed-event count.\n";
+const HF_CLAIM_HELP: &str = "usage: hf claim ID|--next|--batch\n\nClaim work with a witnessed lease. Use --next for the next safe task, or --batch for a safe batch.\n";
+const HF_CHECKPOINT_HELP: &str = "usage: hf checkpoint ID [note] [--auto] [--quiet] [--sync-cards]\n\nWitness progress for an active task before stopping or after material work.\n";
+const HF_TEST_HELP: &str =
+    "usage: hf test [ID]\n\nRun a task card's test_commands and witness the result.\n";
+const HF_DONE_HELP: &str = "usage: hf done ID [--pr N]\n\nMark verified work done after tests/evidence pass, optionally linking a pull request.\n";
+const HF_DRIFT_HELP: &str = "usage: hf drift [--json]\n\nCheck policy, scope, intent-lock, and evidence drift before handoff or completion.\n";
+const HF_RELEASE_HELP: &str = "usage: hf release ID\n\nRelease an active task claim and its lease without marking the task done.\n";
+const HF_REOPEN_HELP: &str = "usage: hf reopen ID \"reason\"\n\nReopen a completed or released task with a witnessed reason.\n";
+const HF_HANDOFF_HELP: &str = "usage: hf handoff\n\nRender .handoff/packets/latest.md from authoritative git, ledger, and task state.\n";
+const HF_SHIP_HELP: &str = "usage: hf ship ID [--base BR]\n\nOpen the shipping flow for a verified task against the selected base branch.\n";
+const HF_LEASE_HELP: &str = "usage: hf lease [--json]\n\nInspect currently held coordination leases; terminal task leases are filtered from active holders.\n";
+const HF_VERSION_HELP: &str = "usage: hf version [--json]\n\nPrint the hf package version plus embedded build commit/date metadata.\n";
+const HF_POLICY_HELP: &str = "usage: hf policy <gate ACTION [--task ID]|check-claim|check-edit|check-handoff [--json]>\n\nRun continuity policy gates for claim, edit, and handoff preconditions.\n";
+const HF_INIT_HELP: &str =
+    "usage: hf init\n\nInitialize .handoff continuity state for the current repository.\n";
+const HF_SEED_HELP: &str =
+    "usage: hf seed\n\nSeed the repository with the built-in kernel task cards.\n";
+const HF_INDEX_HELP: &str = "usage: hf index\n\nGenerate repository, test, owner, and dependency navigation maps under .handoff/maps/.\n";
+const HF_PLAN_HELP: &str =
+    "usage: hf plan [--json]\n\nRender the task DAG/order from the current card set.\n";
+const HF_SESSION_HELP: &str = "usage: hf session <start|end|reap> [--recycle] [--reap] [--force] [--base BRANCH]\n\nManage continuity sessions and stale worktree reaping.\n";
+const HF_DOCTOR_HELP: &str = "usage: hf doctor [--json]\n\nAudit the local continuity ledger, cards, and witness chain health.\n";
+const HF_GITIGNORE_HELP: &str = "usage: hf gitignore [--check|--repair|--write]\n\nCheck or update .gitignore guards for local ledger/cache residency.\n";
+const HF_RECONCILE_HELP: &str =
+    "usage: hf reconcile\n\nSync task cards to ledger truth and re-render the handoff packet.\n";
+const HF_EXPORT_HELP: &str =
+    "usage: hf export\n\nExport the local ledger database to .handoff/ledger.events.jsonl.\n";
+const HF_IMPORT_HELP: &str = "usage: hf import\n\nImport .handoff/ledger.events.jsonl into the local ledger database cache.\n";
+const HF_MIGRATE_HELP: &str = "usage: hf migrate [PATH]\n\nMigrate a legacy SQLite ledger into the current local ledger format.\n";
+const HF_SYNC_CARDS_HELP: &str =
+    "usage: hf sync-cards\n\nSync task card status from authoritative ledger truth.\n";
+const HF_SYNC_HELP: &str = "usage: hf sync [--auto] [--dry-run] [--json]\n\nCompare or update task cards from ledger truth.\n";
+const HF_INTAKE_HELP: &str = "usage: hf intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]\n\nCreate task cards from an intake bundle and optional natural-language intent.\n";
+const HF_DISPATCH_HELP: &str = "usage: hf dispatch WORKFLOW_ID [--next]\n\nDispatch the next safe order for an intake/prompt-hub workflow.\n";
+const HF_DELIVERY_HELP: &str = "usage: hf delivery <get CORRELATION_ID [--json]|list [--json]>\n\nInspect delivery records by correlation ID or list recent deliveries.\n";
+const HF_PROMOTE_HELP: &str =
+    "usage: hf promote\n\nRun the local promotion gate for verified work.\n";
+const HF_REVIEW_HELP: &str = "usage: hf review <request ID PR|verdict ID PR approve|deny [--by WHO]>\n\nRequest or record a witnessed review verdict for a task/PR.\n";
+const HF_GATEKEEPER_HELP: &str = "usage: hf gatekeeper check PR [--task ID]\n\nRun the AI gatekeeper check for a pull request, optionally scoped to a task.\n";
+const HF_HOOK_HELP: &str = "usage: hf hook <list|run EVENT [--payload JSON] [--json]>\n\nList or run configured continuity hooks.\n";
+const HF_SCHEMA_HELP: &str =
+    "usage: hf schema [--check|--write]\n\nCheck or regenerate committed JSON schemas.\n";
+
 fn packet_path() -> PathBuf {
     Path::new(HF).join("packets").join("latest.md")
 }
@@ -958,6 +1008,10 @@ fn should_reopen(status: Option<Status>) -> bool {
     matches!(status, Some(Status::Done) | Some(Status::Review))
 }
 
+fn terminal_task_status(status: Option<Status>) -> bool {
+    matches!(status, Some(Status::Done) | Some(Status::Review))
+}
+
 /// Release the claim on a task: free the weave lease AND **un-claim** it — revert an
 /// in-progress task's ledger status back to `Backlog` (HFTASK-0038). A lease-only release
 /// left the task stuck `Claimed`, so the claim was never truly relinquished and
@@ -1091,6 +1145,11 @@ fn cmd_reopen(id: &str, reason: &str) {
 /// holder), resolved live over the witnessed history with TTL/release applied. Read-only.
 fn cmd_lease(json: bool) {
     let ledger = ledger_path();
+    let terminal_claims: std::collections::HashSet<String> = current_statuses()
+        .into_iter()
+        .filter(|(_, s)| terminal_task_status(Some(*s)))
+        .map(|(id, _)| lease::claim_resource(&id))
+        .collect();
     let Ok(led) = Ledger::open(&ledger) else {
         eprintln!("hf lease: ledger unavailable at {ledger}");
         std::process::exit(1);
@@ -1108,6 +1167,7 @@ fn cmd_lease(json: bool) {
     }
     let held: Vec<(String, String)> = resources
         .into_iter()
+        .filter(|r| !terminal_claims.contains(r))
         .filter_map(|r| led.lease_holder(&r, now).ok().flatten().map(|h| (r, h)))
         .collect();
     if json {
@@ -1221,6 +1281,15 @@ fn cmd_done(id: &str, pr: Option<&str>) {
         led.record_transition(&wo, Status::Done, now_ns()),
         "done transition",
     );
+    // A Done task must not leave a live claim lease behind. Otherwise `hf lease --json`
+    // advertises false active holders/conflicts after verified completion, and a reopened
+    // task can be blocked by its own stale completion-era lease until TTL expiry.
+    let resource = lease::claim_resource(id);
+    let holder = lease::local_holder();
+    match led.release_lease(&resource, &holder, now_ns()) {
+        Ok(_) => lease::remove_lockfile(&resource),
+        Err(e) => eprintln!("hf done: WARNING — failed to release in-ledger lease {resource}: {e}"),
+    }
     // HFTASK-0052 gap-hunt: auto-detect the merged PR from a prior `pr_opened` event if the
     // user did not pass `--pr N`. This gives every merged task a `pr_merged` ledger marker.
     let resolved_pr = pr.map(String::from).or_else(|| latest_pr_opened(&led, id));
@@ -1629,6 +1698,153 @@ fn repo_toplevel() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn shell_words_simple(cmd: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in cmd.chars() {
+        if escaped {
+            cur.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        match quote {
+            Some(q) if ch == q => quote = None,
+            Some(_) => cur.push(ch),
+            None if ch == '\'' || ch == '"' => quote = Some(ch),
+            None if ch.is_whitespace() => {
+                if !cur.is_empty() {
+                    words.push(std::mem::take(&mut cur));
+                }
+            }
+            None => cur.push(ch),
+        }
+    }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    words
+}
+
+fn shell_quote_word(word: &str) -> String {
+    if word
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '='))
+    {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
+}
+
+fn shell_join_words(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|w| shell_quote_word(w))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn cargo_zero_test_diagnostic(cmd: &str) -> Option<String> {
+    let words = shell_words_simple(cmd);
+    if words.first().map(String::as_str) != Some("cargo")
+        || words.get(1).map(String::as_str) != Some("test")
+    {
+        return None;
+    }
+    let dashdash = words.iter().position(|w| w == "--");
+    let cargo_args_end = dashdash.unwrap_or(words.len());
+    let cargo_args = &words[..cargo_args_end];
+    let mut list_words = cargo_args.to_vec();
+    list_words.push("--".to_string());
+    list_words.push("--list".to_string());
+
+    let mut all_tests_words = Vec::new();
+    let mut package = None;
+    let mut features = Vec::new();
+    let mut filters = Vec::new();
+    let mut i = 2usize;
+    while i < cargo_args.len() {
+        let w = &cargo_args[i];
+        match w.as_str() {
+            "-p" | "--package" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    package = Some(v.clone());
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            "--features" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    features.push(format!("--features {v}"));
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            "--all-features" | "--no-default-features" => {
+                features.push(w.clone());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            "--bin" | "--test" | "--example" | "--manifest-path" => {
+                if let Some(v) = cargo_args.get(i + 1) {
+                    all_tests_words.extend([w.clone(), v.clone()]);
+                    i += 2;
+                    continue;
+                }
+            }
+            _ if w.starts_with("--features=") => {
+                features.push(w.clone());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ if w.starts_with("--package=") => {
+                package = Some(w.trim_start_matches("--package=").to_string());
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ if w.starts_with('-') => {
+                all_tests_words.push(w.clone());
+                i += 1;
+                continue;
+            }
+            _ => filters.push(w.clone()),
+        }
+        i += 1;
+    }
+    let mut list_all = vec!["cargo".to_string(), "test".to_string()];
+    list_all.extend(all_tests_words);
+    list_all.push("--".to_string());
+    list_all.push("--list".to_string());
+
+    let pkg = package.unwrap_or_else(|| "(workspace/default package)".to_string());
+    let filter = if filters.is_empty() {
+        "(none)".to_string()
+    } else {
+        filters.join(" ")
+    };
+    let feature_hint = if features.is_empty() {
+        "no feature flags were present; if the expected tests are feature-gated, add the required `--features <feature>` (or `--all-features`) and rerun the list command".to_string()
+    } else {
+        format!("preserved feature flags: {}", features.join(", "))
+    };
+    Some(format!(
+        "hf test: cargo zero-test diagnostic:\n  package: {pkg}\n  filter: {filter}\n  list matching tests: {}\n  list all tests for the same target/features: {}\n  hint: {feature_hint}",
+        shell_join_words(&list_words),
+        shell_join_words(&list_all)
+    ))
+}
+
 /// `hf test [ID]` — PRD §4.7 evidence-backed completion. Execute the work order's
 /// `test_commands` and witness the outcome as a `test_result` ledger event so `hf done`
 /// can gate on green tests. With no id, targets the next safe task. Exits nonzero when any
@@ -1710,6 +1926,9 @@ fn cmd_test(id: Option<&str>) {
                 "hf test: '{cmd}' exited 0 but executed 0 tests — completion evidence requires \
                  >0 (failing closed; tighten the filter so it matches real tests)"
             );
+            if let Some(diag) = cargo_zero_test_diagnostic(cmd) {
+                eprintln!("{diag}");
+            }
         } else if ran.is_none() && code == 0 {
             eprintln!(
                 "hf test: note — '{cmd}' produced no libtest summary; gated on exit code only \
@@ -2130,6 +2349,14 @@ fn cmd_status(json: bool) {
     }
 }
 
+/// Agent-navigation command for the next safe action. The exhausted-backlog case must still be
+/// a valid shell command: bare `done` is a shell reserved word that errors outside a loop and
+/// conflicts with the top-level `hf done ID` lifecycle verb.
+fn next_command_for(next: Option<&WorkOrder>) -> String {
+    next.map(|t| format!("hf claim {}", t.id))
+        .unwrap_or_else(|| "hf handoff".into())
+}
+
 /// HFTASK-0020: the loop's machine read-model (`handoff.loop_status.v1`) — the witnessed
 /// ledger event stream rendered as JSON for Mission Control / the MCP seam / RuVocal.
 fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
@@ -2159,7 +2386,7 @@ fn emit_status_json(tasks: &[WorkOrder], replay: &[(String, Status)]) {
             "title": t.title,
         })).collect::<Vec<_>>(),
         "next_task_id": next.map(|t| t.id.clone()),
-        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "next_command": next_command_for(next),
         "session": {
             "open": sess.open_branch.is_some(),
             "branch": sess.open_branch,
@@ -2199,7 +2426,7 @@ fn summary_json(
         "remaining": remaining,
         "next_task_id": next.map(|t| &t.id),
         "witnessed_events_verified": witness,
-        "next_command": next.map(|t| format!("hf claim {}", t.id)).unwrap_or_else(|| "done".into()),
+        "next_command": next_command_for(next),
     })
 }
 
@@ -3124,6 +3351,20 @@ fn cmd_seed() {
             "Surfaced by the climbing-the-ladder /verify drive: `cargo test -p hf --bin hf` aborted abnormally ~50% of runs under default parallelism (serial + --no-capture always passed) — undermining the COUNT-verified `hf test` gate that is the kernel's core integrity mechanism. Root-caused via marker-file backtrace instrumentation to `hf::tests::claim_returns_false_when_blocked_true_when_acquired → cmd_claim_with → open_ledger_or_exit → process::exit(1)`, with captured error `Database(DatabaseAlreadyOpen)` on `./.handoff/ledger.db`. Mechanism: redb refuses a second SAME-PROCESS open of one file; under the libtest harness's shared process cwd, a test that chdir's into its temp `.handoff` (holding cwd_lock) and a concurrent test that opens the cwd-relative default `ledger_path()` both resolve to the SAME file → two live handles → `DatabaseAlreadyOpen` → `open_ledger_or_exit` aborts the WHOLE binary (killing sibling tests; exit 1; no `test result: FAILED`). Pre-existing (reproduced with `hf/build.rs` removed: 6/12), exposed by the 16-crate decomposition spreading ledger-opening tests. Fix at the chokepoint: `ledger::v1::Ledger::open` now wraps `Database::create` in the EXISTING `with_busy_retry` (HFTASK-0059/0060), which already treats `DatabaseAlreadyOpen` as transient (`is_busy`) and is documented safe to retry — previously only WRITES retried, the OPEN failed closed. Bounded (100×≤10ms) so a genuinely stuck handle still surfaces an error. Production-safe (helps concurrent hf processes too). Verified: 0/25 parallel runs fail (was ~50%); ledger 34 tests green; clippy/fmt green.",
             &["HFTASK-0083"],
         ),
+        mk(
+            "HFTASK-0095",
+            "Automation rung 0 fix: build.rs re-stamps HF_BUILD_COMMIT on every commit (kill the SessionStart staleness false-positive)",
+            Priority::P2,
+            "The HFTASK-0085 build stamp lags HEAD because `hf/build.rs` only emits `cargo:rerun-if-changed=.git/HEAD`, but a normal `git commit` moves the branch ref (`.git/refs/heads/<branch>`) — NOT `.git/HEAD` — so cargo never re-runs build.rs after a commit, `HF_BUILD_COMMIT` keeps the prior short-sha, and the SessionStart staleness check (`.handoff/hooks/loop-entry.sh` + `scripts/handoff-loop-init.sh` Phase 0) compares the stale stamp against fresh `git rev-parse --short HEAD` and loudly (FALSE-positive) warns 'hf binary BEHIND kernel HEAD' on a source-clean tree — eroding trust in the very staleness signal rung 0 exists to provide. It also never fires in a git WORKTREE, where `.git` is a FILE gitlink (`gitdir: <path>`), not a directory. Fix `build.rs` to resolve the real gitdir worktree-aware, parse `HEAD`'s `ref: <path>` and emit `rerun-if-changed` for that ref file, plus `.git/logs/HEAD` as a robust catch-all (it changes on every commit/checkout/reset). Fail-soft at every step (a .git-less release tarball still builds and stamps 'unknown'; no unwrap/expect/panic — workspace deny lints). Verify by differential drive: record the stamp, commit, rebuild, assert `hf version --json`.commit == `git rev-parse --short HEAD`.",
+            &["HFTASK-0085"],
+        ),
+        mk(
+            "HFTASK-0096",
+            "Install hygiene: reconcile stale shadow `hf` copies on PATH to a symlink into the meta build (ADR-0006)",
+            Priority::P2,
+            "After `cargo install --path hf` (handoff-loop-init.sh Phase 0 rebuild) the canonical binary lands in `~/.cargo/bin/hf`, but a real COPY of `hf` earlier on PATH (e.g. `~/.local/bin/hf`) shadows it — so `hf` keeps serving the OLD binary and freshly-added verbs report 'unknown command' until someone manually re-copies. This is the recurring 'cp after every cargo install' gotcha and it silently defeats rung-0 staleness automation (the rebuild SUCCEEDS but the running `hf` is still stale). Add a post-install PATH-reconciliation step: a `reconcile_hf_path()` helper in `scripts/handoff-lib.sh`, called from `scripts/handoff-loop-init.sh` right after the build/install, that resolves the canonical freshly-built binary and converges every shadowing `hf` that resolves before it on PATH — per ADR-0006 doctrine, replacing each writable shadow COPY with a SYMLINK into the meta build (never a churning copy). Idempotent, `--dry-run`-aware, fail-soft + loud (warn, never abort the run) when a path isn't writable or a shadow is a foreign/non-hf binary. Verify: `bash -n` both scripts; a functional drive that seeds a stale copy on a synthetic PATH and asserts the helper turns it into a symlink to the canonical binary; idempotent re-run is a no-op.",
+            &["HFTASK-0085"],
+        ),
     ];
     // HFTASK-0026 carries a precise path_scope (["handoff/**"]) and a routing-specific
     // acceptance criterion, so it is built directly rather than via `mk` (whose fixed
@@ -3441,6 +3682,20 @@ fn cmd_seed() {
                 "git check-ignore .kb/.cache/gitkb.db",
                 "./target/debug/hf 2>&1 | grep -q 'task mint'",
             ],
+            // HFTASK-0095: the build.rs ref-watch fix. The version surface (count-positive) proves
+            // the stamp plumbing is intact; the ref-watch correctness itself is proven by the
+            // differential drive at verify time (commit → rebuild → stamp == git HEAD), since
+            // build.rs's cargo:rerun-if-changed directives are not unit-testable from the crate.
+            "HFTASK-0095" => &["cargo test -p hf version"],
+            // HFTASK-0096: PATH reconcile — syntax-check both scripts AND run the self-contained
+            // functional drive (stale-copy→symlink + idempotent + dry-run + canonical-first). The
+            // drive emits a libtest summary so `hf test` COUNT-verifies it (tests-ran>0), instead
+            // of resting on a bash -n exit-0 (the U3 fail-open gap a syntax check alone leaves).
+            "HFTASK-0096" => &[
+                "bash -n scripts/handoff-loop-init.sh",
+                "bash -n scripts/handoff-lib.sh",
+                "bash scripts/test-reconcile-hf-path.sh",
+            ],
             _ => continue,
         };
         wo.test_commands = tight.iter().map(|s| s.to_string()).collect();
@@ -3511,23 +3766,541 @@ fn cmd_version(json: bool) {
     }
 }
 
+fn focused_help(topic: &str) -> Option<&'static str> {
+    match topic {
+        "init" => Some(HF_INIT_HELP),
+        "seed" => Some(HF_SEED_HELP),
+        "resume" => Some(HF_RESUME_HELP),
+        "status" => Some(HF_STATUS_HELP),
+        "index" => Some(HF_INDEX_HELP),
+        "plan" => Some(HF_PLAN_HELP),
+        "session" => Some(HF_SESSION_HELP),
+        "claim" => Some(HF_CLAIM_HELP),
+        "doctor" => Some(HF_DOCTOR_HELP),
+        "gitignore" => Some(HF_GITIGNORE_HELP),
+        "reconcile" => Some(HF_RECONCILE_HELP),
+        "export" => Some(HF_EXPORT_HELP),
+        "import" => Some(HF_IMPORT_HELP),
+        "migrate" => Some(HF_MIGRATE_HELP),
+        "sync-cards" => Some(HF_SYNC_CARDS_HELP),
+        "sync" => Some(HF_SYNC_HELP),
+        "checkpoint" => Some(HF_CHECKPOINT_HELP),
+        "test" => Some(HF_TEST_HELP),
+        "done" => Some(HF_DONE_HELP),
+        "drift" => Some(HF_DRIFT_HELP),
+        "fleet" => Some(HF_FLEET_HELP),
+        "prompt-hub" => Some(HF_PROMPT_HUB_HELP),
+        "task" => Some(HF_TASK_HELP),
+        "intake" => Some(HF_INTAKE_HELP),
+        "dispatch" => Some(HF_DISPATCH_HELP),
+        "delivery" => Some(HF_DELIVERY_HELP),
+        "release" => Some(HF_RELEASE_HELP),
+        "reopen" => Some(HF_REOPEN_HELP),
+        "handoff" => Some(HF_HANDOFF_HELP),
+        "ship" => Some(HF_SHIP_HELP),
+        "promote" => Some(HF_PROMOTE_HELP),
+        "review" => Some(HF_REVIEW_HELP),
+        "gatekeeper" => Some(HF_GATEKEEPER_HELP),
+        "hook" => Some(HF_HOOK_HELP),
+        "lease" => Some(HF_LEASE_HELP),
+        "version" => Some(HF_VERSION_HELP),
+        "policy" => Some(HF_POLICY_HELP),
+        "schema" => Some(HF_SCHEMA_HELP),
+        _ => None,
+    }
+}
+
+fn print_help(args: &[String]) -> bool {
+    let focused = args.iter().any(|a| a == "--help" || a == "-h");
+    match args.first().map(|s| s.as_str()) {
+        Some("--help") | Some("-h") => {
+            println!("{HF_HELP}");
+            true
+        }
+        Some("help") if args.len() == 2 => {
+            if let Some(help) = focused_help(&args[1]) {
+                println!("{help}");
+                true
+            } else {
+                eprintln!("hf: unknown help topic '{}'", args[1]);
+                eprintln!("{HF_USAGE}");
+                std::process::exit(2);
+            }
+        }
+        Some(cmd) if focused => {
+            if let Some(help) = focused_help(cmd) {
+                println!("{help}");
+                true
+            } else {
+                false
+            }
+        }
+        Some("help") if args.len() == 1 => {
+            println!("{HF_HELP}");
+            true
+        }
+        _ => false,
+    }
+}
+
+fn reject_unsupported_args(command: &str, args: &[String], allowed: &[&str]) {
+    for arg in args.iter().skip(1) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn reject_unsupported_args_with_positionals(
+    command: &str,
+    args: &[String],
+    allowed: &[&str],
+    max_positionals: usize,
+) {
+    let mut positionals = 0usize;
+    for arg in args.iter().skip(1) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        if !arg.starts_with('-') && positionals < max_positionals {
+            positionals += 1;
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            if max_positionals == 0 {
+                "no flags".to_string()
+            } else {
+                format!("up to {max_positionals} positional argument(s)")
+            }
+        } else if max_positionals == 0 {
+            allowed.join(", ")
+        } else {
+            format!(
+                "{} plus up to {max_positionals} positional argument(s)",
+                allowed.join(", ")
+            )
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn reject_unsupported_flags(command: &str, args: &[String], allowed: &[&str]) {
+    for arg in args.iter().skip(1).filter(|arg| arg.starts_with('-')) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown flag '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn reject_unsupported_args_after(command: &str, args: &[String], start: usize, allowed: &[&str]) {
+    for arg in args.iter().skip(start) {
+        if allowed.contains(&arg.as_str()) {
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let supported = if allowed.is_empty() {
+            "no flags".to_string()
+        } else {
+            allowed.join(", ")
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn validate_hook_args(args: &[String]) {
+    match args.get(1).map(|s| s.as_str()) {
+        Some("list") => reject_unsupported_args_after("hook list", args, 2, &["--json"]),
+        Some("run") => {
+            if args.get(2).is_none_or(|event| event.starts_with('-')) {
+                eprintln!("hf hook run: event is required");
+                std::process::exit(2);
+            }
+            let mut i = 3usize;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--json" => i += 1,
+                    "--payload" => match args.get(i + 1) {
+                        Some(value) if !value.starts_with('-') => i += 2,
+                        _ => {
+                            eprintln!("hf hook run: option '--payload' requires a value");
+                            std::process::exit(2);
+                        }
+                    },
+                    other => {
+                        let kind = if other.starts_with('-') {
+                            "flag"
+                        } else {
+                            "argument"
+                        };
+                        eprintln!(
+                            "hf hook run: unknown {kind} '{other}' (supported: --payload VALUE, --json)"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_delivery_args(args: &[String]) {
+    match args.get(1).map(|s| s.as_str()) {
+        Some("list") => reject_unsupported_args_after("delivery list", args, 2, &["--json"]),
+        Some("get") => {
+            if args.get(2).is_none_or(|cid| cid.starts_with('-')) {
+                eprintln!("hf delivery get: correlation_id is required");
+                std::process::exit(2);
+            }
+            reject_unsupported_args_after("delivery get", args, 3, &["--json"]);
+        }
+        _ => {}
+    }
+}
+
+fn validate_policy_check_args(args: &[String]) {
+    let command = args
+        .get(1)
+        .map(|sub| format!("policy {sub}"))
+        .unwrap_or_else(|| "policy check".to_string());
+    reject_unsupported_args_after(&command, args, 2, &["--json"]);
+}
+
+fn reject_unknown_arg(command: &str, arg: &str, supported: &str) -> ! {
+    let kind = if arg.starts_with('-') {
+        "flag"
+    } else {
+        "argument"
+    };
+    eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+    std::process::exit(2);
+}
+
+fn validate_flags_and_positionals(
+    command: &str,
+    args: &[String],
+    start: usize,
+    allowed_flags: &[&str],
+    value_flags: &[&str],
+    max_positionals: usize,
+) {
+    let mut positionals = 0usize;
+    let mut i = start;
+    while i < args.len() {
+        let arg = &args[i];
+        if value_flags.contains(&arg.as_str()) {
+            match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    i += 2;
+                    continue;
+                }
+                _ => {
+                    eprintln!("hf {command}: option '{arg}' requires a value");
+                    std::process::exit(2);
+                }
+            }
+        }
+        if allowed_flags.contains(&arg.as_str()) {
+            i += 1;
+            continue;
+        }
+        if !arg.starts_with('-') && positionals < max_positionals {
+            positionals += 1;
+            i += 1;
+            continue;
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        let mut supported = Vec::new();
+        supported.extend_from_slice(allowed_flags);
+        supported.extend_from_slice(value_flags);
+        let supported = if supported.is_empty() {
+            if max_positionals == 0 {
+                "no flags".to_string()
+            } else {
+                format!("up to {max_positionals} positional argument(s)")
+            }
+        } else if max_positionals == 0 {
+            supported.join(", ")
+        } else {
+            format!(
+                "{} plus up to {max_positionals} positional argument(s)",
+                supported.join(", ")
+            )
+        };
+        eprintln!("hf {command}: unknown {kind} '{arg}' (supported: {supported})");
+        std::process::exit(2);
+    }
+}
+
+fn validate_claim_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("--next" | "--batch") if args.len() == 2 => {}
+        Some(id) if !id.starts_with('-') && args.len() == 2 => {}
+        Some("--next" | "--batch") => {
+            let extra = args.get(2).map(String::as_str).unwrap_or("");
+            reject_unknown_arg("claim", extra, "ID | --next | --batch");
+        }
+        Some(other) => reject_unknown_arg("claim", other, "ID | --next | --batch"),
+        None => {}
+    }
+}
+
+fn validate_intake_args(args: &[String]) {
+    validate_flags_and_positionals(
+        "intake",
+        args,
+        1,
+        &[],
+        &["--bundle", "--vibe", "--intent", "--scope"],
+        0,
+    );
+}
+
+fn validate_session_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("start") => {
+            validate_flags_and_positionals("session start", args, 2, &[], &["--base"], 0)
+        }
+        Some("end") => validate_flags_and_positionals(
+            "session end",
+            args,
+            2,
+            &["--recycle", "--reap"],
+            &["--base"],
+            0,
+        ),
+        Some("reap") => {
+            validate_flags_and_positionals("session reap", args, 2, &["--force", "--reap"], &[], 0);
+        }
+        Some(other) => reject_unknown_arg("session", other, "start | end | reap"),
+        None => {}
+    }
+}
+
+fn validate_schema_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("--check" | "--write") if args.len() == 2 => {}
+        Some("--check" | "--write") => {
+            let extra = args.get(2).map(String::as_str).unwrap_or("");
+            reject_unknown_arg("schema", extra, "--check | --write");
+        }
+        Some(other) => reject_unknown_arg("schema", other, "--check | --write"),
+        None => {}
+    }
+}
+
+fn validate_review_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("request") => {
+            validate_flags_and_positionals("review request", args, 2, &[], &["--task"], 1);
+        }
+        Some("verdict") => {
+            validate_flags_and_positionals("review verdict", args, 2, &[], &["--by"], 3);
+        }
+        _ => {}
+    }
+}
+
+fn validate_gatekeeper_args(args: &[String]) {
+    if args.get(1).map(String::as_str) == Some("check") {
+        validate_flags_and_positionals("gatekeeper check", args, 2, &[], &["--task"], 1);
+    }
+}
+
+#[cfg(feature = "cognitum")]
+fn validate_policy_gate_args(args: &[String]) {
+    validate_flags_and_positionals("policy gate", args, 2, &[], &["--task"], 1);
+}
+
+fn validate_fleet_args(args: &[String]) {
+    match args.get(1).map(String::as_str) {
+        Some("status") => {
+            validate_flags_and_positionals(
+                "fleet status",
+                args,
+                2,
+                &["--fix", "--json", "--dry-run"],
+                &[],
+                0,
+            );
+            if args.iter().any(|a| a == "--dry-run") && !args.iter().any(|a| a == "--fix") {
+                eprintln!(
+                    "hf fleet status: --dry-run is only valid with --fix; use `hf fleet sync --dry-run` for remediation dry-runs"
+                );
+                std::process::exit(2);
+            }
+        }
+        Some("sync") => {
+            validate_flags_and_positionals("fleet sync", args, 2, &["--json", "--dry-run"], &[], 0);
+        }
+        Some("render") => validate_flags_and_positionals("fleet render", args, 2, &[], &[], 1),
+        _ => {}
+    }
+}
+
+fn validate_init_args(args: &[String]) {
+    let flags_with_values = ["--name", "--northstar", "--role", "--plane"];
+    let mut i = 1usize;
+    while i < args.len() {
+        let arg = &args[i];
+        if flags_with_values.contains(&arg.as_str()) {
+            match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    i += 2;
+                    continue;
+                }
+                _ => {
+                    eprintln!("hf init: option '{arg}' requires a value");
+                    std::process::exit(2);
+                }
+            }
+        }
+        let kind = if arg.starts_with('-') {
+            "flag"
+        } else {
+            "argument"
+        };
+        eprintln!(
+            "hf init: unknown {kind} '{arg}' (supported: --name VALUE, --northstar VALUE, --role VALUE, --plane VALUE)"
+        );
+        std::process::exit(2);
+    }
+}
+
+fn parse_prompt_hub_args(args: &[String]) -> (String, Option<Vec<String>>, bool, bool) {
+    let mut vibe: Option<String> = None;
+    let mut scope: Option<Vec<String>> = None;
+    let mut dispatch = false;
+    let mut json = false;
+    let mut i = 1usize;
+    while i < args.len() {
+        let arg = &args[i];
+        match arg.as_str() {
+            "--scope" => match args.get(i + 1) {
+                Some(value) if !value.starts_with('-') => {
+                    scope = Some(
+                        value
+                            .split(',')
+                            .map(|g| g.trim().to_string())
+                            .filter(|g| !g.is_empty())
+                            .collect(),
+                    );
+                    i += 2;
+                }
+                _ => {
+                    eprintln!("hf prompt-hub: option '--scope' requires a value");
+                    std::process::exit(2);
+                }
+            },
+            "--dispatch" => {
+                dispatch = true;
+                i += 1;
+            }
+            "--json" => {
+                json = true;
+                i += 1;
+            }
+            _ if arg.starts_with('-') => {
+                eprintln!(
+                    "hf prompt-hub: unknown flag '{arg}' (supported: --scope VALUE, --dispatch, --json)"
+                );
+                std::process::exit(2);
+            }
+            _ if vibe.is_none() => {
+                vibe = Some(arg.clone());
+                i += 1;
+            }
+            _ => {
+                eprintln!("hf prompt-hub: unknown argument '{arg}' (supported: one vibe argument)");
+                std::process::exit(2);
+            }
+        }
+    }
+    let Some(vibe) = vibe else {
+        eprintln!("usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]");
+        std::process::exit(2);
+    };
+    (vibe, scope, dispatch, json)
+}
+
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     apply_ledger_flag(&mut args);
+    if print_help(&args) {
+        return;
+    }
     match args.first().map(|s| s.as_str()) {
         // HFTASK-0085 (automation rung 0): build-version stamp so any consumer can detect a
         // binary that is BEHIND the kernel source. `--json` form is machine-readable for the
         // loop-init Phase 0 / SessionStart staleness check.
         Some("--version") | Some("-V") | Some("version") => {
+            reject_unsupported_args(
+                args.first().map(String::as_str).unwrap_or("version"),
+                &args,
+                &["--json"],
+            );
             cmd_version(args.iter().any(|a| a == "--json"))
         }
-        Some("init") => cmd_init(&args),
-        Some("seed") => cmd_seed(),
-        Some("status") => cmd_status(args.iter().any(|a| a == "--json")),
+        Some("init") => {
+            validate_init_args(&args);
+            cmd_init(&args)
+        }
+        Some("seed") => {
+            reject_unsupported_args("seed", &args, &[]);
+            cmd_seed()
+        }
+        Some("status") => {
+            reject_unsupported_args("status", &args, &["--json"]);
+            cmd_status(args.iter().any(|a| a == "--json"))
+        }
         // PRD §8/§9: generate navigation maps + the task DAG (HFTASK-0050, now actually built).
-        Some("index") => index::cmd_index(),
-        Some("plan") => index::cmd_plan(args.iter().any(|a| a == "--json")),
+        // Fail closed on unsupported flags: `hf index --intent-aware` was historically documented
+        // as a future idea, but silently running the normal index makes agents believe that
+        // intent-aware indexing happened. Help paths are handled before this match.
+        Some("index") => {
+            reject_unsupported_args("index", &args, &[]);
+            index::cmd_index()
+        }
+        Some("plan") => {
+            reject_unsupported_args("plan", &args, &["--json"]);
+            index::cmd_plan(args.iter().any(|a| a == "--json"))
+        }
         Some("claim") => {
+            validate_claim_args(&args);
             if args.get(1).map(|s| s.as_str()) == Some("--batch") {
                 cmd_claim_batch();
             } else if args.iter().any(|a| a == "--next") {
@@ -3536,16 +4309,29 @@ fn main() {
                 cmd_claim(args.get(1).map(|s| s.as_str()).unwrap_or(""));
             }
         }
-        Some("doctor") => cmd_doctor(args.iter().any(|a| a == "--json")),
+        Some("doctor") => {
+            reject_unsupported_args("doctor", &args, &["--json"]);
+            cmd_doctor(args.iter().any(|a| a == "--json"))
+        }
         Some("gitignore") => cmd_gitignore(
             args.iter()
                 .find(|a| a.starts_with("--"))
                 .map(|s| s.as_str()),
         ),
-        Some("reconcile") => cmd_reconcile(),
-        Some("export") => cmd_export(),
-        Some("import") => cmd_import(),
+        Some("reconcile") => {
+            reject_unsupported_args("reconcile", &args, &[]);
+            cmd_reconcile()
+        }
+        Some("export") => {
+            reject_unsupported_args("export", &args, &[]);
+            cmd_export()
+        }
+        Some("import") => {
+            reject_unsupported_args("import", &args, &[]);
+            cmd_import()
+        }
         Some("migrate") => {
+            validate_flags_and_positionals("migrate", &args, 1, &[], &[], 1);
             let path = args
                 .get(1)
                 .filter(|a| !a.starts_with("--"))
@@ -3553,8 +4339,12 @@ fn main() {
                 .unwrap_or_else(ledger_path);
             cmd_migrate(&path);
         }
-        Some("release") => cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or("")),
+        Some("release") => {
+            reject_unsupported_args_with_positionals("release", &args, &[], 1);
+            cmd_release(args.get(1).map(|s| s.as_str()).unwrap_or(""))
+        }
         Some("reopen") => {
+            reject_unsupported_flags("reopen", &args, &[]);
             let positional: Vec<&str> = args[1..]
                 .iter()
                 .map(|s| s.as_str())
@@ -3564,8 +4354,12 @@ fn main() {
             let reason = positional.get(1..).map(|r| r.join(" ")).unwrap_or_default();
             cmd_reopen(id, &reason);
         }
-        Some("lease") => cmd_lease(args.iter().any(|a| a == "--json")),
+        Some("lease") => {
+            reject_unsupported_args("lease", &args, &["--json"]);
+            cmd_lease(args.iter().any(|a| a == "--json"))
+        }
         Some("checkpoint") => {
+            reject_unsupported_flags("checkpoint", &args, &["--auto", "--quiet", "--sync-cards"]);
             let auto = args.iter().any(|a| a == "--auto");
             let quiet = args.iter().any(|a| a == "--quiet");
             let positional: Vec<&str> = args[1..]
@@ -3584,6 +4378,7 @@ fn main() {
             }
         }
         Some("sync-cards") => {
+            reject_unsupported_args("sync-cards", &args, &[]);
             let n = sync_cards();
             println!("hf sync-cards: synced {n} card(s) from ledger truth");
         }
@@ -3593,7 +4388,7 @@ fn main() {
             // so an unsafe help path could mutate state on a `--help` invocation.
             if args.iter().any(|a| a == "--help" || a == "-h") {
                 println!(
-                    "usage: hf sync [--auto] [--dry-run]\n  \
+                    "usage: hf sync [--auto] [--dry-run] [--json]\n  \
                      Repairs .meta.yaml/.gitignore, mirrors ledger->.kb, and rolls each member \
                      repo's local .handoff/ledger.db up into the central FLEET ledger \
                      (append-with-provenance; idempotent via the per-repo sync cursor).\n  \
@@ -3602,11 +4397,14 @@ fn main() {
                 );
                 return;
             }
+            reject_unsupported_args("sync", &args, &["--auto", "--dry-run", "--json"]);
             let auto = args.iter().any(|a| a == "--auto");
             let dry = args.iter().any(|a| a == "--dry-run");
-            sync::cmd_sync(auto, dry);
+            let json = args.iter().any(|a| a == "--json");
+            sync::cmd_sync(auto, dry, json);
         }
         Some("done") => {
+            validate_flags_and_positionals("done", &args, 1, &[], &["--pr"], 1);
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             let pr = args
                 .iter()
@@ -3616,6 +4414,7 @@ fn main() {
             cmd_done(id, pr);
         }
         Some("test") => {
+            validate_flags_and_positionals("test", &args, 1, &[], &[], 1);
             let id = args
                 .get(1)
                 .map(|s| s.as_str())
@@ -3623,6 +4422,7 @@ fn main() {
             cmd_test(id);
         }
         Some("task") if args.get(1).map(|s| s.as_str()) == Some("mint") => {
+            validate_flags_and_positionals("task mint", &args, 2, &[], &["--from-kb"], 0);
             let slug = args
                 .iter()
                 .position(|a| a == "--from-kb")
@@ -3632,6 +4432,7 @@ fn main() {
             kb::cmd_mint_from_kb(slug);
         }
         Some("intake") => {
+            validate_intake_args(&args);
             let flag = |name: &str| {
                 args.iter()
                     .position(|a| a == name)
@@ -3652,6 +4453,7 @@ fn main() {
             );
         }
         Some("dispatch") => {
+            validate_flags_and_positionals("dispatch", &args, 1, &["--next"], &[], 1);
             let next_only = args.iter().any(|a| a == "--next");
             let cid = args
                 .get(1)
@@ -3663,6 +4465,7 @@ fn main() {
             intake::cmd_dispatch(cid, next_only, &|id| cmd_claim_with(id, &leaser));
         }
         Some("ship") => {
+            validate_flags_and_positionals("ship", &args, 1, &[], &["--base"], 1);
             let id = args.get(1).map(|s| s.as_str()).unwrap_or("");
             // HFTASK-0008: empty default → cmd_ship resolves the base from the branch
             // policy (trunk_branch), instead of hardcoding "master" at the call site.
@@ -3676,8 +4479,12 @@ fn main() {
         }
         // HFTASK-0076 (ADR-0018 D11): hands-off develop → trunk promotion (also auto-run at
         // `hf done --pr`). Replaces the manual `gh api PATCH .../master` ff.
-        Some("promote") => cmd_promote(),
+        Some("promote") => {
+            reject_unsupported_args("promote", &args, &[]);
+            cmd_promote()
+        }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("request") => {
+            validate_review_args(&args);
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -3687,6 +4494,7 @@ fn main() {
             cmd_review_request(pr, task_id);
         }
         Some("review") if args.get(1).map(|s| s.as_str()) == Some("verdict") => {
+            validate_review_args(&args);
             let by = args
                 .iter()
                 .position(|a| a == "--by")
@@ -3701,6 +4509,7 @@ fn main() {
             );
         }
         Some("gatekeeper") if args.get(1).map(|s| s.as_str()) == Some("check") => {
+            validate_gatekeeper_args(&args);
             let pr = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -3741,9 +4550,16 @@ fn main() {
                 }
             }
         }
-        Some("session") => session::cmd_session(&args[1..]),
-        Some("drift") => gates::cmd_drift(args.iter().any(|a| a == "--json")),
+        Some("session") => {
+            validate_session_args(&args);
+            session::cmd_session(&args[1..]);
+        }
+        Some("drift") => {
+            reject_unsupported_args("drift", &args, &["--json"]);
+            gates::cmd_drift(args.iter().any(|a| a == "--json"))
+        }
         Some("hook") => {
+            validate_hook_args(&args);
             let json = args.iter().any(|a| a == "--json");
             match args.get(1).map(|s| s.as_str()) {
                 Some("list") => hooks::cmd_hook_list(json),
@@ -3777,6 +4593,7 @@ fn main() {
         }
         #[cfg(feature = "cognitum")]
         Some("policy") if args.get(1).map(|s| s.as_str()) == Some("gate") => {
+            validate_policy_gate_args(&args);
             let action = args.get(2).map(|s| s.as_str()).unwrap_or("");
             let task_id = args
                 .iter()
@@ -3792,9 +4609,11 @@ fn main() {
                 .is_some_and(|s| s.starts_with("check-")) =>
         {
             let kind = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            validate_policy_check_args(&args);
             gates::cmd_policy_check(kind, args.iter().any(|a| a == "--json"));
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("status") => {
+            validate_fleet_args(&args);
             // HFTASK-0087: `hf fleet status --fix` is an alias for `hf fleet sync` — it remediates
             // the drift the sweep detects instead of only reporting it.
             if args.iter().any(|a| a == "--fix") {
@@ -3807,6 +4626,7 @@ fn main() {
             }
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("sync") => {
+            validate_fleet_args(&args);
             // HFTASK-0087: remediate every non-conformant member the status sweep flags.
             fleet::cmd_fleet_sync(
                 args.iter().any(|a| a == "--json"),
@@ -3814,6 +4634,7 @@ fn main() {
             );
         }
         Some("fleet") if args.get(1).map(|s| s.as_str()) == Some("render") => {
+            validate_fleet_args(&args);
             // hf fleet render <member> — compile <member>'s packet from the FLEET ledger
             let member = args.get(2).map(|s| s.as_str()).unwrap_or("");
             if member.is_empty() {
@@ -3837,6 +4658,7 @@ fn main() {
             }
         }
         Some("delivery") => {
+            validate_delivery_args(&args);
             let json = args.iter().any(|a| a == "--json");
             match args.get(1).map(|s| s.as_str()) {
                 Some("get") => {
@@ -3852,41 +4674,22 @@ fn main() {
             }
         }
         Some("prompt-hub") => {
-            let flag = |name: &str| {
-                args.iter()
-                    .position(|a| a == name)
-                    .and_then(|i| args.get(i + 1))
-                    .map(|s| s.as_str())
-            };
-            let scope: Option<Vec<String>> = flag("--scope").map(|s| {
-                s.split(',')
-                    .map(|g| g.trim().to_string())
-                    .filter(|g| !g.is_empty())
-                    .collect()
-            });
-            let vibe = args
-                .get(1)
-                .map(|s| s.as_str())
-                .filter(|s| !s.starts_with("--"))
-                .unwrap_or("");
-            let dispatch = args.iter().any(|a| a == "--dispatch");
-            let json = args.iter().any(|a| a == "--json");
-            if vibe.is_empty() {
-                eprintln!(
-                    "usage: hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]"
-                );
-                std::process::exit(2);
-            }
-            prompt_hub::cmd_prompt_hub(vibe, scope.as_deref(), dispatch, json);
+            let (vibe, scope, dispatch, json) = parse_prompt_hub_args(&args);
+            prompt_hub::cmd_prompt_hub(&vibe, scope.as_deref(), dispatch, json);
         }
         Some("schema") => {
+            validate_schema_args(&args);
             let code = schema::cmd_schema(&args[1..]);
             if code != 0 {
                 std::process::exit(code);
             }
         }
-        Some("handoff") => cmd_handoff(),
+        Some("handoff") => {
+            reject_unsupported_args("handoff", &args, &[]);
+            cmd_handoff()
+        }
         Some("resume") => {
+            reject_unsupported_args("resume", &args, &["--json", "--compact"]);
             let mode = if args.iter().any(|a| a == "--json") {
                 ResumeMode::Json
             } else if args.iter().any(|a| a == "--compact") {
@@ -3903,9 +4706,7 @@ fn main() {
             if let Some(verb) = other {
                 eprintln!("hf: unknown command '{verb}'");
             }
-            eprintln!(
-                "hf [--ledger PATH] <version [--json]|init|seed|status [--json]|index|plan [--json]|session start|end [--recycle] [--reap]|session reap [--force]|claim ID|claim --next|claim --batch|doctor [--json]|gitignore [--check|--repair|--write]|reconcile|export|import|migrate [PATH]|release ID|reopen ID \"reason\"|checkpoint ID [note] [--auto] [--quiet] [--sync-cards]|sync-cards|sync [--auto] [--dry-run]|done ID [--pr N]|test [ID]|task mint --from-kb SLUG|intake --bundle FILE [--vibe TEXT] [--intent FILE] [--scope a,b]|prompt-hub \"<vibe>\" [--scope a,b] [--dispatch] [--json]|dispatch WORKFLOW_ID [--next]|delivery get CORRELATION_ID [--json]|delivery list [--json]|ship ID [--base BR]|promote|review verdict ID PR approve|deny [--by WHO]|drift [--json]|policy gate ACTION [--task ID]|policy check-claim|check-edit|check-handoff [--json]|gatekeeper check PR [--task ID]|hook list|hook run EVENT [--payload JSON] [--json]|lease [--json]|fleet status [--json] [--fix]|fleet sync [--dry-run] [--json]|fleet render MEMBER|schema [--check|--write]|handoff|resume [--json|--compact]>"
-            );
+            eprintln!("{HF_USAGE}");
             if other.is_some() {
                 std::process::exit(2);
             }
@@ -3939,6 +4740,16 @@ mod tests {
         assert_eq!(out["schema"], "handoff.version.v1");
         assert_eq!(out["commit"], commit);
         assert!(out["version"].as_str().is_some_and(|v| !v.is_empty()));
+    }
+
+    #[test]
+    fn sync_usage_includes_json() {
+        // Audit-found navigation gap: `hf sync --json` existed, but the bare usage string
+        // omitted it, so fresh agents could not discover structured sync output.
+        assert!(
+            HF_USAGE.contains("sync [--auto] [--dry-run] [--json]"),
+            "usage must advertise hf sync --json: {HF_USAGE}"
+        );
     }
 
     /// HFTASK-0058: the two tests that mutate the process-global `HANDOFF_LEDGER` env var
@@ -4056,6 +4867,40 @@ mod tests {
                 .unwrap()
                 .contains("KERNEL DOCTRINE")
         );
+    }
+
+    #[test]
+    fn schema_check_from_member_cwd_resolves_kernel_home_without_local_schemas() {
+        // HFTASK-0093: the real `hf schema --check` dispatcher must not be CWD-sensitive.
+        // A fleet member (e.g. meta/Weave) may have no local `schemas/` directory; the command
+        // resolves the canonical sibling `meta/handoff/schemas/task.schema.json` instead.
+        let _g = cwd_lock();
+        let meta = std::env::temp_dir().join(format!(
+            "hf-schema-meta-{}-{}",
+            std::process::id(),
+            now_ns()
+        ));
+        let member = meta.join("Weave");
+        let kernel_schema = meta
+            .join("handoff")
+            .join("schemas")
+            .join("task.schema.json");
+        fs::create_dir_all(&member).unwrap();
+        fs::create_dir_all(kernel_schema.parent().unwrap()).unwrap();
+        fs::write(meta.join(".meta.yaml"), "repos: []\n").unwrap();
+        fs::write(
+            &kernel_schema,
+            format!("{}\n", work_order::task_schema_json()),
+        )
+        .unwrap();
+
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&member).unwrap();
+        let code = schema::cmd_schema(&["--check".to_string()]);
+        std::env::set_current_dir(prev).unwrap();
+        fs::remove_dir_all(&meta).ok();
+
+        assert_eq!(code, 0, "member cwd with no local schemas/ must pass");
     }
 
     #[test]
@@ -4190,6 +5035,59 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         let out = "===== a banner =====\n\
                    test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out";
         assert_eq!(parse_tests_ran(out), Some(3));
+    }
+
+    #[test]
+    fn cargo_zero_test_diagnostic_names_filter_and_list_command() {
+        let diag = cargo_zero_test_diagnostic("cargo test -p hf typo_filter")
+            .expect("cargo test command should get a diagnostic");
+        assert!(diag.contains("package: hf"), "{diag}");
+        assert!(diag.contains("filter: typo_filter"), "{diag}");
+        assert!(
+            diag.contains("cargo test -p hf typo_filter -- --list"),
+            "{diag}"
+        );
+        assert!(
+            diag.contains("cargo test -p hf -- --list"),
+            "must suggest listing all tests without the suspect filter: {diag}"
+        );
+        assert!(
+            diag.contains("completion evidence") || diag.contains("zero-test"),
+            "diagnostic context should remain clearly zero-test related: {diag}"
+        );
+    }
+
+    #[test]
+    fn cargo_zero_test_diagnostic_preserves_feature_flags() {
+        let diag = cargo_zero_test_diagnostic(
+            "cargo test -p hf --features legacy-sqlite schema_filter -- --nocapture",
+        )
+        .expect("cargo test command should get a diagnostic");
+        assert!(
+            diag.contains("cargo test -p hf --features legacy-sqlite schema_filter -- --list"),
+            "{diag}"
+        );
+        assert!(
+            diag.contains("cargo test -p hf --features legacy-sqlite -- --list"),
+            "{diag}"
+        );
+        assert!(diag.contains("preserved feature flags: --features legacy-sqlite"));
+    }
+
+    #[test]
+    fn zero_test_gate_remains_fail_closed() {
+        let ran = parse_tests_ran(
+            "running 0 tests\n\
+             test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 99 filtered out",
+        );
+        let code = 0;
+        let zero_tests = ran == Some(0);
+        let cmd_passed = code == 0 && !zero_tests;
+        assert!(zero_tests, "recognized zero-test runs must be detected");
+        assert!(
+            !cmd_passed,
+            "exit 0 plus zero executed tests must not mark the command passed"
+        );
     }
 
     #[test]
@@ -4513,6 +5411,40 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; fi
         assert_eq!(
             s["next_command"],
             serde_json::json!(format!("hf claim {}", tasks[1].id))
+        );
+    }
+
+    #[test]
+    fn exhausted_backlog_summary_uses_valid_handoff_command() {
+        let tasks = sample_tasks();
+        let replay = vec![
+            (tasks[0].id.clone(), Status::Done),
+            (tasks[1].id.clone(), Status::Done),
+        ];
+        let s = summary_json(&tasks, &replay, 760);
+        assert_eq!(s["next_task_id"], serde_json::Value::Null);
+        assert_eq!(s["next_command"], serde_json::json!("hf handoff"));
+    }
+
+    #[test]
+    fn exhausted_backlog_resume_commands_do_not_emit_bare_done() {
+        let tasks = sample_tasks();
+        let replay = vec![
+            (tasks[0].id.clone(), Status::Done),
+            (tasks[1].id.clone(), Status::Done),
+        ];
+        let md = render_packet_md(&tasks, &replay, 760);
+        assert!(
+            md.contains("Next command:** `hf handoff`"),
+            "direction block must point to a valid command:\n{md}"
+        );
+        assert!(
+            md.contains("```bash\nhf resume\nhf handoff\n```"),
+            "resume command block must not contain an invalid bare done token:\n{md}"
+        );
+        assert!(
+            !md.contains("\nhf resume\ndone\n"),
+            "bare done is invalid shell outside a loop and must not guide agents:\n{md}"
         );
     }
 
