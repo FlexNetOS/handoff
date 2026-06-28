@@ -34,6 +34,11 @@ jobs:
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
           mkdir RuVector
           git -C RuVector init
+          # Windows rejects colon-bearing paths anywhere in the fetched tree before
+          # sparse-checkout has a chance to exclude them. Keep sparse parity and
+          # disable only the Windows path-protection validation for this throwaway
+          # provider checkout; skipped invalid paths are never materialized.
+          git -C RuVector config core.protectNTFS false
           git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
           git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
@@ -107,6 +112,11 @@ jobs:
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
           mkdir RuVector
           git -C RuVector init
+          # Windows rejects colon-bearing paths anywhere in the fetched tree before
+          # sparse-checkout has a chance to exclude them. Keep sparse parity and
+          # disable only the Windows path-protection validation for this throwaway
+          # provider checkout; skipped invalid paths are never materialized.
+          git -C RuVector config core.protectNTFS false
           git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
           git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
@@ -169,6 +179,11 @@ jobs:
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
           mkdir RuVector
           git -C RuVector init
+          # Windows rejects colon-bearing paths anywhere in the fetched tree before
+          # sparse-checkout has a chance to exclude them. Keep sparse parity and
+          # disable only the Windows path-protection validation for this throwaway
+          # provider checkout; skipped invalid paths are never materialized.
+          git -C RuVector config core.protectNTFS false
           git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
           git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
@@ -218,6 +233,11 @@ jobs:
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
           mkdir RuVector
           git -C RuVector init
+          # Windows rejects colon-bearing paths anywhere in the fetched tree before
+          # sparse-checkout has a chance to exclude them. Keep sparse parity and
+          # disable only the Windows path-protection validation for this throwaway
+          # provider checkout; skipped invalid paths are never materialized.
+          git -C RuVector config core.protectNTFS false
           git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
           git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
@@ -282,6 +302,11 @@ jobs:
           # crates handoff path-depends on. Linux/macOS also use this path for parity.
           mkdir RuVector
           git -C RuVector init
+          # Windows rejects colon-bearing paths anywhere in the fetched tree before
+          # sparse-checkout has a chance to exclude them. Keep sparse parity and
+          # disable only the Windows path-protection validation for this throwaway
+          # provider checkout; skipped invalid paths are never materialized.
+          git -C RuVector config core.protectNTFS false
           git -C RuVector remote add origin https://github.com/FlexNetOS/meta-ruvector.git
           git -C RuVector sparse-checkout init --cone
           git -C RuVector sparse-checkout set \
