@@ -7,7 +7,7 @@ KERNEL DOCTRINE — build a local-first, auditable, reversible, model-native age
 Git > .handoff/ledger.db > tasks/*.task.json > active.md > this packet.
 
 ## 3. Progress
-Done: 126/126.  Tamper-evident events verified: 774.
+Done: 134/134.  Tamper-evident events verified: 98.
 
 ## 0. Next Action / Direction
 - **Next safe task:** none — backlog is exhausted (all cards Done).
@@ -130,6 +130,8 @@ hf handoff
     "TASK-0003",
     "TASK-0004",
     "TASK-065DD9-0001",
+    "TASK-155B24-0001",
+    "TASK-181720-0001",
     "TASK-241E7F-0001",
     "TASK-24F664-0001",
     "TASK-2A8854-0001",
@@ -139,16 +141,22 @@ hf handoff
     "TASK-429729-0001",
     "TASK-452CDA-0001",
     "TASK-4F8EBB-0001",
+    "TASK-5FBA7A-0001",
     "TASK-665FF8-0001",
     "TASK-73ACBF-0001",
     "TASK-77253B-0001",
     "TASK-7870BF-0001",
     "TASK-839831-0001",
+    "TASK-854F41-0001",
+    "TASK-8887D8-0001",
+    "TASK-8DFD48-0001",
     "TASK-9D0939-0001",
+    "TASK-A9AB37-0001",
     "TASK-B80033-0001",
     "TASK-BC71F5-0001",
     "TASK-C0901B-0001",
     "TASK-C25CE6-0001",
+    "TASK-C7B138-0001",
     "TASK-CD4F43-0001",
     "TASK-D633AC-0001",
     "TASK-E48B17-0001",
@@ -163,7 +171,7 @@ hf handoff
   "project": "handoff (Continuity Ledger Kernel)",
   "remaining": [],
   "schema": "handoff.packet.v2",
-  "tasks_total": 126,
-  "witnessed_events_verified": 774
+  "tasks_total": 134,
+  "witnessed_events_verified": 98
 }
 ```
