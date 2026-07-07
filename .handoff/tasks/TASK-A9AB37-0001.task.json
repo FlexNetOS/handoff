@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-A9AB37-0001",
+  "title": "[bundle] Repair PR #237 Windows CI fleet-sync test portability follow",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Repair PR #237 Windows CI fleet-sync test portability follow-up: current Git Bash invocation still exits before stub scripts mutate test fixtures on windows-latest. Keep fail-closed fleet-sync semantics, pass Windows paths to Bash in a form Git Bash accepts from native Rust processes, and validate focused/local tests.",
+  "path_scope": [
+    "handoff-fleet/src/lib.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-e2690bd750076237-1783458444008758184",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:d89adb4e0db8de93cbfb074296514d677c34716df359f1e2b5dc5d29dbcf3ffe",
+    "path_scope_hash": "blake3:183957c8649505917f36476e8ebd5791718c6e365703b7f0d33b2b3e7cd1025f",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

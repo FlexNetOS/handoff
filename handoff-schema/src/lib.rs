@@ -355,10 +355,11 @@ mod tests {
         let resolved = resolve_task_schema_from(&member, &generated, true).unwrap();
         assert_eq!(resolved.source, SchemaSource::File(kernel_schema));
         assert!(
-            resolved
-                .attempts
-                .iter()
-                .any(|a| a.contains("Weave/schemas/task.schema.json") && a.contains("missing")),
+            resolved.attempts.iter().any(|a| {
+                a.replace('\\', "/")
+                    .contains("Weave/schemas/task.schema.json")
+                    && a.contains("missing")
+            }),
             "member-local miss should be recorded: {:?}",
             resolved.attempts
         );

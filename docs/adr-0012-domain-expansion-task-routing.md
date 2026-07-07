@@ -22,7 +22,7 @@ Adopt `ruvector-domain-expansion`'s **contextual Thompson bandit** primitive
 context**, exposed as **`hf claim --batch`**.
 
 - **Dependency (crates-only):** `ruvector-domain-expansion = { path =
-  "../../RuVector/crates/ruvector-domain-expansion", default-features = false }` + `rand =
+  "../../meta-ruvector/crates/ruvector-domain-expansion", default-features = false }` + `rand =
   "0.8"` (matches RuVector's `rand`). default-features is empty (RVF integration stays
   optional), so the dep tree is just `serde`/`serde_json`/`thiserror`/`rand`. Path dep,
   standalone-CI-safe — handoff CI already clones `meta-ruvector` (see ADR-0011).

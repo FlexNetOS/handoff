@@ -39,19 +39,19 @@ claimed task using the **`ruvector-verified`** formal-verification crate, and **
 The card names `ruvector-verified` and the kernel already establishes the pattern:
 
 - **`ledger` already path-deps a RuVector crate** — `rvf-crypto = { path =
-  "../../RuVector/crates/rvf/rvf-crypto" }` (the witness chain). So handoff is **not**
-  RuVector-independent; the meta layout (RuVector as a sibling checkout) is assumed.
+  "../../meta-ruvector/crates/rvf/rvf-crypto" }` (the witness chain). So handoff is **not**
+  RuVector-independent; the FlexNetOS meta layout uses `meta-ruvector` as the sibling checkout.
 - **Handoff CI already clones it.** `.github/workflows/ci.yml` runs *“Clone rvf-crypto
   provider (meta-ruvector)” — `git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git
-  RuVector`* in **all three** jobs (test / clippy / format). A path dep to
-  `../../RuVector/crates/ruvector-verified` resolves in CI exactly like `rvf-crypto`.
+  meta-ruvector`* in **all three** jobs (test / clippy / format). A path dep to
+  `../../meta-ruvector/crates/ruvector-verified` resolves in CI exactly like `rvf-crypto`.
 - RuVector's correct remote after the account transfer is **`FlexNetOS/meta-ruvector`**
   (origin), tracking `ruvnet/RuVector` (upstream); the local checkout is synced up to upstream.
 
 So we depend on the **real crate**:
 
 ```toml
-ruvector-verified = { path = "../../RuVector/crates/ruvector-verified", default-features = false }
+ruvector-verified = { path = "../../meta-ruvector/crates/ruvector-verified", default-features = false }
 ```
 
 `default-features = false` keeps it minimal (its default feature set is empty — only
@@ -108,7 +108,7 @@ handoff leaves the rendered views untouched (no half-written packet).
   with no rework. No duplication of the proof crate.
 - **+** Consistent with the kernel's existing RuVector coupling (`ledger`/`rvf-crypto`); CI
   already provisions the sibling checkout, so no new CI surface.
-- **−** Adds a path dep on a sibling meta repo (`RuVector/crates/ruvector-verified`). Mitigated:
+- **−** Adds a path dep on a sibling meta repo (`meta-ruvector/crates/ruvector-verified`). Mitigated:
   `ledger` already does the same; CI clones `meta-ruvector` in every job; `default-features
   = false` keeps the dep tree minimal (`lean-agentic` + `thiserror`).
 - **−** `hf handoff` now does bounded proof work each cycle (sub-millisecond; proof terms are
