@@ -6,16 +6,14 @@ license.workspace = true
 description = "handoff-secrets — the envctl secrets-engine merge-gate decision helper (HFTASK-0013), peeled from hf"
 
 [dependencies]
-# The secrets-engine path dep (declares [lib] name = "envctl_secrets"). This crate exists only to
+# The secrets-engine dep declares [lib] name = "envctl_secrets". This crate exists only to
 # wrap it, so it is a hard (non-optional) dep here; hf/handoff-gatekeeper gate the WHOLE crate
 # behind their own `secrets` feature (dep:handoff-secrets), keeping the default build envctl-free.
-# A-U1 (union step): git-pinned to FlexNetOS/envctl@0fa1248 (master) so handoff builds STANDALONE
-# (no `../../envctl` sibling required). Same crate/code as the prior path-dep; optional in the
-# default graph (hf/handoff-gatekeeper gate it behind their `secrets` feature) but the workspace
-# must still load its manifest, so the path escape had to be resolved for portability.
-# NOTE: no `package =` key — the dep key already equals the package name, so the git dep resolves by
-# name AND the extern alias stays the crate's [lib] name `envctl_secrets` (which the source `use`s).
-envctl-secrets-engine = { git = "https://github.com/FlexNetOS/envctl.git", rev = "0fa1248d97e7812d46d92c91fdb01aa0c669e789", default-features = false, features = ["inmem-store"] }
+# Keep this as a sibling provider path instead of a git source: Cargo resolves workspace member
+# manifests even when `handoff-secrets` is excluded, and a git checkout of envctl on Windows fails
+# before sparse filtering because envctl carries colon-bearing Codex prompt paths. CI materializes
+# the real envctl checkout on Linux and a manifest-only stub on macOS/Windows at this same path.
+envctl-secrets-engine = { path = "../../envctl/crates/secrets-engine", default-features = false, features = ["inmem-store"] }
 
 [lints]
 workspace = true

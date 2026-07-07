@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-181720-0001",
+  "title": "[bundle] Repair PR #237 Windows CI schema path assertion follow-up: W",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Repair PR #237 Windows CI schema path assertion follow-up: Windows now reaches handoff-schema and fails because the sibling-kernel test assumes slash separators in display strings. Preserve schema resolution behavior, make the assertion separator-portable, and validate focused/local tests.",
+  "path_scope": [
+    "handoff-schema/src/lib.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-7637ac10cae3baf3-1783459195538878572",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:3e1f933b9521b50f2e2f60af62db86d5444f8cccb050fabe2b4cc36c074e387c",
+    "path_scope_hash": "blake3:8f7ef5f44de343bde5ffd3cd68346e98282438d9ce3be3afd458d4c2556b5777",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

@@ -321,6 +321,9 @@ pub fn repair_gitignore(repo: &Path) -> std::io::Result<RepairOutcome> {
 mod tests {
     use super::*;
     use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_REPO_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn scan_flags_dir_form_but_not_contents_form_or_negations() {
@@ -348,13 +351,15 @@ mod tests {
     }
 
     fn temp_repo() -> std::path::PathBuf {
+        let sequence = TEMP_REPO_COUNTER.fetch_add(1, Ordering::Relaxed);
         let repo = std::env::temp_dir().join(format!(
-            "hf-durability-{}-{}",
+            "hf-durability-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            sequence
         ));
         std::fs::create_dir_all(repo.join(".handoff")).unwrap();
         let git = |args: &[&str]| {

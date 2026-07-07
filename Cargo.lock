@@ -121,9 +121,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "approx"
@@ -447,7 +447,6 @@ dependencies = [
 [[package]]
 name = "cognitum-gate-tilezero"
 version = "0.1.1"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "base64",
  "blake3",
@@ -829,7 +828,6 @@ checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 [[package]]
 name = "envctl-secrets-engine"
 version = "0.1.0"
-source = "git+https://github.com/FlexNetOS/envctl.git?rev=0fa1248d97e7812d46d92c91fdb01aa0c669e789#0fa1248d97e7812d46d92c91fdb01aa0c669e789"
 dependencies = [
  "anyhow",
  "argon2",
@@ -865,7 +863,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2637,7 +2635,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2703,7 +2701,6 @@ dependencies = [
 [[package]]
 name = "ruvector-domain-expansion"
 version = "2.2.3"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "rand",
  "serde",
@@ -2714,7 +2711,6 @@ dependencies = [
 [[package]]
 name = "ruvector-verified"
 version = "0.1.1"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "lean-agentic",
  "thiserror 2.0.18",
@@ -2723,7 +2719,6 @@ dependencies = [
 [[package]]
 name = "rvf-crypto"
 version = "0.2.0"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "ed25519-dalek",
  "rvf-types",
@@ -2733,12 +2728,10 @@ dependencies = [
 [[package]]
 name = "rvf-index"
 version = "0.2.0"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 
 [[package]]
 name = "rvf-quant"
 version = "0.2.0"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "rvf-types",
 ]
@@ -2746,7 +2739,6 @@ dependencies = [
 [[package]]
 name = "rvf-runtime"
 version = "0.3.0"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 dependencies = [
  "crc32fast",
  "rvf-index",
@@ -2757,7 +2749,6 @@ dependencies = [
 [[package]]
 name = "rvf-types"
 version = "0.2.1"
-source = "git+https://github.com/FlexNetOS/meta-ruvector.git?rev=d8cb103b046fa58c8fca954743c758ff61a9f364#d8cb103b046fa58c8fca954743c758ff61a9f364"
 
 [[package]]
 name = "ryu"
@@ -3099,7 +3090,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3716,7 +3707,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

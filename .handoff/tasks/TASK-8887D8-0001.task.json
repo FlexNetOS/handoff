@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-8887D8-0001",
+  "title": "[bundle] fix Windows portable CLI fixture temp names and path separat",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "fix Windows portable CLI fixture temp names and path separator assertions",
+  "path_scope": [
+    "hf/tests/cli.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-381fa22de85bdd73-1783459520171420203",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:41006d0eb8c68281a72848d7e8c555d49a0685c78deb97ae322ef1278c2b9b21",
+    "path_scope_hash": "blake3:923cea4e04e6532f752ef93e1e4aba13815a515997b6843f08f54caed998caf9",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

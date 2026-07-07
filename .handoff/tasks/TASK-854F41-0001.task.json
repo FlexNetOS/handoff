@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-854F41-0001",
+  "title": "[bundle] Repair PR #237 Windows CI fleet-sync test portability: Git B",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Repair PR #237 Windows CI fleet-sync test portability: Git Bash invocation and path-string assertions fail on windows-latest while Linux/macOS pass. Keep the fail-closed fleet-sync semantics, make script/member paths shell-portable for Windows Git Bash, normalize the legacy ledger-path test fixture, and validate with focused/local tests.",
+  "path_scope": [
+    "handoff-fleet/src/lib.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-e42d4ce733e570b4-1783457881324157126",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:a3c112f52cea37876235420a0760e50fba4a0041d0352cfd5b5a5caed3849031",
+    "path_scope_hash": "blake3:183957c8649505917f36476e8ebd5791718c6e365703b7f0d33b2b3e7cd1025f",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

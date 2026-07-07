@@ -1,0 +1,40 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-8DFD48-0001",
+  "title": "[bundle] Repair local toolchain alignment: resolve RuVector dependenc",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Repair local toolchain alignment: resolve RuVector dependency path to src/meta-ruvector, configure Cargo to use Nix/profile nightly cargo/rustc with Kache rustc wrapper and wild linker, and verify bun/bunx/node frontdoors.",
+  "path_scope": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "hf/Cargo.toml",
+    "ledger/Cargo.toml",
+    ".cargo/**",
+    ".github/workflows/**",
+    "docs/**",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-c2cb493c8e279823-1783454088518021861",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:5118a9ab97725360647333ba4c279baf68d3ff66050ac72a91e339c99040d4d5",
+    "path_scope_hash": "blake3:4d9380c3c5d92959344b4298d7661189c1b9fffcffc9f466a574a1e7d2b4ce7c",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}
