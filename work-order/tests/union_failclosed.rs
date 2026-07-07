@@ -1,3 +1,5 @@
+// HFTASK-0080 (ADR-0019 D5 #3): this whole crate is a test; unwrap/expect are idiomatic here.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! Additive RED suite — plan/handoff-union-cycle2 (test-coverage dimension, union seam).
 //!
 //! Union acceptance criterion: the intent plane (rusty-idd) loads `handoff.task.v1` cards via a
