@@ -44,7 +44,7 @@ pub static SCOPE_REPO: LazyLock<Mutex<ScopeRepository>> =
 
 pub(crate) fn lock_global_scope_repo() -> MutexGuard<'static, ScopeRepository> {
     #[allow(deprecated)]
-    SCOPE_REPO.lock().unwrap()
+    SCOPE_REPO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// A hierarchy of atoms with semi-standardized names used to accord semantic information to a
