@@ -618,6 +618,48 @@ fn loop_init_script(root: &Path) -> PathBuf {
     }
 }
 
+/// Convert a Rust/OS path into an argument that Git Bash can open.
+///
+/// Windows CI executes this fleet-sync seam through Git Bash. Passing a raw
+/// `C:\...` path to `bash <script> <member>` lets Bash interpret backslashes as
+/// escapes, so the remediation stub exits before it can prove the after-state.
+/// Keep the native drive prefix (`C:/...`) and only normalize separators: Git
+/// Bash accepts drive-qualified forward-slash paths both as the script path and
+/// as member-directory arguments from a native Rust process.
+fn bash_path_arg(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Pick the Bash executable used for remediation stubs. On Windows CI, `Command::new("bash")`
+/// can resolve to the wrong compatibility shim even though the workflow shell is Git Bash.
+/// Prefer the explicit Git-for-Windows install path there, then fall back to PATH elsewhere.
+fn bash_program() -> std::ffi::OsString {
+    #[cfg(windows)]
+    {
+        let candidates = [
+            std::env::var_os("GIT_BASH").map(std::path::PathBuf::from),
+            std::env::var_os("ProgramFiles")
+                .map(std::path::PathBuf::from)
+                .map(|p| p.join("Git").join("bin").join("bash.exe")),
+            std::env::var_os("ProgramW6432")
+                .map(std::path::PathBuf::from)
+                .map(|p| p.join("Git").join("bin").join("bash.exe")),
+            std::env::var_os("ProgramFiles(x86)")
+                .map(std::path::PathBuf::from)
+                .map(|p| p.join("Git").join("bin").join("bash.exe")),
+            Some(std::path::PathBuf::from(
+                r"C:\Program Files\Git\bin\bash.exe",
+            )),
+        ];
+        for candidate in candidates.into_iter().flatten() {
+            if candidate.is_file() {
+                return candidate.into_os_string();
+            }
+        }
+    }
+    std::ffi::OsString::from("bash")
+}
+
 /// Per-member remediation outcome.
 struct MemberSync {
     name: String,
@@ -706,12 +748,18 @@ fn run_fleet_sync(root: &Path, members: &[String], dry_run: bool, script: &Path)
             });
             continue;
         }
-        let mut cmd = Command::new("bash");
-        cmd.arg(script);
+        let mut cmd = Command::new(bash_program());
+        #[cfg(windows)]
+        {
+            // The args we pass are already in the Git Bash-compatible form (`C:/...`).
+            // Keep MSYS from rewriting them a second time before the stub sees them.
+            cmd.env("MSYS_NO_PATHCONV", "1");
+        }
+        cmd.arg(bash_path_arg(script));
         if dry_run {
             cmd.arg("--dry-run");
         }
-        cmd.arg(root.join(name));
+        cmd.arg(bash_path_arg(&root.join(name)));
         let (script_exit, spawn_err) = match cmd.output() {
             Ok(o) => (o.status.code(), None),
             Err(e) => (None, Some(format!("failed to spawn remediation: {e}"))),
@@ -1048,6 +1096,22 @@ mod tests {
     }
 
     #[test]
+    fn bash_path_arg_preserves_windows_drive_prefix_and_normalizes_separators() {
+        assert_eq!(
+            super::bash_path_arg(std::path::Path::new(
+                r"C:\Users\runneradmin\AppData\Local\Temp\stub.sh"
+            )),
+            "C:/Users/runneradmin/AppData/Local/Temp/stub.sh"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn bash_program_falls_back_to_path_bash_off_windows() {
+        assert_eq!(super::bash_program(), std::ffi::OsString::from("bash"));
+    }
+
+    #[test]
     fn sync_selects_only_flagged_members() {
         assert!(!super::member_needs_sync(&row_with((
             false, false, false, false
@@ -1109,7 +1173,7 @@ mod tests {
             &stub,
             format!(
                 "#!/usr/bin/env bash\necho \"$@\" > {}\nexit 0\n",
-                marker.display()
+                super::bash_path_arg(&marker)
             ),
         )
         .unwrap();
@@ -1511,7 +1575,7 @@ other:
             ".handoff/**/ledger.db\n.handoff/**/*.db-wal\n.handoff/**/*.db-shm\n",
         )
         .unwrap();
-        let ledger_path = member.join(".handoff/ledger.db");
+        let ledger_path = member.join(".handoff").join("ledger.db");
         std::fs::write(&ledger_path, b"SQLite format 3\0legacy fixture").unwrap();
 
         let before = super::collect_rows(&root, &["memberx".to_string()])

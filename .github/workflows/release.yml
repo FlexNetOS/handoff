@@ -49,7 +49,7 @@ jobs:
 
       - name: Clone rvf-crypto provider (meta-ruvector)
         shell: bash
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git meta-ruvector
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0

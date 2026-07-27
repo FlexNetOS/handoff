@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-155B24-0001",
+  "title": "[bundle] Repair PR #237 Windows CI fail-closed source loading: Cargo ",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Repair PR #237 Windows CI fail-closed source loading: Cargo still fetches git-pinned envctl-secrets-engine on Windows despite the workflow-provided envctl stub, causing invalid-path checkout. Align handoff-secrets dependency with the sibling envctl provider path used by CI and local FlexNetOS workspace; update lockfile and validation evidence.",
+  "path_scope": [
+    "handoff-secrets/Cargo.toml",
+    "Cargo.lock",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "PATH=\"$(readlink -f /home/flexnetos/.nix-profile/bin/yzx | sed 's#/bin/yzx$##')/libexec:$PATH\" cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-6433d04bcba4660b-1783457210569218974",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:6b1a6e2cf076ec775bf02b50879dcd05a0061675d31ed66a2c0217e2be57af2f",
+    "path_scope_hash": "blake3:2fa593041cc65b3e10b031486262d41ded15c03bb511e3931a7aff88f5abc480",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

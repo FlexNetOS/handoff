@@ -13,7 +13,28 @@ fn hf() -> Command {
     Command::new(env!("CARGO_BIN_EXE_hf"))
 }
 
+fn fixture_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn fixture_names_are_portable_for_windows_temp_paths() {
+    assert_eq!(
+        fixture_name("prompt-hub-vibe---scope-a:b\\c/d?*"),
+        "prompt-hub-vibe---scope-a_b_c_d__"
+    );
+}
+
 fn temp_repo(name: &str) -> std::path::PathBuf {
+    let name = fixture_name(name);
     let dir = std::env::temp_dir().join(format!(
         "hf-cli-{name}-{}-{}",
         std::process::id(),
@@ -27,6 +48,7 @@ fn temp_repo(name: &str) -> std::path::PathBuf {
 }
 
 fn temp_empty(name: &str) -> std::path::PathBuf {
+    let name = fixture_name(name);
     let dir = std::env::temp_dir().join(format!(
         "hf-cli-empty-{name}-{}-{}",
         std::process::id(),
@@ -50,7 +72,8 @@ fn snapshot_files(root: &std::path::Path) -> Vec<String> {
                 .strip_prefix(root)
                 .expect("fixture-relative path")
                 .display()
-                .to_string();
+                .to_string()
+                .replace('\\', "/");
             files.push(rel);
             if path.is_dir() {
                 stack.push(path);
