@@ -999,7 +999,7 @@ mod tests {
         let m_clone = mutex.clone();
 
         let _ = std::thread::spawn(move || {
-            let _guard = m_clone.lock().unwrap();
+            let _guard = m_clone.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             panic!("Poisoning the mutex");
         })
         .join();

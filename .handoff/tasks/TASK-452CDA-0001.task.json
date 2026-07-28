@@ -1,0 +1,35 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-452CDA-0001",
+  "title": "[bundle] Audit and fix fleet status dry-run semantics after CLI/MCP h",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Audit and fix fleet status dry-run semantics after CLI/MCP hardening. Current code appears to accept hf fleet status --dry-run even without --fix, which can silently imply a remediation dry-run while only status runs. Verify behavior, then make agent navigation fail closed or explicitly documented: dry-run should only be accepted with --fix or users should use hf fleet sync --dry-run. Update CLI help/docs/MCP if needed and add regression tests proving no silent no-op flag. Scope: hf/src/main.rs, hf/tests/**, hf/src/bin/hf-mcp.rs, AGENTS.md, docs/**, .handoff/**",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    "hf/src/bin/hf-mcp.rs",
+    "AGENTS.md",
+    "docs/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-32887be86ceb0227-1782591667487599436",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:e47290959ca1f3b9a105c4405a57d33f222c442f47fbde3f20e10120f5fbdc53",
+    "path_scope_hash": "blake3:00bfb6624be90b332e6d8496968148b17a3688d0c5af9484140197a766d07249",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-241E7F-0001",
+  "title": "[bundle] Fix audit-found no-conflict agent navigation gap: `hf lease ",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found no-conflict agent navigation gap: `hf lease --json` still reports held leases for tasks already Done (`TASK-E88691-0001` and `TASK-429729-0001`). Completion/release must clear or hide stale/expired in-ledger claim leases so agents do not see false active holders/conflicts after work is done. Add regression coverage and prove `hf lease --json` has no held Done-task leases after completion.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/src/**",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "`hf done <ID>` appends an in-ledger lease release for the completed claim resource and removes the lockfile mirror.",
+    "`hf lease --json` no longer reports held leases for terminal Done/Review task resources, preventing false active-holder/conflict signals.",
+    "A CLI regression test proves a claimed task is visible before done and absent from held leases after done.",
+    "Existing Done-task leases are cleared or hidden so the current workspace reports no held leases for Done tasks."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli done_releases_claim_lease_so_agents_see_no_false_holder",
+    "cargo test -p hf --test cli",
+    "hf lease --json | jq -e '(.held // []) | all(.resource | test(\"TASK-E88691-0001|TASK-429729-0001\") | not)'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-5172d8a3e7b54237-1782574563851000479",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:3bae61ce45dd98a5349ea1b833377328bf2b851487df9d4d114a5f96a20e89eb",
+    "path_scope_hash": "blake3:1fac3fa3f9b2980d94f85146bf96fc43fa8f7fe2a227881310c967142c8e63e3",
+    "acceptance_hash": "blake3:83f8488aef0b28e482d62473518d94168cb175fbe49ac475619974cf9ced7886"
+  }
+}

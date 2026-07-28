@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-77253B-0001",
+  "title": "[bundle] Fix audit-found prompt-hub fail-open gap: `hf prompt-hub vib",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found prompt-hub fail-open gap: `hf prompt-hub vibe --definitely-unsupported-flag` and `hf prompt-hub vibe --scope` currently exit 0 and mint task/bundle artifacts instead of rejecting malformed input. Make prompt-hub reject unsupported flags and missing flag values before side effects, preserving supported `hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json]`. Add CLI regressions proving unsupported/malformed prompt-hub args exit nonzero and create no files in an empty temp repo, while supported non-dispatch prompt-hub still mints as expected.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf prompt-hub rejects unsupported flags before minting task or bundle artifacts.",
+    "hf prompt-hub rejects --scope without a value before minting task or bundle artifacts.",
+    "Regression coverage proves malformed prompt-hub args exit nonzero and create no files in an empty temp repo.",
+    "Supported hf prompt-hub \"<vibe>\" [--scope glob,glob] [--dispatch] [--json] behavior is preserved."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli prompt_hub_rejects_malformed_args_without_writes",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-bfc232fd16bbbaff-1782588567081413817",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:d2822736d66eb5a4e0378d5469fa95784e6f0e29a0efa27676dbb4dcd0680769",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:d4448bf2a6773c76e9236b3f36f3a19123890ecba0edbeb4d6ad1246d2436538"
+  }
+}

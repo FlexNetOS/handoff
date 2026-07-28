@@ -28,7 +28,7 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git meta-ruvector
 
       - name: Clone envctl provider (envctl)
         shell: bash

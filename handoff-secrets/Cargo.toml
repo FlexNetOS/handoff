@@ -6,9 +6,13 @@ license.workspace = true
 description = "handoff-secrets — the envctl secrets-engine merge-gate decision helper (HFTASK-0013), peeled from hf"
 
 [dependencies]
-# The secrets-engine path dep (declares [lib] name = "envctl_secrets"). This crate exists only to
+# The secrets-engine dep declares [lib] name = "envctl_secrets". This crate exists only to
 # wrap it, so it is a hard (non-optional) dep here; hf/handoff-gatekeeper gate the WHOLE crate
 # behind their own `secrets` feature (dep:handoff-secrets), keeping the default build envctl-free.
+# Keep this as a sibling provider path instead of a git source: Cargo resolves workspace member
+# manifests even when `handoff-secrets` is excluded, and a git checkout of envctl on Windows fails
+# before sparse filtering because envctl carries colon-bearing Codex prompt paths. CI materializes
+# the real envctl checkout on Linux and a manifest-only stub on macOS/Windows at this same path.
 envctl-secrets-engine = { path = "../../envctl/crates/secrets-engine", default-features = false, features = ["inmem-store"] }
 
 [lints]

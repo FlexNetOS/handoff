@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-5FBA7A-0001",
+  "title": "[bundle] Repair PR #237 Windows CI fleet-sync Bash resolution follow-",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "Repair PR #237 Windows CI fleet-sync Bash resolution follow-up: Windows job still fails because Rust Command resolves bash without pinning Git Bash even though workflow shell is Git Bash. Keep fail-closed semantics, select Git Bash explicitly on Windows, preserve path portability, and validate focused/local tests.",
+  "path_scope": [
+    "handoff-fleet/src/lib.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-7092c43be7580042-1783458887673078547",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:a0e0f9720705dd4db2272d7236ac134d4ad2882ebf8c96e0d3c43475810257b4",
+    "path_scope_hash": "blake3:183957c8649505917f36476e8ebd5791718c6e365703b7f0d33b2b3e7cd1025f",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

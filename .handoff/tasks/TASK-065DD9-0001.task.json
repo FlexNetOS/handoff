@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-065DD9-0001",
+  "title": "[bundle] Fix the remaining hf focused-help navigation gap where hf <c",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix the remaining hf focused-help navigation gap where hf <command> --help still executes real command behavior or returns unknown for documented commands such as init seed index plan reconcile sync-cards export import migrate doctor gitignore schema session intake dispatch delivery promote gatekeeper hook. Help must be side-effect free, exit 0 for documented command topics, and print guidance for every documented top-level command while preserving fail-closed nonzero behavior for truly unknown commands/topics.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf <documented-command> --help and hf help <documented-command> are side-effect free and exit 0 for every documented top-level command topic.",
+    "Help invocations for mutating commands such as init, seed, index, plan, reconcile, sync-cards, schema, export, import, and migrate do not create or mutate repository files.",
+    "Truly unknown commands and unknown help topics still fail closed with a nonzero exit code.",
+    "Regression tests cover the all-documented-topic help contract and at least one no-side-effect mutating-help case."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli help",
+    "cargo test -p hf --test cli documented_command_help_is_side_effect_free",
+    "cargo test -p hf --test cli unknown_command_still_exits_2_after_help_expansion",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-182b8eeef6530536-1782585104725215960",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:78c1a333b851f9c6b6abb73176261a165cb72cffb8867007cfea84da01f50f48",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:26e643d1a6730bdf5540fba62f5a89e4ec997b2e713587dc44e2ce4f067f69f9"
+  }
+}
