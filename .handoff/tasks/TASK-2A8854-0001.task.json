@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-2A8854-0001",
+  "title": "[bundle] Fix remaining unsupported-flag fail-open gaps on side-effect",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix remaining unsupported-flag fail-open gaps on side-effecting hf commands. Commands such as hf plan --unknown and hf handoff --unknown currently ignore unsupported args and write files, while hf reconcile and hf sync-cards also ignore unknown args. Make these side-effecting/no-arg commands reject unsupported arguments before mutation with clear diagnostics, add regressions proving no files are written on unsupported flags, and keep documented help paths working.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf plan, hf handoff, hf reconcile, and hf sync-cards reject unsupported arguments before side effects.",
+    "Unsupported-argument regressions prove those commands exit nonzero and create no files in an empty temp repo.",
+    "Documented help paths for the affected commands still exit 0.",
+    "Normal supported plan/handoff/reconcile/sync-cards behavior is not otherwise downgraded."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli side_effecting_no_arg_commands_reject_unknown_args_without_writes",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-fbd201066b0ba487-1782586948510264295",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:4d55b0c3fade5afeaf4f68b599c95217c908588bb4bf653711ae07fdabc17474",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:074891a2c74ce642b73b7827cccf87d4d212f737b0fb6445589b190a0ff0fd51"
+  }
+}

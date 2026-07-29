@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0084",
   "title": "Fix intake/prompt-hub synthesized task-id collision (silent durable-card clobber)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P1",
   "objective": "FAIL-OPEN data-loss bug surfaced by the post-decomposition /verify drive: both intake synthesis sites mint task ids counting from a FIXED base — `handoff-intake::synthesize_orders` hardcodes `id: \"TASK-0001\"` for the whole-bundle order, and `work_order::work_orders_from_bundle_with` numbers roles `format!(\"TASK-{:04}\", i+1)` (TASK-0001, TASK-0002, …). The ids are NOT scoped to the bundle/correlation, so a second `hf intake`/`hf prompt-hub` run re-mints TASK-0001 and `handoff_core::save_task` OVERWRITES any existing `TASK-NNNN.task.json` on disk silently — and these are DURABLE cards (handoff's own committed TASK-0001..0004 bundle cards prove it), so the clobber is real continuity-state loss. Fix deterministically (the intake load-bearing property: same bundle → byte-identical orders) and schema-validly (live pattern `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$` accepts uppercase-hex + hyphen): add `work_order::synthesized_task_id(workflow_id, seq) -> \"TASK-{:06X}-{:04}\"` deriving a stable 24-bit FNV-1a prefix from the unique workflow_id (which already carries a hash+nanos), and use it at BOTH sites. Distinct bundles → distinct prefixes (no cross-bundle clobber); re-running the SAME bundle re-mints the SAME ids (idempotent, not data loss). Also correct the stale `^TASK-[0-9]{4,}$` comment in handoff-schema (the live pattern was already broadened). Tests: a collision test (two workflow_ids → disjoint id sets) + a determinism test (same workflow_id → identical ids).",
   "path_scope": [

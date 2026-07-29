@@ -376,24 +376,30 @@ fn detect() -> DriftReport {
             changed.push("objective");
             r.drift
                 .push(format!("objective drift: {} (re-mint/reclaim)", t.id));
-            r.required_actions
-                .push(format!("re-lock {} objective", t.id));
+            r.required_actions.push(format!(
+                "re-lock {0} objective: `hf relock {0} \"<reason>\"`",
+                t.id
+            ));
         }
         if !c.path_scope {
             r.path_scope_match = false;
             changed.push("path_scope");
             r.drift
                 .push(format!("path_scope drift: {} (re-lock)", t.id));
-            r.required_actions
-                .push(format!("re-lock {} path_scope", t.id));
+            r.required_actions.push(format!(
+                "re-lock {0} path_scope: `hf relock {0} \"<reason>\"`",
+                t.id
+            ));
         }
         if !c.acceptance {
             r.acceptance_hash_match = false;
             changed.push("acceptance");
             r.drift
                 .push(format!("acceptance drift: {} (re-lock)", t.id));
-            r.required_actions
-                .push(format!("re-lock {} acceptance", t.id));
+            r.required_actions.push(format!(
+                "re-lock {0} acceptance: `hf relock {0} \"<reason>\"`",
+                t.id
+            ));
         }
         if !c.constraint {
             r.constraint_hash_match = false;
@@ -402,8 +408,10 @@ fn detect() -> DriftReport {
                 "constraint drift: {} — permission/dependency surface changed without re-lock (§12.1)",
                 t.id
             ));
-            r.required_actions
-                .push(format!("re-lock {} constraint surface", t.id));
+            r.required_actions.push(format!(
+                "re-lock {0} constraint surface: `hf relock {0} \"<reason>\"`",
+                t.id
+            ));
         }
         if !c.northstar {
             r.northstar_revision_match = false;
@@ -412,8 +420,10 @@ fn detect() -> DriftReport {
                 "northstar drift: {} — minted against a superseded doctrine revision (re-mint)",
                 t.id
             ));
-            r.required_actions
-                .push(format!("re-mint {} against the current North Star", t.id));
+            r.required_actions.push(format!(
+                "re-mint {0} against the current North Star: `hf relock {0} \"<reason>\"` (full lock re-binds northstar)",
+                t.id
+            ));
         }
         if !changed.is_empty() {
             // observed signature = the live recomputed 5-surface lock, so repeated `hf drift`

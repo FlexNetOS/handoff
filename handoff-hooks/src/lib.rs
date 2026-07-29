@@ -443,4 +443,54 @@ mod tests {
         assert_eq!(post[0].fail_mode, "warn");
         assert!(cfg.for_event("Nonexistent").is_empty());
     }
+
+    #[test]
+    fn canonical_lifecycle_hooks_bind_reap_to_session_end_and_post_merge() {
+        // HFTASK-0089: worktree/branch hygiene must be a lifecycle hook, not agent memory.
+        // Pin the committed hook contract so drift is caught by normal cargo test.
+        let cfg: HooksConfig =
+            toml::from_str(include_str!("../../.handoff/hooks/hooks.toml")).unwrap();
+        assert!(
+            cfg.unknown_events().is_empty(),
+            "canonical hooks.toml must not contain dangling lifecycle events"
+        );
+        let session_end = cfg.for_event("SessionEnd");
+        assert_eq!(
+            session_end.len(),
+            1,
+            "SessionEnd must be bound exactly once"
+        );
+        assert!(
+            session_end[0].command.contains("hf session reap"),
+            "SessionEnd must reap retained task worktrees"
+        );
+        let post_merge = cfg.for_event("PostMerge");
+        assert_eq!(post_merge.len(), 1, "PostMerge must be bound exactly once");
+        assert!(
+            post_merge[0].command.contains("hf session reap"),
+            "PostMerge must reap retained task worktrees after merge"
+        );
+    }
+
+    #[test]
+    fn canonical_session_end_shell_runs_envctl_reap_with_safe_apply() {
+        // HFTASK-0089: the shell hook used by .claude/settings must surface the real envctl
+        // worktree/branch reap output and preserve the script's safety rails.
+        let script = include_str!("../../.handoff/hooks/session-end.sh");
+        assert!(
+            script.contains("envctl/scripts/reap-worktrees.sh"),
+            "SessionEnd shell hook must call the envctl reap script"
+        );
+        assert!(
+            script.contains("--apply"),
+            "SessionEnd shell hook must run the reap script in apply mode"
+        );
+        assert!(
+            !script
+                .lines()
+                .filter(|line| !line.trim_start().starts_with('#'))
+                .any(|line| line.contains("--force")),
+            "SessionEnd shell hook must never pass --force"
+        );
+    }
 }

@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-665FF8-0001",
+  "title": "[bundle] Fix audit-found nested command fail-open navigation gaps: `h",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found nested command fail-open navigation gaps: `hf hook list --definitely-unsupported-flag`, `hf delivery list --definitely-unsupported-flag`, and `hf policy check-edit --definitely-unsupported-flag` currently exit successfully instead of rejecting unsupported args. Make these nested/read-only command paths reject unsupported flags before doing work with clear command-specific diagnostics, while preserving documented supported forms (`hf hook list [--json]`, `hf hook run EVENT [--payload JSON] [--json]`, `hf delivery list [--json]`, `hf delivery get <correlation_id> [--json]`, and `hf policy check-* [--json]`). Add CLI regressions proving unsupported nested flags exit nonzero and create no files in an empty temp repo, and keep help paths side-effect free.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf hook list, hf delivery list, and hf policy check-* reject unsupported flags before doing work.",
+    "Regression coverage proves unsupported nested flags exit nonzero and create no files in an empty temp repo.",
+    "Supported nested forms remain valid: hook list/run, delivery get/list, and policy check-* with --json.",
+    "Documented help paths remain side-effect free."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli nested_readonly_commands_reject_unknown_flags_without_writes",
+    "cargo test -p hf --test cli help",
+    "cargo fmt -p hf --check",
+    "cargo clippy -p hf --all-targets --all-features -- -D warnings",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-7a64f620a0cfe603-1782589192292259981",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:631d8e403e40f6e430dcf93080fc5673d5837d2107e4cf304bb972eb4949a714",
+    "path_scope_hash": "blake3:55b40ac5d03e50f8b54b8d28b6502c6e540181a26cbe0b7642a8fa43f686738b",
+    "acceptance_hash": "blake3:1acb9b81eaa350454deab26dca6cd989ac05c3760f32a4561a02b2112991965c"
+  }
+}

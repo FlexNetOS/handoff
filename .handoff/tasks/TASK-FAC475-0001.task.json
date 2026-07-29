@@ -1,0 +1,39 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-FAC475-0001",
+  "title": "[bundle] Fix the hf index intent-aware drift: docs describe hf index ",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix the hf index intent-aware drift: docs describe hf index --intent-aware as a live command, but live hf silently ignores the unsupported flag and runs normal index. Make unsupported hf index flags fail closed with a clear diagnostic instead of silently doing work, update rusty-idd docs to mark intent-aware indexing as future/proposed rather than live, and prove stale docs are gone plus hf index --intent-aware exits nonzero.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    "docs/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "hf index rejects unsupported flags such as --intent-aware with nonzero exit and a clear diagnostic instead of silently running normal index.",
+    "Regression coverage proves unsupported hf index flags are side-effect free and fail closed.",
+    "Rusty-idd docs no longer present hf index --intent-aware as a live command; they mark intent-aware indexing as proposed/future work.",
+    "Live hf index still works without unsupported flags."
+  ],
+  "test_commands": [
+    "cargo test -p hf --test cli index_unknown_flag_fails_closed_without_writing_maps",
+    "cargo test -p hf --test cli help",
+    "! rg -n 'hf index --intent-aware' docs/INTEGRATION-RUSTY-IDD.md docs/rusty-idd-research.md",
+    "target/debug/hf index --intent-aware >/tmp/hf-index-intent-aware.out 2>/tmp/hf-index-intent-aware.err; test $? -ne 0; rg -q \"unknown flag.*--intent-aware|unsupported.*--intent-aware\" /tmp/hf-index-intent-aware.err",
+    "target/debug/hf help index >/tmp/hf-help-index.out && rg -q \"usage: hf index\" /tmp/hf-help-index.out",
+    "hf drift --json | jq -e '.out_of_scope_files == [] and .intent_changed == []'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-67370791505087e2-1782586550132838521",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:c22767f19ec56c4c0552d11c688c3487b47a4f0f80ba2004f6851ed654b82f16",
+    "path_scope_hash": "blake3:d1a976ac37213e883dbad1b3ed20c3b7c263ff7b37a33175f10a9bf7f888b406",
+    "acceptance_hash": "blake3:8dcf8bb18b0c197fb10fdbc793e632f2abd83a71c5283577e9558da120d0801a"
+  }
+}

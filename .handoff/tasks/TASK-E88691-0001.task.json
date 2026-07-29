@@ -1,0 +1,35 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-E88691-0001",
+  "title": "[bundle] Remediate the residual prompt_hub fleet deployment drift rep",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Remediate the residual prompt_hub fleet deployment drift reported by hf fleet sync --dry-run: remove/neutralize tracked legacy .handoff/ledger.db, ensure .handoff/.gitignore guards ledger.db plus WAL/SHM, export ledger.events.jsonl, and prove hf fleet sync --dry-run reports zero remediations/failures afterward without disturbing unrelated prompt_hub dirty files.",
+  "path_scope": [
+    "../prompt_hub/.handoff/**",
+    "../prompt_hub/.gitignore",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Residual prompt_hub fleet drift is remediated locally: hf fleet sync --dry-run reports remediated == 0, all_resolved == true, and zero failures.",
+    "Fleet status remains conformant: hf fleet status --json reports zero gaps.",
+    "prompt_hub ledger cache guard remains effective: git check-ignore matches ledger.db, ledger.db-wal, ledger.db-shm, and ledger.db.rvf.",
+    "Unrelated prompt_hub dirty files are not staged or committed for this task."
+  ],
+  "test_commands": [
+    "hf fleet sync --dry-run --json | jq -e '.remediated == 0 and .all_resolved == true and ((.failures // []) | length == 0)'",
+    "hf fleet status --json | jq -e '((.gaps // []) | length == 0)'",
+    "cd ../prompt_hub && git check-ignore .handoff/ledger.db .handoff/ledger.db-wal .handoff/ledger.db-shm .handoff/ledger.db.rvf"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-7b6706da927a0f2d-1782573371793391992",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:d4bbef17ccff56f45ca9d96f5c426aab6b8117f322f46f1c29b2326ac686c15c",
+    "path_scope_hash": "blake3:8ec562742f324d89bab682a714d447239171c393b5623efac0662df3c3738067",
+    "acceptance_hash": "blake3:a65c07f33dfcc38f61ec35dea2609a1b519a9250217febf797763cb2e23e692d"
+  }
+}

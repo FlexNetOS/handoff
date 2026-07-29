@@ -4,8 +4,8 @@ name: differential-drive-ci
 # `hf` binary. ADVISORY — NOT one of the four required checks (Test ubuntu/macos, Clippy, Format),
 # so it never blocks the develop->trunk promotion gate (sync-master.yml / hf promote).
 #
-# This caller replicates ci.yml's RuVector-sibling layout because `ledger` path-deps
-# ../../RuVector/crates/rvf/rvf-crypto — so it cannot reuse the generic differential-drive.yml
+# This caller replicates ci.yml's meta-ruvector-sibling layout because `ledger` path-deps
+# ../../meta-ruvector/crates/rvf/rvf-crypto — so it cannot reuse the generic differential-drive.yml
 # (a workflow_call job runs on a fresh runner and cannot inherit a caller's filesystem). It is
 # therefore NOT part of the fleet-deployed bundle: deploy_diff_drive ships only the generic
 # differential-drive.yml + scripts/differential-drive.sh. Each repo authors its own cases file.
@@ -28,7 +28,7 @@ jobs:
           path: handoff
 
       - name: Clone rvf-crypto provider (meta-ruvector)
-        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git RuVector
+        run: git clone --depth 1 https://github.com/FlexNetOS/meta-ruvector.git meta-ruvector
 
       - name: Clone envctl provider (envctl)
         run: git clone --depth 1 https://github.com/FlexNetOS/envctl.git envctl

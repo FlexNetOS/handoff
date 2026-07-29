@@ -1,0 +1,39 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-24F664-0001",
+  "title": "[bundle] Reconcile the local prompt_hub checkout with origin/main aft",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Reconcile the local prompt_hub checkout with origin/main after the merged fleet sync without discarding unrelated user dirt. Preserve prompt_hub .idea local changes. Remove the false local deletion/dirty signal for fleet deployment artifacts so prompt_hub no longer appears to delete origin/main .gitignore .handoff .claude .github or scripts artifacts. Prove git diff --name-status origin/main -- .gitignore .handoff .claude .github scripts is clean, prompt_hub is fast-forwarded to origin/main, and handoff fleet sync/status remain clean.",
+  "path_scope": [
+    "../prompt_hub/.gitignore",
+    "../prompt_hub/.handoff/**",
+    "../prompt_hub/.claude/**",
+    "../prompt_hub/.github/**",
+    "../prompt_hub/scripts/**",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "prompt_hub local main is fast-forwarded to origin/main without discarding unrelated local .idea dirt.",
+    "The fleet deployment artifact diff is clean: cd ../prompt_hub && git diff --quiet origin/main -- .gitignore .handoff .claude .github scripts.",
+    "Handoff fleet sync dry-run remains resolved with remediated == 0, all_resolved == true, and no failures.",
+    "Handoff fleet status reports zero gaps."
+  ],
+  "test_commands": [
+    "cd ../prompt_hub && test \"$(git rev-parse HEAD)\" = \"$(git rev-parse origin/main)\"",
+    "cd ../prompt_hub && git diff --quiet origin/main -- .gitignore .handoff .claude .github scripts",
+    "hf fleet sync --dry-run --json | jq -e '.remediated == 0 and .all_resolved == true and ((.failures // []) | length == 0)'",
+    "hf fleet status --json | jq -e '((.gaps // []) | length == 0)'"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-f8a1c72f110618ab-1782584196072518320",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:cd8d40007a4ae72dd4f376be6fa60576f7475a2dd1b47955aa75ddd86cb9745d",
+    "path_scope_hash": "blake3:b58e599692c999370cb6d379c2b8104c5cd27641ba62153568157cc884c398ba",
+    "acceptance_hash": "blake3:20bf73257a734e9ef79eb129939263b43b91e58f641bbb1b31b9d9d82370b684"
+  }
+}

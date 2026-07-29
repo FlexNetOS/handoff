@@ -1,0 +1,32 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-C7B138-0001",
+  "title": "[bundle] fix macOS durability test temp repo path collisions",
+  "status": "backlog",
+  "priority": "P1",
+  "objective": "fix macOS durability test temp repo path collisions",
+  "path_scope": [
+    "hf/src/durability.rs",
+    ".handoff/tasks/**",
+    ".handoff/bundles/**",
+    ".handoff/deliveries/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-c314589d920f50b6-1783460089014880030",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:52a53bffa1debd97982f88e46b78fbb8aa3b1615a6ecb98387b5d8a9e33f103f",
+    "path_scope_hash": "blake3:fd835c4bc0348d658e905a269bfc6b6213de386e3c3ef24c4acd91f0e5b1c27d",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

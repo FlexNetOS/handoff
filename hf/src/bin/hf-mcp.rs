@@ -267,31 +267,45 @@ fn run_hf(hf_exe: &PathBuf, args: &[String]) -> Result<(String, bool), String> {
 fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Vec<String>, String> {
     let mut hf_args = vec![];
     match name {
+        "hf_version" => {
+            ensure_only_args(name, args, &["json"])?;
+            hf_args.push("version".to_string());
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
+        }
         "hf_init" => {
+            ensure_only_args(name, args, &[])?;
             hf_args.push("init".to_string());
         }
         "hf_seed" => {
+            ensure_only_args(name, args, &[])?;
             hf_args.push("seed".to_string());
         }
         "hf_status" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("status".to_string());
             if arg_bool(args, "json") {
                 hf_args.push("--json".to_string());
             }
         }
         "hf_doctor" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("doctor".to_string());
             if arg_bool(args, "json") {
                 hf_args.push("--json".to_string());
             }
         }
         "hf_reconcile" => {
+            ensure_only_args(name, args, &[])?;
             hf_args.push("reconcile".to_string());
         }
         "hf_sync_cards" => {
+            ensure_only_args(name, args, &[])?;
             hf_args.push("sync-cards".to_string());
         }
         "hf_sync" => {
+            ensure_only_args(name, args, &["auto", "dry_run", "json"])?;
             hf_args.push("sync".to_string());
             if arg_bool(args, "auto") {
                 hf_args.push("--auto".to_string());
@@ -299,8 +313,12 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             if arg_bool(args, "dry_run") {
                 hf_args.push("--dry-run".to_string());
             }
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
         }
         "hf_resume" => {
+            ensure_only_args(name, args, &["mode"])?;
             hf_args.push("resume".to_string());
             let mode = arg_string(args, "mode").unwrap_or_else(|| "json".to_string());
             match mode.as_str() {
@@ -311,6 +329,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_claim" => {
+            ensure_only_args(name, args, &["id", "next", "batch"])?;
             hf_args.push("claim".to_string());
             if arg_bool(args, "next") {
                 hf_args.push("--next".to_string());
@@ -321,10 +340,12 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_release" => {
+            ensure_only_args(name, args, &["id"])?;
             hf_args.push("release".to_string());
             hf_args.push(require_string(args, "id")?);
         }
         "hf_checkpoint" => {
+            ensure_only_args(name, args, &["id", "note", "auto", "quiet", "sync_cards"])?;
             hf_args.push("checkpoint".to_string());
             hf_args.push(require_string(args, "id")?);
             if let Some(note) = arg_string(args, "note") {
@@ -341,6 +362,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_done" => {
+            ensure_only_args(name, args, &["id", "pr"])?;
             hf_args.push("done".to_string());
             hf_args.push(require_string(args, "id")?);
             if let Some(pr) = arg_string(args, "pr") {
@@ -349,10 +371,12 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_test" => {
+            ensure_only_args(name, args, &["id"])?;
             hf_args.push("test".to_string());
             hf_args.push(require_string(args, "id")?);
         }
         "hf_ship" => {
+            ensure_only_args(name, args, &["id", "base"])?;
             hf_args.push("ship".to_string());
             hf_args.push(require_string(args, "id")?);
             if let Some(base) = arg_string(args, "base") {
@@ -361,6 +385,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_review_request" => {
+            ensure_only_args(name, args, &["pr", "task_id"])?;
             hf_args.push("review".to_string());
             hf_args.push("request".to_string());
             hf_args.push(require_string(args, "pr")?);
@@ -370,6 +395,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_review_verdict" => {
+            ensure_only_args(name, args, &["id", "pr", "verdict", "by"])?;
             hf_args.push("review".to_string());
             hf_args.push("verdict".to_string());
             hf_args.push(require_string(args, "id")?);
@@ -381,6 +407,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_intake" => {
+            ensure_only_args(name, args, &["bundle", "vibe", "intent", "scope"])?;
             hf_args.push("intake".to_string());
             hf_args.push("--bundle".to_string());
             hf_args.push(require_string(args, "bundle")?);
@@ -398,6 +425,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_dispatch" => {
+            ensure_only_args(name, args, &["workflow_id", "next"])?;
             hf_args.push("dispatch".to_string());
             hf_args.push(require_string(args, "workflow_id")?);
             if arg_bool(args, "next") {
@@ -405,6 +433,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_prompt_hub" => {
+            ensure_only_args(name, args, &["vibe", "scope", "dispatch"])?;
             hf_args.push("prompt-hub".to_string());
             hf_args.push(require_string(args, "vibe")?);
             if let Some(scope) = arg_string(args, "scope") {
@@ -417,6 +446,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             hf_args.push("--json".to_string());
         }
         "hf_delivery_get" => {
+            ensure_only_args(name, args, &["correlation_id", "json"])?;
             hf_args.push("delivery".to_string());
             hf_args.push("get".to_string());
             hf_args.push(require_string(args, "correlation_id")?);
@@ -425,6 +455,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_delivery_list" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("delivery".to_string());
             hf_args.push("list".to_string());
             if arg_bool(args, "json") {
@@ -432,35 +463,83 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_task_mint" => {
+            ensure_only_args(name, args, &["slug"])?;
             hf_args.push("task".to_string());
             hf_args.push("mint".to_string());
             hf_args.push("--from-kb".to_string());
             hf_args.push(require_string(args, "slug")?);
         }
         "hf_session_start" => {
+            ensure_only_args(name, args, &["base"])?;
             hf_args.push("session".to_string());
             hf_args.push("start".to_string());
+            if let Some(base) = arg_string(args, "base") {
+                hf_args.push("--base".to_string());
+                hf_args.push(base);
+            }
         }
         "hf_session_end" => {
+            ensure_only_args(name, args, &["recycle", "reap", "base"])?;
             hf_args.push("session".to_string());
             hf_args.push("end".to_string());
             if arg_bool(args, "recycle") {
                 hf_args.push("--recycle".to_string());
             }
+            if arg_bool(args, "reap") {
+                hf_args.push("--reap".to_string());
+            }
+            if let Some(base) = arg_string(args, "base") {
+                hf_args.push("--base".to_string());
+                hf_args.push(base);
+            }
+        }
+        "hf_session_reap" => {
+            ensure_only_args(name, args, &["force"])?;
+            hf_args.push("session".to_string());
+            hf_args.push("reap".to_string());
+            if arg_bool(args, "force") {
+                hf_args.push("--force".to_string());
+            }
         }
         "hf_fleet_status" => {
+            ensure_only_args(name, args, &["json", "fix", "dry_run"])?;
+            if arg_bool(args, "dry_run") && !arg_bool(args, "fix") {
+                return Err(
+                    "hf_fleet_status: dry_run is only valid with fix=true; use hf_fleet_sync dry_run=true"
+                        .to_string(),
+                );
+            }
             hf_args.push("fleet".to_string());
             hf_args.push("status".to_string());
             if arg_bool(args, "json") {
                 hf_args.push("--json".to_string());
             }
+            if arg_bool(args, "fix") {
+                hf_args.push("--fix".to_string());
+            }
+            if arg_bool(args, "dry_run") {
+                hf_args.push("--dry-run".to_string());
+            }
+        }
+        "hf_fleet_sync" => {
+            ensure_only_args(name, args, &["json", "dry_run"])?;
+            hf_args.push("fleet".to_string());
+            hf_args.push("sync".to_string());
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
+            if arg_bool(args, "dry_run") {
+                hf_args.push("--dry-run".to_string());
+            }
         }
         "hf_fleet_render" => {
+            ensure_only_args(name, args, &["member"])?;
             hf_args.push("fleet".to_string());
             hf_args.push("render".to_string());
             hf_args.push(require_string(args, "member")?);
         }
         "hf_policy_check_claim" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("policy".to_string());
             hf_args.push("check-claim".to_string());
             if arg_bool(args, "json") {
@@ -468,6 +547,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_policy_check_edit" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("policy".to_string());
             hf_args.push("check-edit".to_string());
             if arg_bool(args, "json") {
@@ -475,6 +555,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_policy_check_handoff" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("policy".to_string());
             hf_args.push("check-handoff".to_string());
             if arg_bool(args, "json") {
@@ -482,15 +563,37 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_drift" => {
+            ensure_only_args(name, args, &["json"])?;
             hf_args.push("drift".to_string());
             if arg_bool(args, "json") {
                 hf_args.push("--json".to_string());
             }
         }
         "hf_handoff" => {
+            ensure_only_args(name, args, &[])?;
             hf_args.push("handoff".to_string());
         }
+        "hf_schema" => {
+            ensure_only_args(name, args, &["mode"])?;
+            hf_args.push("schema".to_string());
+            if let Some(mode) = arg_string(args, "mode") {
+                match mode.as_str() {
+                    "check" => hf_args.push("--check".to_string()),
+                    "write" => hf_args.push("--write".to_string()),
+                    "print" => {}
+                    other => return Err(format!("invalid schema mode: {other}")),
+                }
+            }
+        }
+        "hf_lease" => {
+            ensure_only_args(name, args, &["json"])?;
+            hf_args.push("lease".to_string());
+            if arg_bool(args, "json") {
+                hf_args.push("--json".to_string());
+            }
+        }
         "hf_gatekeeper_check" => {
+            ensure_only_args(name, args, &["pr", "task_id"])?;
             hf_args.push("gatekeeper".to_string());
             hf_args.push("check".to_string());
             hf_args.push(require_string(args, "pr")?);
@@ -500,6 +603,7 @@ fn build_hf_args(name: &str, args: &serde_json::Map<String, Value>) -> Result<Ve
             }
         }
         "hf_policy_gate" => {
+            ensure_only_args(name, args, &["action", "task_id"])?;
             hf_args.push("policy".to_string());
             hf_args.push("gate".to_string());
             hf_args.push(require_string(args, "action")?);
@@ -528,6 +632,26 @@ fn arg_string(args: &serde_json::Map<String, Value>, key: &str) -> Option<String
         .map(|s| s.to_string())
 }
 
+fn ensure_only_args(
+    tool: &str,
+    args: &serde_json::Map<String, Value>,
+    allowed: &[&str],
+) -> Result<(), String> {
+    for key in args.keys() {
+        if !allowed.contains(&key.as_str()) {
+            let supported = if allowed.is_empty() {
+                "no arguments".to_string()
+            } else {
+                allowed.join(", ")
+            };
+            return Err(format!(
+                "{tool}: unknown argument '{key}' (supported: {supported})"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn require_string(args: &serde_json::Map<String, Value>, key: &str) -> Result<String, String> {
     arg_string(args, key).ok_or_else(|| format!("missing required argument: {key}"))
 }
@@ -543,21 +667,31 @@ fn arg_bool(args: &serde_json::Map<String, Value>, key: &str) -> bool {
 fn tools() -> Vec<Tool> {
     vec![
         Tool {
+            name: "hf_version".to_string(),
+            description: "Show the installed hf version/build stamp.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } },
+                "additionalProperties": false
+            }),
+        },
+        Tool {
             name: "hf_init".to_string(),
             description: "Initialize a fresh .handoff directory.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         },
         Tool {
             name: "hf_seed".to_string(),
             description: "Seed the ledger with built-in task cards.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         },
         Tool {
             name: "hf_status".to_string(),
             description: "Show handoff task status. Returns structured output when --json is used.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } }
+                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -565,18 +699,19 @@ fn tools() -> Vec<Tool> {
             description: "Run handoff doctor diagnostics.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } }
+                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } },
+                "additionalProperties": false
             }),
         },
         Tool {
             name: "hf_reconcile".to_string(),
             description: "Reconcile task card statuses with ledger truth.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         },
         Tool {
             name: "hf_sync_cards".to_string(),
             description: "Sync task card statuses from the ledger.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         },
         Tool {
             name: "hf_sync".to_string(),
@@ -585,8 +720,10 @@ fn tools() -> Vec<Tool> {
                 "type": "object",
                 "properties": {
                     "auto": { "type": "boolean" },
-                    "dry_run": { "type": "boolean", "description": "Report without writing" }
-                }
+                    "dry_run": { "type": "boolean", "description": "Report without writing" },
+                    "json": { "type": "boolean", "description": "Return JSON output" }
+                },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -596,7 +733,8 @@ fn tools() -> Vec<Tool> {
                 "type": "object",
                 "properties": {
                     "mode": { "type": "string", "description": "full | compact | json (default: json)" }
-                }
+                },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -608,7 +746,8 @@ fn tools() -> Vec<Tool> {
                     "id": { "type": "string", "description": "Task id to claim" },
                     "next": { "type": "boolean", "description": "Claim the next safe task instead" },
                     "batch": { "type": "boolean", "description": "Claim a batch of safe tasks" }
-                }
+                },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -619,6 +758,7 @@ fn tools() -> Vec<Tool> {
                 "properties": {
                     "id": { "type": "string", "description": "Task id to release" }
                 },
+                "additionalProperties": false,
                 "required": ["id"]
             }),
         },
@@ -634,6 +774,7 @@ fn tools() -> Vec<Tool> {
                     "quiet": { "type": "boolean" },
                     "sync_cards": { "type": "boolean", "description": "Sync task cards after checkpoint" }
                 },
+                "additionalProperties": false,
                 "required": ["id"]
             }),
         },
@@ -643,6 +784,7 @@ fn tools() -> Vec<Tool> {
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": { "id": { "type": "string", "description": "Task id" } },
+                "additionalProperties": false,
                 "required": ["id"]
             }),
         },
@@ -655,6 +797,7 @@ fn tools() -> Vec<Tool> {
                     "id": { "type": "string", "description": "Task id" },
                     "pr": { "type": "string", "description": "PR URL" }
                 },
+                "additionalProperties": false,
                 "required": ["id"]
             }),
         },
@@ -667,6 +810,7 @@ fn tools() -> Vec<Tool> {
                     "id": { "type": "string", "description": "Task id" },
                     "base": { "type": "string", "description": "Base branch (default from policy)" }
                 },
+                "additionalProperties": false,
                 "required": ["id"]
             }),
         },
@@ -679,6 +823,7 @@ fn tools() -> Vec<Tool> {
                     "pr": { "type": "string", "description": "PR number or URL" },
                     "task_id": { "type": "string", "description": "Associated task id" }
                 },
+                "additionalProperties": false,
                 "required": ["pr"]
             }),
         },
@@ -693,6 +838,7 @@ fn tools() -> Vec<Tool> {
                     "verdict": { "type": "string", "description": "approve or deny" },
                     "by": { "type": "string", "description": "Reviewer name" }
                 },
+                "additionalProperties": false,
                 "required": ["id", "pr", "verdict"]
             }),
         },
@@ -707,6 +853,7 @@ fn tools() -> Vec<Tool> {
                     "intent": { "type": "string", "description": "Path to intent file" },
                     "scope": { "type": "string", "description": "Comma-separated scope globs" }
                 },
+                "additionalProperties": false,
                 "required": ["bundle"]
             }),
         },
@@ -719,6 +866,7 @@ fn tools() -> Vec<Tool> {
                     "workflow_id": { "type": "string" },
                     "next": { "type": "boolean", "description": "Only dispatch the next order" }
                 },
+                "additionalProperties": false,
                 "required": ["workflow_id"]
             }),
         },
@@ -732,6 +880,7 @@ fn tools() -> Vec<Tool> {
                     "scope": { "type": "string", "description": "Comma-separated scope globs" },
                     "dispatch": { "type": "boolean", "description": "Immediately dispatch the first safe order" }
                 },
+                "additionalProperties": false,
                 "required": ["vibe"]
             }),
         },
@@ -744,6 +893,7 @@ fn tools() -> Vec<Tool> {
                     "correlation_id": { "type": "string", "description": "Workflow correlation_id (SwarmBundle.workflow_id)" },
                     "json": { "type": "boolean", "description": "Return JSON output" }
                 },
+                "additionalProperties": false,
                 "required": ["correlation_id"]
             }),
         },
@@ -754,7 +904,8 @@ fn tools() -> Vec<Tool> {
                 "type": "object",
                 "properties": {
                     "json": { "type": "boolean", "description": "Return JSON output" }
-                }
+                },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -765,20 +916,39 @@ fn tools() -> Vec<Tool> {
                 "properties": {
                     "slug": { "type": "string", "description": "kb slug to mint from" }
                 },
+                "additionalProperties": false,
                 "required": ["slug"]
             }),
         },
         Tool {
             name: "hf_session_start".to_string(),
             description: "Start a handoff work session.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "base": { "type": "string", "description": "Override base branch" } },
+                "additionalProperties": false
+            }),
         },
         Tool {
             name: "hf_session_end".to_string(),
             description: "End a handoff work session.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "recycle": { "type": "boolean" } }
+                "properties": {
+                    "recycle": { "type": "boolean" },
+                    "reap": { "type": "boolean", "description": "Force reap retained worktree" },
+                    "base": { "type": "string", "description": "Override base branch" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        Tool {
+            name: "hf_session_reap".to_string(),
+            description: "Reap retained session worktrees after verified merge, or force with force=true.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "force": { "type": "boolean", "description": "Force reap unmerged retained worktrees" } },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -786,7 +956,24 @@ fn tools() -> Vec<Tool> {
             description: "Show fleet-wide handoff status.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } }
+                "properties": {
+                    "json": { "type": "boolean", "description": "Return JSON output" },
+                    "fix": { "type": "boolean", "description": "Remediate detected drift via fleet sync" },
+                    "dry_run": { "type": "boolean", "description": "With fix=true, report without writing" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        Tool {
+            name: "hf_fleet_sync".to_string(),
+            description: "Remediate fleet-wide handoff deployment drift.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "json": { "type": "boolean", "description": "Return JSON output" },
+                    "dry_run": { "type": "boolean", "description": "Report without writing" }
+                },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -797,6 +984,7 @@ fn tools() -> Vec<Tool> {
                 "properties": {
                     "member": { "type": "string", "description": "Member repo name" }
                 },
+                "additionalProperties": false,
                 "required": ["member"]
             }),
         },
@@ -805,7 +993,8 @@ fn tools() -> Vec<Tool> {
             description: "Run the policy claim gate.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean" } }
+                "properties": { "json": { "type": "boolean" } },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -813,7 +1002,8 @@ fn tools() -> Vec<Tool> {
             description: "Run the policy edit gate.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean" } }
+                "properties": { "json": { "type": "boolean" } },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -821,7 +1011,8 @@ fn tools() -> Vec<Tool> {
             description: "Run the policy handoff gate.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean" } }
+                "properties": { "json": { "type": "boolean" } },
+                "additionalProperties": false
             }),
         },
         Tool {
@@ -829,13 +1020,32 @@ fn tools() -> Vec<Tool> {
             description: "Run the handoff drift sentinel.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
-                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } }
+                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } },
+                "additionalProperties": false
             }),
         },
         Tool {
             name: "hf_handoff".to_string(),
             description: "Render the next-session packet and complete the handoff.".to_string(),
-            input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            input_schema: serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+        },
+        Tool {
+            name: "hf_schema".to_string(),
+            description: "Print, check, or write the generated handoff task schema.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "mode": { "type": "string", "description": "print | check | write (default: print)" } },
+                "additionalProperties": false
+            }),
+        },
+        Tool {
+            name: "hf_lease".to_string(),
+            description: "Show currently held handoff leases.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "json": { "type": "boolean", "description": "Return JSON output" } },
+                "additionalProperties": false
+            }),
         },
         Tool {
             name: "hf_gatekeeper_check".to_string(),
@@ -846,6 +1056,7 @@ fn tools() -> Vec<Tool> {
                     "pr": { "type": "string", "description": "PR number or URL" },
                     "task_id": { "type": "string", "description": "Associated task id" }
                 },
+                "additionalProperties": false,
                 "required": ["pr"]
             }),
         },
@@ -858,6 +1069,7 @@ fn tools() -> Vec<Tool> {
                     "action": { "type": "string", "description": "Action id to evaluate" },
                     "task_id": { "type": "string", "description": "Associated task id" }
                 },
+                "additionalProperties": false,
                 "required": ["action"]
             }),
         },
@@ -918,11 +1130,102 @@ mod tests {
     #[test]
     fn tools_include_core_verbs() {
         let names: Vec<String> = tools().into_iter().map(|t| t.name).collect();
+        assert!(names.contains(&"hf_version".to_string()));
         assert!(names.contains(&"hf_status".to_string()));
         assert!(names.contains(&"hf_claim".to_string()));
         assert!(names.contains(&"hf_ship".to_string()));
         assert!(names.contains(&"hf_handoff".to_string()));
         assert!(names.contains(&"hf_prompt_hub".to_string()));
+        assert!(names.contains(&"hf_fleet_sync".to_string()));
+        assert!(names.contains(&"hf_session_reap".to_string()));
+        assert!(names.contains(&"hf_schema".to_string()));
+        assert!(names.contains(&"hf_lease".to_string()));
+    }
+
+    #[test]
+    fn tools_reject_unknown_arguments_before_dispatch() {
+        let mut args = serde_json::Map::new();
+        args.insert("json".to_string(), Value::Bool(true));
+        args.insert("definitely_unknown".to_string(), Value::Bool(true));
+        let err = build_hf_args("hf_status", &args).unwrap_err();
+        assert!(err.contains("unknown argument 'definitely_unknown'"));
+    }
+
+    #[test]
+    fn fleet_status_dry_run_requires_fix_before_dispatch() {
+        let mut args = serde_json::Map::new();
+        args.insert("dry_run".to_string(), Value::Bool(true));
+        let err = build_hf_args("hf_fleet_status", &args).unwrap_err();
+        assert!(err.contains("dry_run is only valid with fix=true"));
+    }
+
+    #[test]
+    fn tool_schemas_disallow_additional_properties() {
+        for tool in tools() {
+            assert_eq!(
+                tool.input_schema.get("additionalProperties"),
+                Some(&Value::Bool(false)),
+                "{} must fail closed on unknown MCP arguments",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn new_front_door_args_shape_current_cli_surface() {
+        let mut args = serde_json::Map::new();
+        args.insert("json".to_string(), Value::Bool(true));
+        args.insert("dry_run".to_string(), Value::Bool(true));
+        assert_eq!(
+            build_hf_args("hf_fleet_sync", &args).unwrap(),
+            vec!["fleet", "sync", "--json", "--dry-run"]
+        );
+
+        let mut args = serde_json::Map::new();
+        args.insert("base".to_string(), Value::String("develop".to_string()));
+        assert_eq!(
+            build_hf_args("hf_session_start", &args).unwrap(),
+            vec!["session", "start", "--base", "develop"]
+        );
+
+        let mut args = serde_json::Map::new();
+        args.insert("force".to_string(), Value::Bool(true));
+        assert_eq!(
+            build_hf_args("hf_session_reap", &args).unwrap(),
+            vec!["session", "reap", "--force"]
+        );
+
+        let mut args = serde_json::Map::new();
+        args.insert("mode".to_string(), Value::String("check".to_string()));
+        assert_eq!(
+            build_hf_args("hf_schema", &args).unwrap(),
+            vec!["schema", "--check"]
+        );
+
+        let mut args = serde_json::Map::new();
+        args.insert("json".to_string(), Value::Bool(true));
+        assert_eq!(
+            build_hf_args("hf_lease", &args).unwrap(),
+            vec!["lease", "--json"]
+        );
+    }
+
+    #[test]
+    fn prd_documents_current_mcp_front_door_surface() {
+        let prd = include_str!("../../../docs/Continuity_Ledger_Kernel_PRD.md");
+        for expected in [
+            "hf_fleet_sync",
+            "hf_session_reap",
+            "hf_schema",
+            "hf_lease",
+            "additionalProperties: false",
+            "unknown MCP tool arguments return an error",
+        ] {
+            assert!(
+                prd.contains(expected),
+                "PRD must document current MCP front-door surface item: {expected}"
+            );
+        }
     }
 
     #[test]

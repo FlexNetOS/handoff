@@ -13,11 +13,11 @@ sha3 = "0.10"
 # Authoritative store: pure-Rust ACID single-writer serializable KV (no -sys / no C).
 redb = { version = "4", optional = true }
 # RVF vector-native semantic-recall overlay (v2). Pure Rust.
-rvf-runtime = { path = "../../RuVector/crates/rvf/rvf-runtime", default-features = false, features = ["std"], optional = true }
-rvf-index = { path = "../../RuVector/crates/rvf/rvf-index", features = ["std"], optional = true }
-rvf-types = { path = "../../RuVector/crates/rvf/rvf-types", optional = true }
+rvf-runtime = { path = "../../meta-ruvector/crates/rvf/rvf-runtime", default-features = false, features = ["std"], optional = true }
+rvf-index = { path = "../../meta-ruvector/crates/rvf/rvf-index", features = ["std"], optional = true }
+rvf-types = { path = "../../meta-ruvector/crates/rvf/rvf-types", optional = true }
 # Witness chain (tamper-evidence). Pure Rust (no rvf-runtime/napi).
-rvf-crypto = { path = "../../RuVector/crates/rvf/rvf-crypto", features = ["std"], optional = true }
+rvf-crypto = { path = "../../meta-ruvector/crates/rvf/rvf-crypto", features = ["std"], optional = true }
 # One-time migration importer ONLY (never in the default graph): reads a legacy C-SQLite
 # ledger.db and streams it into redb. Opt-in via the `legacy-sqlite` feature.
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }

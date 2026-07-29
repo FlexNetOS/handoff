@@ -1,0 +1,38 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-F57ABB-0001",
+  "title": "[bundle] Fix prompt_hub/intake bundle artifact residency: non-task Sw",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix prompt_hub/intake bundle artifact residency: non-task SwarmBundle JSON files must not be written under .handoff/tasks because card loading treats every JSON there as a task card and emits schema warnings. Move bundles to a non-card inbox path, update intake default path/docs/tests, and ensure prompt_hub still mints tasks without polluting the task-card directory.",
+  "path_scope": [
+    "hf/src/prompt_hub.rs",
+    "handoff-intake/src/lib.rs",
+    ".handoff/tasks/TASK-F57ABB-0001.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "hf prompt-hub writes SwarmBundle artifacts outside `.handoff/tasks/` so task-card loading never sees non-card bundle JSON.",
+    "handoff-intake default bundle path is also outside `.handoff/tasks/` and aligned with the prompt-hub bundle inbox.",
+    "Tests assert bundle paths use the non-card inbox and do not use tasks_dir.",
+    "Drift audit passes and TASK-F57ABB-0001 has green witnessed test evidence."
+  ],
+  "test_commands": [
+    "cargo test -p hf prompt_hub",
+    "cargo test -p handoff-intake bundle_path",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-41196a9d4c93890f-1782561670552357737",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:8cc0eae0bf30696292336f14dd5d62d4334ab42f93f3760e705d6a0aae0d35f4",
+    "path_scope_hash": "blake3:1232a7b7f868f8b165f04752f097944d0ecd7f6633548012fbe89154472f0372",
+    "acceptance_hash": "blake3:6a84d5cd11ddf650344916f703f86603009bb8f0248030087409e87832241563"
+  }
+}

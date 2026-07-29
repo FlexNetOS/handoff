@@ -1,0 +1,37 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-7870BF-0001",
+  "title": "[bundle] Fix audit-found stale agent navigation docs/help: hf sync su",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found stale agent navigation docs/help: hf sync supports --json, but bare hf usage and FLEET_GUIDE still show hf sync [--auto] [--dry-run] without --json. Update help/docs and add/adjust tests so agents see the correct command surface.",
+  "path_scope": [
+    "hf/src/main.rs",
+    "FLEET_GUIDE.md",
+    ".handoff/tasks/TASK-7870BF-0001.task.json",
+    ".handoff/active.md",
+    ".handoff/packets/latest.md",
+    ".handoff/ledger.events.jsonl"
+  ],
+  "acceptance_criteria": [
+    "Bare hf usage/help includes `sync [--auto] [--dry-run] [--json]` so agents discover the JSON mode.",
+    "FLEET_GUIDE documents `hf sync [--auto] [--dry-run] [--json]` consistently with the CLI.",
+    "Regression tests assert the usage string exposes the sync --json option.",
+    "Drift audit passes: edits stay within claimed path_scope and the intent_lock is current."
+  ],
+  "test_commands": [
+    "cargo test -p hf sync_usage_includes_json",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-ad29132362f944b5-1782561197955491874",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:2f38454bfddf07a37fd1173f2d380b52173338819fc2a42c5da0f9f188bda382",
+    "path_scope_hash": "blake3:bd8a87bf5ee856fffdc74e5ad1540537a5fafd72d559898c48462e56da45f044",
+    "acceptance_hash": "blake3:4634a9b03d848b070ef9d9b8b47eeafa529c01886d64c2c2dcb931bcca066802"
+  }
+}

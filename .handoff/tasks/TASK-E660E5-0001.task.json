@@ -1,0 +1,34 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-E660E5-0001",
+  "title": "[bundle] Audit the remaining hf command surface for agentic navigatio",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Audit the remaining hf command surface for agentic navigation and fail-closed CLI gaps after PR 227. Walk commands not covered by recent unsupported-argument regressions, including delivery/schema/hook/migrate/reopen/ship/promote/session and help/documentation paths. If a real gap is found, fix it with regression tests and keep supported usage working. Scope: hf/src/main.rs, hf/tests/**, docs/**, AGENTS.md, .handoff/**",
+  "path_scope": [
+    "hf/src/main.rs",
+    "hf/tests/**",
+    "docs/**",
+    "AGENTS.md",
+    ".handoff/**"
+  ],
+  "acceptance_criteria": [
+    "A regression test reproduces the defect, then asserts the fixed behavior; `cargo test` is green.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the intent_lock is unchanged."
+  ],
+  "test_commands": [
+    "cargo test",
+    "cargo clippy --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-806e7ed03e5710ce-1782590473151226883",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:f38af445d4180776be0686bdcf47c5a1929acfe81a43be64bb80640271ba2b0c",
+    "path_scope_hash": "blake3:af5d6a0a7dddb42e043843ee06a27fa2733f9904d9ee34a445729070127b9671",
+    "acceptance_hash": "blake3:c3995257ce1bc0536d9f3550b5b79a779ea88369d229393e72555f356403e879"
+  }
+}

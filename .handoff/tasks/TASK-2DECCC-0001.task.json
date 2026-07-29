@@ -1,0 +1,35 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "TASK-2DECCC-0001",
+  "title": "[bundle] Fix audit-found fleet deployment remediation gap: hf fleet s",
+  "status": "done",
+  "priority": "P1",
+  "objective": "Fix audit-found fleet deployment remediation gap: hf fleet sync dry-run reports 57 would-remediate members but flags_after stay unresolved; make agent navigation/fleet deployment audit clear and ensure dry-run/apply evidence shows what will be fixed, especially ledger guard, WAL/SHM guard, JSONL export, legacy SQLite migration, and tracked ledger violations.",
+  "path_scope": [
+    "hf/src/**",
+    "handoff-fleet/src/**",
+    "FLEET_GUIDE.md",
+    ".handoff/tasks/**"
+  ],
+  "acceptance_criteria": [
+    "Fleet dry-run remediation output is agent-clear: affected members report unresolved flags_before and planned resolved flags_after without mutating member repos.",
+    "Installed-kernel freshness gap is audited: prompt_hub bundle artifacts are not left under .handoff/tasks, and the merged regression is re-verified.",
+    "Drift audit passes: no out-of-scope write (edits stay within path_scope) and the updated acceptance surface is re-locked."
+  ],
+  "test_commands": [
+    "cargo test -p handoff-fleet fleet_sync_dry_run_reports_planned_resolution -- --nocapture",
+    "cargo test -p hf prompt_hub_bundle_path_is_not_under_tasks_dir -- --nocapture",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "dependencies": [],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": false,
+  "correlation_id": "vibe-fed7b403155bae16-1782562734018324708",
+  "role": null,
+  "intent_lock": {
+    "objective_hash": "blake3:967c56ef44bb25bba7d259ec7b9afc0f1b2ebbbdf3ec5c54cfdd2b79807d4c9f",
+    "path_scope_hash": "blake3:08d3375fd6bac2faeeaabeef29acb6ef9907c28c50795e9560449a01b095db79",
+    "acceptance_hash": "blake3:099369bf97b1b52c874e5f74bb96d47832ca43c9f407e1ef818a583ea1f6d694"
+  }
+}

@@ -34,16 +34,15 @@ hf resume
 # → Shows active objective, pending tasks, next command
 
 # Claim a task safely
-hf claim TASK-0042 --next
+hf claim TASK-0042
 # → Transactionally reserves path scope and branch
 
-# Make changes in isolated worktree
-hf start
-git checkout agent/TASK-0042/...
-# → Changes isolated from other agents
+# Optional: open an isolated session worktree
+hf session start
+# → Creates a session branch/worktree; otherwise edit in the current claimed checkout
 
 # Checkpoint progress
-hf checkpoint --note "fixed null check"
+hf checkpoint TASK-0042 "fixed null check"
 # → Records files changed, commands run, test status
 
 # Verify before handoff

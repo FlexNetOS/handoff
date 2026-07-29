@@ -2,7 +2,7 @@
   "schema": "handoff.task.v1",
   "id": "HFTASK-0079",
   "title": "Harden verify_witness_chain: content+linkage re-derivation (close the count-only tautology)",
-  "status": "backlog",
+  "status": "done",
   "priority": "P0",
   "objective": "code-research P0 (#140): the prior `ledger::v1::verify_witness_chain` was a tautology — it rebuilt a fresh witness chain from the *trusted* stored action_hash values (prev_hash forced to 0) then verified that just-built chain, so it always passed and returned events.len() for honest, content-tampered, and garbage rows alike. It never recomputed the action_hash from the payload nor checked on-disk prev_hash linkage, so it could not detect tampering of the binary redb cache. Harden it to walk events in seq order and enforce the SAME two invariants `append` establishes: (1) CONTENT — re-derive hash_action(event_type, work_order_id, payload_json) and byte-compare to the stored action_hash; (2) LINKAGE — stored prev_hash must equal the prior event's stored action_hash (genesis [0;32]). Keep the RVF witness-segment round-trip only as a secondary structural check. Already shipped in code (ledger/src/v1.rs); this card records the witnessed work.",
   "path_scope": [

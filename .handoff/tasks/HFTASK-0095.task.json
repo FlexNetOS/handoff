@@ -1,0 +1,33 @@
+{
+  "schema": "handoff.task.v1",
+  "id": "HFTASK-0095",
+  "title": "Automation rung 0 fix: build.rs re-stamps HF_BUILD_COMMIT on every commit (kill the SessionStart staleness false-positive)",
+  "status": "done",
+  "priority": "P2",
+  "objective": "The HFTASK-0085 build stamp lags HEAD because `hf/build.rs` only emits `cargo:rerun-if-changed=.git/HEAD`, but a normal `git commit` moves the branch ref (`.git/refs/heads/<branch>`) — NOT `.git/HEAD` — so cargo never re-runs build.rs after a commit, `HF_BUILD_COMMIT` keeps the prior short-sha, and the SessionStart staleness check (`.handoff/hooks/loop-entry.sh` + `scripts/handoff-loop-init.sh` Phase 0) compares the stale stamp against fresh `git rev-parse --short HEAD` and loudly (FALSE-positive) warns 'hf binary BEHIND kernel HEAD' on a source-clean tree — eroding trust in the very staleness signal rung 0 exists to provide. It also never fires in a git WORKTREE, where `.git` is a FILE gitlink (`gitdir: <path>`), not a directory. Fix `build.rs` to resolve the real gitdir worktree-aware, parse `HEAD`'s `ref: <path>` and emit `rerun-if-changed` for that ref file, plus `.git/logs/HEAD` as a robust catch-all (it changes on every commit/checkout/reset). Fail-soft at every step (a .git-less release tarball still builds and stamps 'unknown'; no unwrap/expect/panic — workspace deny lints). Verify by differential drive: record the stamp, commit, rebuild, assert `hf version --json`.commit == `git rev-parse --short HEAD`.",
+  "path_scope": [
+    "spike/**",
+    "handoff/**"
+  ],
+  "acceptance_criteria": [
+    "Automation rung 0 fix: build.rs re-stamps HF_BUILD_COMMIT on every commit (kill the SessionStart staleness false-positive): implemented + cargo test green + checkpointed"
+  ],
+  "test_commands": [
+    "cargo test -p hf version"
+  ],
+  "dependencies": [
+    "HFTASK-0085"
+  ],
+  "blocked_by": [],
+  "allows_network": false,
+  "allows_dependency_addition": true,
+  "correlation_id": "handoff-buildout",
+  "role": "implementer",
+  "intent_lock": {
+    "objective_hash": "blake3:692c9e565c6672cf5bb2460a8838c427791bac868c26ead01640495381287635",
+    "path_scope_hash": "blake3:2ffa7a442ff7ccdaf5c3a7ddad4cdf9b388fc5ed01dde27996a7c9f7d0e2f221",
+    "acceptance_hash": "blake3:a226f3dc7b756eeadf66959ef312e7b81c5e54082caa5fd749433559eea41276",
+    "constraint_hash": "blake3:7748d6811789de4220a6b0c0c0d6b9bfa835cf40a9a6198e423607dc6f8d1033",
+    "northstar_revision": "blake3:aa161a7ffed934d6be955de6b80125bb77bddad718465077b94f9c73e197df70"
+  }
+}
