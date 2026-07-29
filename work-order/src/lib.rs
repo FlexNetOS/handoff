@@ -246,6 +246,112 @@ impl WorkOrder {
         #[allow(clippy::expect_used)]
         serde_json::to_string_pretty(self).expect("serialize WorkOrder")
     }
+
+    /// Fail-closed card loader (FF-handoff-001, union seam).
+    ///
+    /// The bare `serde_json::from_str::<WorkOrder>` that consumers reach for is fail-OPEN: the
+    /// `#[schemars(regex(...))]` attributes on `schema` and `id` shape only the *generated JSON
+    /// Schema*, serde does not enforce them at deserialize time, and nothing on that path
+    /// re-checks the recorded `intent_lock` against the card's content. A foreign-schema card, a
+    /// malformed-id card, and a card whose lock is a lie all load silently.
+    ///
+    /// This is the load boundary that rejects all three. Deserialization stays permissive so the
+    /// three checks below own the refusal and can each say *why*, and so `WorkOrder`'s
+    /// `Deserialize` remains usable for the crate's own round-trips.
+    ///
+    /// A drifted lock is REJECTED, never recomputed — silently re-deriving a tampered lock so it
+    /// "matches" would turn the drift sentinel into a rubber stamp.
+    pub fn from_card_json(card: &str) -> Result<WorkOrder, LoadError> {
+        let order: WorkOrder = serde_json::from_str(card).map_err(LoadError::Malformed)?;
+        Self::from_card_checked(order)
+    }
+
+    /// [`WorkOrder::from_card_json`] over an already-parsed JSON value.
+    pub fn from_card_value(card: serde_json::Value) -> Result<WorkOrder, LoadError> {
+        let order: WorkOrder = serde_json::from_value(card).map_err(LoadError::Malformed)?;
+        Self::from_card_checked(order)
+    }
+
+    fn from_card_checked(order: WorkOrder) -> Result<WorkOrder, LoadError> {
+        if order.schema != SCHEMA_ID {
+            return Err(LoadError::ForeignSchema(order.schema));
+        }
+        if !is_canonical_task_id(&order.id) {
+            return Err(LoadError::MalformedId(order.id));
+        }
+        if !order.intent_unchanged() {
+            return Err(LoadError::DriftedIntentLock(order.id));
+        }
+        Ok(order)
+    }
+}
+
+/// The one schema discriminator this crate loads.
+pub const SCHEMA_ID: &str = "handoff.task.v1";
+
+/// `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$`, hand-matched so the crate keeps its four-dependency
+/// footprint (no regex engine pulled in for one pattern).
+fn is_canonical_task_id(id: &str) -> bool {
+    let rest = match id.split_once("TASK-") {
+        Some((prefix, rest)) => {
+            if !prefix.bytes().all(|b| b.is_ascii_uppercase()) {
+                return false;
+            }
+            rest
+        }
+        None => return false,
+    };
+    let mut chars = rest.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_uppercase() || c.is_ascii_digit() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Why a card was refused at the load boundary.
+#[derive(Debug)]
+pub enum LoadError {
+    /// The bytes are not a structurally valid work order.
+    Malformed(serde_json::Error),
+    /// `schema` is not `handoff.task.v1`, so this is not a handoff.task.v1 envelope.
+    ForeignSchema(String),
+    /// `id` violates `^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$`.
+    MalformedId(String),
+    /// The recorded `intent_lock` does not match the card's content.
+    DriftedIntentLock(String),
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Malformed(e) => {
+                write!(f, "card is not a structurally valid work order: {e}")
+            }
+            LoadError::ForeignSchema(got) => write!(
+                f,
+                "card declares schema {got:?}, refusing to load it as {SCHEMA_ID}"
+            ),
+            LoadError::MalformedId(got) => write!(
+                f,
+                "card id {got:?} violates the canonical form ^[A-Z]*TASK-[A-Z0-9][A-Z0-9-]*$"
+            ),
+            LoadError::DriftedIntentLock(id) => write!(
+                f,
+                "card {id:?} carries an intent_lock that does not match its content \
+                 (objective/path_scope/acceptance_criteria drifted); refusing to load"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            LoadError::Malformed(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 /// HFTASK-0057 (PRD §7.3/§23): the canonical JSON Schema for the handoff.task.v1 envelope,
