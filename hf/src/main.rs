@@ -4952,7 +4952,9 @@ mod tests {
     fn ledger_backup_dir_honors_explicit_override() {
         // The explicit override wins over XDG/HOME and is returned verbatim. Serialize on the
         // shared env lock and restore the prior value so no sibling test is destabilized.
-        let _g = ENV_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let prev = std::env::var("HANDOFF_LEDGER_BACKUP_DIR").ok();
         // FIXME: Audit that the environment access only happens in single-threaded code.
         unsafe { std::env::set_var("HANDOFF_LEDGER_BACKUP_DIR", "/tmp/hb-test-dir") };
